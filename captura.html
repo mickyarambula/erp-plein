@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<!-- DEPRECADO 2026-07-17: reemplazado por carga_documentos / SPA. No extender. Ver PLAN-MAESTRO Fase 1.5. -->
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ERP Plein — Captura</title>
+<style>
+  :root{
+    --bg:#0f1720; --panel:#17212b; --panel2:#1e2b38; --line:#2a3a4a;
+    --txt:#e6edf3; --muted:#8aa0b4; --accent:#3fb950; --accent2:#2f81f7;
+    --warn:#d29922; --err:#f85149; --ok:#3fb950;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.45}
+  header{background:var(--panel);border-bottom:1px solid var(--line);padding:14px 20px;
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  header h1{font-size:17px;margin:0;font-weight:600}
+  header h1 span{color:var(--muted);font-weight:400}
+  .perfil{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:10px}
+  .badge{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px}
+  .badge.admin{color:#a5d6ff;border-color:#1f6feb}
+  .badge.captura{color:#7ee787;border-color:#238636}
+  .badge.vista{color:#d29922;border-color:#9e6a03}
+  a.link{color:var(--accent2);text-decoration:none}
+  a.link:hover{text-decoration:underline}
+  main{max-width:920px;margin:0 auto;padding:20px}
+  .tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+  .tab{background:var(--panel);border:1px solid var(--line);color:var(--muted);
+    padding:9px 16px;border-radius:8px;cursor:pointer;font-size:14px}
+  .tab.active{background:var(--panel2);color:var(--txt);border-color:var(--accent2)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:16px;display:none}
+  .card.active{display:block}
+  .card h2{margin:0 0 4px;font-size:16px}
+  .card .desc{color:var(--muted);font-size:13px;margin:0 0 16px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field.full{grid-column:1 / -1}
+  label{font-size:13px;color:var(--muted)}
+  label .req{color:var(--err)}
+  input,select,textarea{background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+    border-radius:8px;padding:9px 11px;font-size:14px;font-family:inherit;width:100%}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent2)}
+  textarea{resize:vertical;min-height:52px}
+  .actions{margin-top:18px;display:flex;gap:10px;align-items:center}
+  button.primary{background:var(--accent);color:#04140a;border:none;border-radius:8px;
+    padding:11px 22px;font-size:15px;font-weight:600;cursor:pointer}
+  button.primary:hover{filter:brightness(1.08)}
+  button.primary:disabled{opacity:.5;cursor:not-allowed}
+  .result{margin-top:16px;border-radius:8px;padding:13px 15px;font-size:14px;display:none;white-space:pre-wrap}
+  .result.ok{display:block;background:rgba(63,185,80,.12);border:1px solid var(--ok);color:#7ee787}
+  .result.warn{display:block;background:rgba(210,153,34,.12);border:1px solid var(--warn);color:#e3b341}
+  .result.err{display:block;background:rgba(248,81,73,.12);border:1px solid var(--err);color:#ff7b72}
+  .banner{border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:14px}
+  .banner.info{background:rgba(47,129,247,.12);border:1px solid var(--accent2)}
+  .banner.warn{background:rgba(210,153,34,.12);border:1px solid var(--warn);color:#e3b341}
+  .hint{font-size:12px;color:var(--muted);margin-top:2px}
+  #loginGate{text-align:center;padding:60px 20px}
+  #loginGate button{margin-top:14px}
+  @media(max-width:640px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>ERP Plein <span>· Captura</span></h1>
+  <div class="perfil">
+    <span id="perfilNombre"></span>
+    <span id="perfilBadge" class="badge"></span>
+    <a class="link" href="index.html">← Dashboard</a>
+  </div>
+</header>
+
+<main>
+  <!-- Gate: sin sesión -->
+  <div id="loginGate" style="display:none">
+    <div class="banner info" style="display:inline-block">No hay sesión activa. Inicia sesión en el dashboard y regresa a esta página.</div><br>
+    <button class="primary" onclick="location.href='index.html'">Ir a iniciar sesión</button>
+  </div>
+
+  <!-- App -->
+  <div id="app" style="display:none">
+    <div id="vistaBanner" class="banner warn" style="display:none">
+      Modo <strong>solo lectura</strong>: tu rol no permite capturar. Los formularios están desactivados.
+    </div>
+
+    <div class="tabs" id="tabs">
+      <div class="tab active" data-t="mov">Movimiento</div>
+      <div class="tab" data-t="carga">Carga nueva</div>
+      <div class="tab" data-t="fifo">Aplicar cobro/pago</div>
+      <div class="tab" data-t="costo">Costo de carga</div>
+    </div>
+
+    <!-- MOVIMIENTO -->
+    <section class="card active" id="card-mov">
+      <h2>Capturar movimiento (banco)</h2>
+      <p class="desc">Un solo lado: ingreso <em>o</em> egreso. El signo del egreso se normaliza solo.</p>
+      <div class="grid">
+        <div class="field"><label>Fecha <span class="req">*</span></label><input type="date" id="m_fecha"></div>
+        <div class="field"><label>Cuenta</label>
+          <select id="m_cuenta"><option value="JPM">JPM</option><option value="OTRA">Otra</option></select></div>
+        <div class="field full"><label>Descripción <span class="req">*</span></label><input id="m_desc" placeholder="Ej. Pago a ROGUGO / Cobro Global Fresh"></div>
+        <div class="field"><label>Ingreso (USD)</label><input type="number" step="0.01" id="m_ing" placeholder="0.00"></div>
+        <div class="field"><label>Egreso (USD)</label><input type="number" step="0.01" id="m_egr" placeholder="0.00">
+          <span class="hint">Pon el monto en positivo; el sistema lo hace negativo.</span></div>
+        <div class="field"><label>Contraparte</label><input id="m_cp" list="dl_cp" placeholder="cliente o proveedor"></div>
+        <div class="field"><label>Tipo</label><select id="m_tipo"><option value="">—</option></select></div>
+        <div class="field full"><label>Nota</label><textarea id="m_nota"></textarea></div>
+      </div>
+      <div class="actions"><button class="primary" id="btn_mov">Capturar movimiento</button></div>
+      <div class="result" id="res_mov"></div>
+    </section>
+
+    <!-- CARGA -->
+    <section class="card" id="card-carga">
+      <h2>Crear carga</h2>
+      <p class="desc">Sin costo, o proveedor/cliente sin resolver → la carga se crea <strong>con flag</strong> automáticamente (no bloquea).</p>
+      <div class="grid">
+        <div class="field"><label>PO</label><input id="c_po" placeholder="P.O. / referencia"></div>
+        <div class="field"><label>Producto</label><input id="c_prod" list="dl_prod" placeholder="ej. Limón"></div>
+        <div class="field"><label>Proveedor</label><input id="c_prov" list="dl_cp"></div>
+        <div class="field"><label>Cliente</label><input id="c_cli" list="dl_cp"></div>
+        <div class="field"><label>Estado</label><select id="c_estado">
+          <option>Programada</option><option>En Camino</option><option>Entregada</option>
+          <option>Cerrada</option><option>Rechazo</option><option>Falta informacion</option></select></div>
+        <div class="field"><label>Modalidad</label><select id="c_mod">
+          <option value="margen_fijo">margen_fijo</option><option value="consignacion">consignacion</option></select></div>
+        <div class="field"><label>Fecha embarque</label><input type="date" id="c_emb"></div>
+        <div class="field"><label>Ingreso venta (USD)</label><input type="number" step="0.01" id="c_venta" placeholder="0.00"></div>
+        <div class="field"><label>Costo (USD)</label><input type="number" step="0.01" id="c_costo" placeholder="dejar vacío → flag">
+          <span class="hint">Vacío = flag por falta de costo (dato de Sourcing).</span></div>
+        <div class="field"><label>Nota</label><input id="c_nota"></div>
+      </div>
+      <div class="actions"><button class="primary" id="btn_carga">Crear carga</button></div>
+      <div class="result" id="res_carga"></div>
+    </section>
+
+    <!-- FIFO -->
+    <section class="card" id="card-fifo">
+      <h2>Aplicar cobro/pago (FIFO)</h2>
+      <p class="desc">Aplica un movimiento contra las cargas abiertas limpias de su contraparte, por antigüedad. Lo mecánico; devoluciones y splits van por chat.</p>
+      <div class="grid">
+        <div class="field"><label>Folio del movimiento <span class="req">*</span></label>
+          <input type="number" id="f_folio" placeholder="ej. 313">
+          <span class="hint">Al capturar un movimiento arriba, este folio se llena solo.</span></div>
+      </div>
+      <div class="actions"><button class="primary" id="btn_fifo">Aplicar FIFO</button></div>
+      <div class="result" id="res_fifo"></div>
+    </section>
+
+    <!-- COSTO DE CARGA -->
+    <section class="card" id="card-costo">
+      <h2>Agregar costo a una carga</h2>
+      <p class="desc">Una línea por concepto. Solo agrega — nunca modifica ni borra costos existentes. Si la carga tiene flag, el costo entra igual con aviso.</p>
+      <div class="grid">
+        <div class="field"><label>Folio de la carga <span class="req">*</span></label>
+          <input id="k_folio" placeholder="ej. P-067"></div>
+        <div class="field"><label>Concepto <span class="req">*</span></label>
+          <select id="k_concepto"><option value="">—</option></select></div>
+        <div class="field"><label>Monto (USD) <span class="req">*</span></label>
+          <input type="number" step="0.01" id="k_monto" placeholder="0.00">
+          <span class="hint">Positivo. Devoluciones o correcciones van por chat (gate).</span></div>
+        <div class="field"><label>Nota</label><input id="k_nota" placeholder="opcional"></div>
+      </div>
+      <div class="actions"><button class="primary" id="btn_costo">Agregar costo</button></div>
+      <div class="result" id="res_costo"></div>
+    </section>
+  </div>
+</main>
+
+<datalist id="dl_cp"></datalist>
+<datalist id="dl_prod"></datalist>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = "https://wnjomlwevqaxbborikkq.supabase.co";
+const SUPABASE_KEY = "sb_publishable_qaNQbKSDDb8teUACJe7pWg_FhabcEJS";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let puedeCapturar = false;
+
+function $(id){return document.getElementById(id);}
+function numOrZero(v){const n=parseFloat(v);return isNaN(n)?0:n;}
+function numOrNull(v){if(v===""||v===null||v===undefined)return null;const n=parseFloat(v);return isNaN(n)?null:n;}
+function txtOrNull(v){v=(v||"").trim();return v===""?null:v;}
+function showRes(id,cls,msg){const el=$(id);el.className="result "+cls;el.textContent=msg;}
+
+// Tabs
+document.querySelectorAll(".tab").forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+    t.classList.add("active");
+    ["mov","carga","fifo","costo"].forEach(k=>$("card-"+k).classList.remove("active"));
+    $("card-"+t.dataset.t).classList.add("active");
+  };
+});
+
+async function init(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session){ $("loginGate").style.display="block"; return; }
+  $("app").style.display="block";
+
+  // Perfil / rol
+  const { data:perfil, error:pe } = await sb.from("v_mi_perfil").select("*").maybeSingle();
+  if(pe || !perfil){
+    $("perfilNombre").textContent = session.user.email;
+    $("perfilBadge").textContent = "sin rol";
+    $("vistaBanner").style.display="block";
+    lockForms();
+  } else {
+    $("perfilNombre").textContent = perfil.nombre + " ("+perfil.socio_codigo+")";
+    const b=$("perfilBadge"); b.textContent=perfil.rol; b.classList.add(perfil.rol);
+    puedeCapturar = !!perfil.puede_capturar;
+    if(!puedeCapturar){ $("vistaBanner").style.display="block"; lockForms(); }
+  }
+
+  // Catálogos para dropdowns
+  loadCat();
+  // Fecha por defecto = hoy
+  const hoy=new Date().toISOString().slice(0,10);
+  $("m_fecha").value=hoy;
+}
+
+function lockForms(){
+  document.querySelectorAll("input,select,textarea,button.primary").forEach(el=>el.disabled=true);
+}
+
+async function loadCat(){
+  const [cp,prod,tip,conc] = await Promise.all([
+    sb.from("v_cat_contrapartes").select("nombre"),
+    sb.from("v_cat_productos").select("nombre"),
+    sb.from("v_cat_tipos").select("tipo"),
+    sb.from("v_cat_conceptos_costo").select("nombre")
+  ]);
+  if(cp.data){ $("dl_cp").innerHTML = cp.data.map(r=>`<option value="${r.nombre.replace(/"/g,'&quot;')}">`).join(""); }
+  if(prod.data){ $("dl_prod").innerHTML = prod.data.map(r=>`<option value="${r.nombre.replace(/"/g,'&quot;')}">`).join(""); }
+  if(tip.data){ $("m_tipo").innerHTML = '<option value="">—</option>'+tip.data.map(r=>`<option>${r.tipo}</option>`).join(""); }
+  if(conc.data){ $("k_concepto").innerHTML = '<option value="">—</option>'+conc.data.map(r=>`<option>${r.nombre}</option>`).join(""); }
+}
+
+// --- Movimiento ---
+$("btn_mov").onclick = async ()=>{
+  if(!puedeCapturar) return;
+  if(!$("m_fecha").value || !$("m_desc").value.trim()){ showRes("res_mov","err","Fecha y descripción son obligatorias."); return; }
+  $("btn_mov").disabled=true;
+  const { data, error } = await sb.rpc("fn_capturar_mov",{
+    p_fecha:$("m_fecha").value, p_descripcion:$("m_desc").value.trim(),
+    p_ingreso:numOrZero($("m_ing").value), p_egreso:numOrZero($("m_egr").value),
+    p_contraparte:txtOrNull($("m_cp").value), p_tipo:txtOrNull($("m_tipo").value),
+    p_nota:txtOrNull($("m_nota").value), p_cuenta:$("m_cuenta").value
+  });
+  $("btn_mov").disabled=false;
+  if(error){ showRes("res_mov","err","Error: "+error.message); return; }
+  const r = data && data[0] ? data[0] : {};
+  let msg = "Movimiento capturado. Folio "+r.folio_asignado+".";
+  if(r.contraparte_resuelta) msg += "\nContraparte: "+r.contraparte_resuelta+".";
+  if(r.advertencia){ showRes("res_mov","warn", msg+"\n⚠ "+r.advertencia); }
+  else { showRes("res_mov","ok", msg); }
+  // Auto-llenar folio en FIFO
+  if(r.folio_asignado) $("f_folio").value = r.folio_asignado;
+};
+
+// --- Carga ---
+$("btn_carga").onclick = async ()=>{
+  if(!puedeCapturar) return;
+  $("btn_carga").disabled=true;
+  const { data, error } = await sb.rpc("fn_crear_carga",{
+    p_po:txtOrNull($("c_po").value), p_proveedor:txtOrNull($("c_prov").value),
+    p_cliente:txtOrNull($("c_cli").value), p_producto:txtOrNull($("c_prod").value),
+    p_estado:$("c_estado").value, p_modalidad:$("c_mod").value,
+    p_f_embarque:$("c_emb").value||null, p_ingreso_venta:numOrZero($("c_venta").value),
+    p_costo:numOrNull($("c_costo").value), p_nota:txtOrNull($("c_nota").value)
+  });
+  $("btn_carga").disabled=false;
+  if(error){ showRes("res_carga","err","Error: "+error.message); return; }
+  const r = data && data[0] ? data[0] : {};
+  let msg = "Carga creada: "+r.folio+".";
+  if(r.proveedor) msg+=" Prov: "+r.proveedor+".";
+  if(r.cliente) msg+=" Cli: "+r.cliente+".";
+  if(r.producto) msg+=" Prod: "+r.producto+".";
+  if(r.con_flag){ showRes("res_carga","warn", msg+"\n⚑ CON FLAG: "+(r.advertencias||"revisar")); }
+  else { showRes("res_carga","ok", msg+(r.advertencias?("\n"+r.advertencias):"")); }
+};
+
+// --- FIFO ---
+$("btn_fifo").onclick = async ()=>{
+  if(!puedeCapturar) return;
+  const folio=parseInt($("f_folio").value,10);
+  if(!folio){ showRes("res_fifo","err","Indica el folio del movimiento."); return; }
+  $("btn_fifo").disabled=true;
+  const { data, error } = await sb.rpc("fn_aplicar_fifo",{ p_mov_folio:folio });
+  $("btn_fifo").disabled=false;
+  if(error){ showRes("res_fifo","err","Error: "+error.message); return; }
+  if(!data || !data.length){ showRes("res_fifo","warn","Sin resultado."); return; }
+  const lineas = data.map(r=>{
+    if(r.carga_folio) return "• "+r.carga_folio+": "+Number(r.monto_aplicado).toFixed(2)+" ("+r.resultado+")";
+    return "• "+r.resultado;
+  }).join("\n");
+  const hayPend = data.some(r=>r.resultado && r.resultado.indexOf("SIN APLICAR")>=0);
+  showRes("res_fifo", hayPend?"warn":"ok", "Aplicación FIFO del movimiento "+folio+":\n"+lineas);
+};
+
+// --- Costo de carga ---
+$("btn_costo").onclick = async ()=>{
+  if(!puedeCapturar) return;
+  const folio=$("k_folio").value.trim(), conc=$("k_concepto").value, monto=parseFloat($("k_monto").value);
+  if(!folio || !conc || !(monto>0)){ showRes("res_costo","err","Folio, concepto y monto (>0) son obligatorios."); return; }
+  $("btn_costo").disabled=true;
+  const { data, error } = await sb.rpc("fn_agregar_costo",{
+    p_carga_folio:folio, p_concepto:conc, p_monto:monto, p_nota:txtOrNull($("k_nota").value)
+  });
+  $("btn_costo").disabled=false;
+  if(error){ showRes("res_costo","err","Error: "+error.message); return; }
+  const r = data && data[0] ? data[0] : {};
+  let msg = "Costo agregado a "+r.carga_folio+": "+r.concepto+" $"+Number(r.monto).toFixed(2)+".";
+  if(r.advertencia){ showRes("res_costo","warn", msg+"\n⚑ "+r.advertencia); }
+  else { showRes("res_costo","ok", msg); }
+  $("k_monto").value=""; $("k_nota").value="";
+};
+
+init();
+</script>
+</body>
+</html>

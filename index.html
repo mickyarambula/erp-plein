@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ERP Plein Produce</title>
+<link rel="icon" type="image/png" href="assets/icono.png">
+<link rel="apple-touch-icon" href="assets/icono.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+
+<!-- ===== Login ===== -->
+<div class="login-ov" id="loginOv">
+  <div class="login-card">
+    <h1>ERP Plein Produce</h1>
+    <p>Acceso solo para socios. Inicia sesión con tu correo.</p>
+    <label for="liEmail">Correo</label>
+    <input id="liEmail" type="email" autocomplete="username" placeholder="tu@pleinproduce.com">
+    <label for="liPass">Contraseña</label>
+    <input id="liPass" type="password" autocomplete="current-password">
+    <button id="liBtn">Entrar</button>
+    <div class="login-err" id="liErr"></div>
+  </div>
+</div>
+
+<!-- ===== Shell ===== -->
+<div id="shell">
+
+  <header class="top">
+    <button class="btn-menu" id="btnMenu" aria-label="Menú">☰</button>
+    <div class="marca"><img class="marca-icono" src="assets/icono.png" alt="" onerror="this.style.display='none'">PLEIN <span>PRODUCE</span></div>
+
+    <div class="buscador">
+      <span class="lupa">🔍</span>
+      <input id="buscaUniv" type="text" autocomplete="off" spellcheck="false"
+             placeholder="Buscar carga, cliente, proveedor, producto, movimiento…">
+      <div class="resultados" id="resultados"></div>
+    </div>
+
+    <div class="top-derecha">
+      <div class="presencia-online" id="presenciaOnline"></div>
+      <div class="presencia-soy" id="presenciaSoy" style="display:none"></div>
+      <div class="perfil" id="perfil" style="display:none"></div>
+      <div class="estado"><span class="dot load" id="dot"></span><span id="ultimaAct">conectando…</span></div>
+      <button class="btn lima" id="btnRf">Actualizar</button>
+      <button class="btn fantasma" id="btnSalir">Salir</button>
+    </div>
+  </header>
+
+  <div class="cuerpo">
+    <div class="menu-fondo" id="menuFondo"></div>
+
+    <nav class="lateral">
+      <a class="item" data-modulo="inicio"    href="#/inicio"><span class="ico">◉</span>Inicio</a>
+      <a class="item" data-modulo="cargas"    href="#/cargas"><span class="ico">📦</span>Embarques</a>
+      <a class="item" data-modulo="proyectos" href="#/proyectos"><span class="ico">🌱</span>Proyectos</a>
+      <a class="item" data-modulo="programas" href="#/programas"><span class="ico">🌾</span>Programas</a>
+      <a class="item" data-modulo="cobranza"  href="#/cobranza"><span class="ico">💵</span>Cuentas por Cobrar</a>
+      <a class="item" data-modulo="pagos"     href="#/pagos"><span class="ico">🧾</span>Cuentas por Pagar</a>
+      <a class="item" data-modulo="antiguedad" href="#/antiguedad"><span class="ico">⏳</span>Antigüedad de saldos</a>
+      <a class="item" data-modulo="inventario" href="#/inventario"><span class="ico">📥</span>Inventario</a>
+      <a class="item" data-modulo="comercial" href="#/comercial"><span class="ico">📄</span>Cotiz. y órdenes</a>
+      <a class="item" data-modulo="tesoreria" href="#/tesoreria"><span class="ico">🏦</span>Tesorería</a>
+      <a class="item" data-modulo="finanzas"  href="#/finanzas"><span class="ico">📊</span>Finanzas</a>
+      <a class="item" data-modulo="cierres"   href="#/cierres"><span class="ico">📅</span>Cierres Contables</a>
+      <a class="item" data-modulo="concentracion" href="#/concentracion"><span class="ico">🎯</span>Concentración de riesgo</a>
+      <a class="item" data-modulo="flags"     href="#/flags"><span class="ico">⚑</span>Revisiones Pendientes<span class="badge" id="badgeFlags" style="display:none"></span></a>
+      <a class="item" data-modulo="faltantes" href="#/faltantes" id="itemFaltantes" style="display:none"><span class="ico">📋</span>Datos faltantes<span class="badge" id="badgeFaltantes"></span></a>
+      <a class="item" data-modulo="tareas"    href="#/tareas"><span class="ico">✅</span>Tareas</a>
+      <a class="item" data-modulo="catalogos" href="#/catalogos"><span class="ico">📇</span>Directorio Comercial</a>
+      <a class="item" data-modulo="facturas"  href="#/facturas"><span class="ico">🧾</span>Facturación</a>
+      <a class="item" data-modulo="ventas"    href="#/ventas"><span class="ico">🧾</span>Órdenes de Venta</a>
+      <a class="item" data-modulo="liquidaciones" href="#/liquidaciones"><span class="ico">🧑‍🌾</span>Liquidaciones al productor</a>
+      <a class="item" data-modulo="ordenes"   href="#/ordenes"><span class="ico">📦</span>Órdenes de Compra</a>
+      <a class="item" data-modulo="bitacora"  href="#/bitacora"><span class="ico">📜</span>Bitácora</a>
+    </nav>
+
+    <main id="app"><div class="skel">Cargando…</div></main>
+  </div>
+</div>
+
+<!-- ===== Panel de detalle ===== -->
+<div class="panel-ov" id="panelOv"></div>
+<aside class="panel" id="panel" aria-live="polite">
+  <div class="panel-head">
+    <div>
+      <h3 id="panelTitulo">—</h3>
+      <div class="sub" id="panelSub"></div>
+    </div>
+    <button class="cerrar" id="panelCerrar" aria-label="Cerrar">×</button>
+  </div>
+  <div class="panel-body" id="panelBody"></div>
+</aside>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="comun.js"></script>
+<script src="exportar.js"></script>
+<script src="captura-rapida.js"></script>
+<script src="documentos.js"></script>
+<script src="modulo-inicio.js"></script>
+<script src="modulo-cargas.js"></script>
+<script src="modulo-expediente.js"></script>
+<script src="modulo-cobranza.js"></script>
+<script src="modulo-pagos.js"></script>
+<script src="modulo-tesoreria.js"></script>
+<script src="modulo-finanzas.js"></script>
+<script src="modulo-cierres.js"></script>
+<script src="modulo-bitacora.js"></script>
+<script src="modulo-concentracion.js"></script>
+<script src="modulo-antiguedad.js"></script>
+<script src="modulo-inventario.js"></script>
+<script src="modulo-flags.js"></script>
+<script src="modulo-facturas.js"></script>
+<script src="modulo-ventas.js"></script>
+<script src="modulo-liquidaciones.js"></script>
+<script src="modulo-ordenes.js"></script>
+<script src="modulo-catalogos.js"></script>
+<script src="modulo-comercial.js"></script>
+<script src="modulo-tareas.js"></script>
+<script src="modulo-datos-faltantes.js"></script>
+<script src="modulo-proyectos.js"></script>
+<script src="modulo-programas.js"></script>
+<script src="modulo-presencia.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

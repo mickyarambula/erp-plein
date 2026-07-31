@@ -1,0 +1,992 @@
+/* ERP Plein 3.0 — hoja de estilos común
+   Paleta heredada del dashboard original. Sobrio, densidad media, responsive. */
+
+:root{
+  --tinta:#14261C; --papel:#F6F5EF; --tarjeta:#FFFFFF;
+  --verde:#1E5B3A; --verde-hover:#27714A; --verde-claro:#E4EFE7; --lima:#8DBF3F;
+  --ambar:#C98A2D; --ambar-bg:#FBF3E4;
+  --rojo:#B3402E; --rojo-bg:#F9E9E5;
+  --gris:#6B7268; --gris-claro:#9AA097; --linea:#DDDCD2;
+  --menu-ancho:224px;
+  --sombra:0 2px 10px rgba(20,38,28,.06);
+  --sombra-alta:0 12px 40px rgba(20,38,28,.22);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--papel);color:var(--tinta);
+  font-family:'Inter',system-ui,sans-serif;font-size:14px;line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:'IBM Plex Mono',monospace}
+a{color:inherit}
+
+/* ---------- Layout ---------- */
+#shell{display:none;min-height:100vh}
+#shell.visible{display:block}
+
+header.top{
+  position:sticky;top:0;z-index:30;
+  background:var(--verde);color:#fff;
+  display:flex;align-items:center;gap:16px;
+  padding:0 20px;height:60px;
+}
+header.top .marca{font-family:'Archivo',sans-serif;font-weight:800;font-size:16px;letter-spacing:-.01em;white-space:nowrap;display:flex;align-items:center;gap:8px}
+header.top .marca span{color:var(--lima)}
+header.top .marca .marca-icono{height:26px;width:auto;display:block;border-radius:5px}
+.btn-menu{
+  display:none;background:transparent;border:1px solid rgba(255,255,255,.3);color:#fff;
+  border-radius:6px;width:34px;height:34px;font-size:16px;cursor:pointer;flex:none;
+}
+.top-derecha{display:flex;align-items:center;gap:10px;margin-left:auto;flex:none}
+.estado{
+  font-family:'IBM Plex Mono',monospace;font-size:11px;
+  background:rgba(255,255,255,.12);padding:6px 10px;border-radius:4px;
+  display:flex;align-items:center;gap:7px;white-space:nowrap;
+}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--lima);flex:none}
+.dot.err{background:#E8756A}
+.dot.load{background:var(--ambar);animation:puls 1s infinite}
+@keyframes puls{50%{opacity:.3}}
+
+.btn{
+  border:none;border-radius:6px;cursor:pointer;
+  font-family:'Archivo',sans-serif;font-weight:700;font-size:12px;padding:8px 14px;
+}
+.btn.lima{background:var(--lima);color:var(--tinta)}
+.btn.lima:hover{filter:brightness(1.08)}
+.btn.lima:disabled{opacity:.5;cursor:wait}
+.btn.fantasma{background:transparent;border:1px solid rgba(255,255,255,.35);color:#fff;font-weight:600}
+.btn.fantasma:hover{background:rgba(255,255,255,.1)}
+.btn.verde{background:var(--verde);color:#fff}
+.btn.verde:hover{background:var(--verde-hover)}
+
+/* ---------- Buscador universal ---------- */
+.buscador{position:relative;flex:1;max-width:520px;min-width:0}
+.buscador input{
+  width:100%;height:36px;border:1px solid rgba(255,255,255,.25);border-radius:8px;
+  background:rgba(255,255,255,.12);color:#fff;padding:0 12px 0 34px;font-size:13.5px;
+  font-family:'Inter',sans-serif;
+}
+.buscador input::placeholder{color:rgba(255,255,255,.6)}
+.buscador input:focus{outline:none;background:rgba(255,255,255,.2);border-color:var(--lima)}
+.buscador .lupa{position:absolute;left:11px;top:50%;transform:translateY(-50%);opacity:.7;font-size:13px;pointer-events:none}
+.resultados{
+  display:none;position:absolute;top:44px;left:0;right:0;
+  background:var(--tarjeta);border:1px solid var(--linea);border-radius:10px;
+  box-shadow:var(--sombra-alta);max-height:60vh;overflow-y:auto;color:var(--tinta);
+}
+.resultados.abierto{display:block}
+.res-grupo{font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--gris);
+  padding:9px 14px 5px;background:var(--papel);border-bottom:1px solid var(--linea)}
+.res-item{display:flex;gap:10px;align-items:center;padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--linea)}
+.res-item:last-child{border-bottom:none}
+.res-item:hover,.res-item.sel{background:var(--verde-claro)}
+.res-item .ico{font-size:15px;width:20px;text-align:center;flex:none}
+.res-item .txt{min-width:0;flex:1}
+.res-item .t{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.res-item .s{font-size:11.5px;color:var(--gris);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.res-item .folio{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--verde);font-weight:600;flex:none}
+.res-vacio,.res-cargando{padding:16px 14px;font-size:13px;color:var(--gris);text-align:center}
+
+/* ---------- Menú lateral ---------- */
+.cuerpo{display:flex;align-items:flex-start}
+nav.lateral{
+  width:var(--menu-ancho);flex:none;
+  position:sticky;top:60px;height:calc(100vh - 60px);
+  background:var(--tarjeta);border-right:1px solid var(--linea);
+  padding:14px 10px;overflow-y:auto;
+}
+nav.lateral a.item{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 12px;border-radius:7px;margin-bottom:2px;
+  font-size:13.5px;font-weight:500;color:var(--tinta);text-decoration:none;cursor:pointer;
+}
+nav.lateral a.item:hover{background:var(--papel)}
+nav.lateral a.item.activo{background:var(--verde-claro);color:var(--verde);font-weight:700}
+nav.lateral a.item .ico{width:18px;text-align:center;font-size:14px;flex:none}
+nav.lateral a.item .badge{
+  margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;
+  background:var(--ambar-bg);color:var(--ambar);border-radius:9px;padding:1px 7px;
+}
+nav.lateral .sep{
+  font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--gris-claro);
+  font-weight:700;padding:16px 12px 6px;
+}
+nav.lateral a.item.inerte{color:var(--gris-claro);cursor:default}
+nav.lateral a.item.inerte:hover{background:transparent}
+.menu-fondo{display:none}
+
+main#app{flex:1;min-width:0;padding:24px 26px 70px;max-width:1240px}
+
+/* ---------- Tipografía de módulo ---------- */
+.mod-head{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:20px}
+.mod-head h1{font-family:'Archivo',sans-serif;font-weight:800;font-size:22px;letter-spacing:-.01em}
+.mod-head .desc{font-size:12.5px;color:var(--gris);padding-bottom:3px}
+h2.sec{
+  font-family:'Archivo',sans-serif;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em;
+  margin:26px 0 12px;display:flex;align-items:center;gap:10px;color:var(--tinta);
+}
+h2.sec::after{content:'';flex:1;height:1px;background:var(--linea)}
+h2.sec:first-child{margin-top:0}
+
+.card{background:var(--tarjeta);border:1px solid var(--linea);border-radius:10px;padding:18px;box-shadow:var(--sombra)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.card h3{font-family:'Archivo',sans-serif;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);margin-bottom:12px}
+
+/* ---------- Tarjetas de Inicio ---------- */
+.tarjetas{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}
+.tarjeta{
+  background:var(--tarjeta);border:1px solid var(--linea);border-radius:12px;
+  padding:20px 20px 18px;text-align:left;cursor:pointer;position:relative;overflow:hidden;
+  box-shadow:var(--sombra);transition:transform .12s ease, box-shadow .12s ease;font:inherit;color:inherit;
+  display:block;width:100%;
+}
+.tarjeta:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(20,38,28,.12)}
+.tarjeta::before{content:'';position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--verde)}
+.tarjeta.alerta::before{background:var(--ambar)}
+.tarjeta.neg::before{background:var(--rojo)}
+.tarjeta .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--gris);font-weight:700;margin-bottom:8px}
+.tarjeta .val{font-family:'IBM Plex Mono',monospace;font-size:27px;font-weight:600;letter-spacing:-.02em}
+.tarjeta.neg .val{color:var(--rojo)}
+.tarjeta .sub{font-size:11.5px;color:var(--gris);margin-top:6px}
+.tarjeta .ir{position:absolute;right:16px;bottom:14px;color:var(--gris-claro);font-size:15px}
+.tarjeta:hover .ir{color:var(--verde)}
+
+/* Panel "Hoy" (alertas del día en Inicio) */
+.hoy{margin-bottom:26px}
+.hoy-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.hoy-conteo{font-size:12px;color:var(--gris);font-weight:600}
+.hoy-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:10px}
+.hoy-card{position:relative;background:#fff;border:1px solid var(--linea);border-radius:10px;padding:13px 15px 13px 18px;overflow:hidden}
+.hoy-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:5px}
+.hoy-card.sev-roja::before{background:var(--rojo)}
+.hoy-card.sev-ambar::before{background:var(--ambar)}
+.hoy-card.sev-gris::before{background:var(--gris-claro)}
+.hoy-card.clic{cursor:pointer;transition:border-color .12s,box-shadow .12s}
+.hoy-card.clic:hover{border-color:var(--verde);box-shadow:0 4px 14px rgba(20,38,28,.10)}
+.hoy-card-titulo{font-weight:700;font-size:13.5px;margin-bottom:3px}
+.hoy-card-detalle{font-size:12.5px;color:var(--gris);line-height:1.4}
+.hoy-card-monto{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:15px;margin-top:7px}
+.hoy-card.sev-roja .hoy-card-monto{color:var(--rojo)}
+.hoy-card.sev-ambar .hoy-card-monto{color:var(--ambar)}
+.hoy-card-ref{display:inline-block;margin-top:8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--gris);background:var(--verde-claro);border-radius:6px;padding:2px 7px}
+.hoy-info{margin-top:12px}
+.hoy-info>summary{cursor:pointer;font-size:12.5px;color:var(--verde);font-weight:600;user-select:none;list-style:none}
+.hoy-info>summary::-webkit-details-marker{display:none}
+.hoy-info>summary::before{content:'▸ ';color:var(--gris-claro)}
+.hoy-info[open]>summary::before{content:'▾ '}
+.hoy-info>summary:hover{text-decoration:underline}
+.hoy-info .hoy-cards{margin-top:10px}
+.hoy-vacio{margin-top:10px;padding:16px 18px;background:var(--verde-claro);border-radius:10px;color:var(--verde);font-weight:600}
+@media(max-width:640px){.hoy-cards{grid-template-columns:1fr}}
+
+/* ---------- Tablas ---------- */
+.tabla-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse}
+th{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--gris);text-align:left;
+  padding:7px 8px;border-bottom:2px solid var(--tinta);white-space:nowrap;font-weight:700}
+td{padding:8px;border-bottom:1px solid var(--linea);font-size:13px;vertical-align:top}
+td.num,th.num{text-align:right;font-family:'IBM Plex Mono',monospace;white-space:nowrap}
+/* Estado de cuenta (Tesorería): la columna Descripción es la más ancha; no se trunca por
+   debajo de ~40 caracteres aunque el resto de la tabla sea angosta. */
+td.col-desc,th.col-desc{min-width:280px}
+tbody tr:last-child td{border-bottom:none}
+tr.total td{border-top:2px solid var(--tinta);font-weight:700;border-bottom:none;background:var(--papel)}
+tr.clic{cursor:pointer}
+tr.clic:hover{background:var(--verde-claro)}
+.neg{color:var(--rojo)}
+.pos{color:var(--verde)}
+
+/* P&L: las 3 líneas de utilidad destacadas, las de margen discretas */
+tr.fila-utilidad td{background:var(--verde-claro);font-weight:700;border-top:1.5px solid var(--tinta);border-bottom:none}
+tr.fila-utilidad td:first-child{text-transform:uppercase;letter-spacing:.03em;font-size:11.5px}
+tr.fila-utilidad td.neg{color:var(--rojo)}
+tr.fila-margen td{font-size:11px;color:var(--gris);font-style:italic;border-bottom:1px solid var(--linea);padding-top:1px;padding-bottom:7px}
+tr.fila-margen td:first-child{padding-left:16px}
+
+.enlace{color:var(--verde);font-weight:600;cursor:pointer;text-decoration:underline;text-decoration-color:var(--linea);
+  background:none;border:none;font:inherit;padding:0}
+.enlace:hover{text-decoration-color:var(--verde)}
+.celda-clic{cursor:pointer;text-decoration:underline;text-decoration-color:var(--linea)}
+.celda-clic:hover{background:var(--verde-claro);text-decoration-color:var(--verde)}
+
+.leyenda{font-size:11px;color:var(--gris);margin-top:10px;line-height:1.5}
+.vacio,.skel{color:var(--gris);font-size:13px;padding:24px;text-align:center}
+.errbox{background:var(--rojo-bg);border:1px solid var(--rojo);color:var(--rojo);border-radius:8px;
+  padding:14px 18px;font-size:13px;margin:14px 0}
+
+/* ---------- Chips / filtros ---------- */
+.filtros{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.filtros input.busca{
+  border:1px solid var(--linea);border-radius:8px;padding:9px 12px;font-size:13px;
+  font-family:'Inter',sans-serif;min-width:260px;flex:1;max-width:420px;background:var(--tarjeta);
+}
+.filtros input.busca:focus{outline:none;border-color:var(--verde)}
+.chip{
+  border:1px solid var(--linea);background:var(--tarjeta);border-radius:20px;padding:6px 13px;
+  font-size:12px;font-weight:600;cursor:pointer;color:var(--gris);white-space:nowrap;
+}
+.chip:hover{border-color:var(--verde);color:var(--verde)}
+.chip.activo{background:var(--verde);border-color:var(--verde);color:#fff}
+.conteo{font-size:12px;color:var(--gris);margin-left:auto;white-space:nowrap}
+
+/* Filtro de rango de fechas (Embarques): dos <input type=date> + atajos + etiqueta removible */
+.filtros-rango{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.filtros-rango .fechas-par{display:flex;align-items:center;gap:6px}
+.filtros-rango input[type="date"]{
+  border:1px solid var(--linea);border-radius:8px;padding:6px 8px;font-size:12px;
+  font-family:'IBM Plex Mono',monospace;background:var(--tarjeta);color:inherit;
+}
+.filtros-rango .sep{color:var(--gris-claro);font-size:12px}
+.chip-rango{
+  display:inline-flex;align-items:center;gap:6px;background:var(--verde-claro);color:var(--verde);
+  font-size:12px;font-weight:600;padding:4px 10px;border-radius:12px;white-space:nowrap;
+}
+.chip-rango-x{cursor:pointer;font-weight:700;line-height:1}
+.chip-rango-x:hover{color:var(--rojo)}
+@media(max-width:640px){
+  .filtros-rango .fechas-par{flex-direction:column;align-items:stretch;width:100%}
+  .filtros-rango .fechas-par input[type="date"]{width:100%}
+  .filtros-rango .fechas-par .sep{display:none}
+}
+
+.pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:10px;
+  background:var(--verde-claro);color:var(--verde);white-space:nowrap}
+.pill.ambar{background:var(--ambar-bg);color:var(--ambar)}
+.pill.rojo{background:var(--rojo-bg);color:var(--rojo)}
+.pill.gris{background:#EEEDE5;color:var(--gris)}
+.pill.verde{background:var(--verde-claro);color:var(--verde)}
+.pill.ir-programa{cursor:pointer}
+.pill.ir-programa:hover{background:var(--verde);color:#fff}
+tr.clic.activo-fila{background:var(--verde-claro)}
+
+/* ---------- Concentración de riesgo (HHI + Pareto) ---------- */
+.conc-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}
+.conc-card{background:var(--tarjeta);border:1px solid var(--linea);border-top:4px solid var(--gris-claro);
+  border-radius:12px;padding:18px 18px 16px;box-shadow:var(--sombra)}
+.conc-card.nivel-concentrado{border-top-color:var(--rojo)}
+.conc-card.nivel-moderado{border-top-color:var(--ambar)}
+.conc-card.nivel-competitivo{border-top-color:var(--verde)}
+.conc-card .conc-dim{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--gris);font-weight:700;margin-bottom:8px}
+.conc-card .conc-hhi{font-family:'IBM Plex Mono',monospace;font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1;margin-bottom:10px}
+.conc-card .conc-hhi .conc-hhi-lbl{font-size:12px;color:var(--gris-claro);font-weight:500;letter-spacing:0}
+.conc-card.nivel-concentrado .conc-hhi{color:var(--rojo)}
+.conc-card.nivel-moderado .conc-hhi{color:var(--ambar)}
+.conc-card.nivel-competitivo .conc-hhi{color:var(--verde)}
+.conc-card .conc-top{font-size:12.5px;margin-top:10px;font-weight:600}
+.conc-card .conc-ref{font-size:11.5px;color:var(--gris);margin-top:5px;line-height:1.45}
+tr.pareto>td{background:var(--ambar-bg)}
+
+/* ---------- Antigüedad de saldos (aging) ---------- */
+.aging-hero{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:14px}
+.aging-hero>div{flex:1;min-width:210px;background:var(--tarjeta);border:1px solid var(--linea);
+  border-radius:12px;padding:16px 18px;box-shadow:var(--sombra)}
+.aging-hero .l{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--gris);font-weight:700;margin-bottom:6px}
+.aging-hero .v{font-family:'IBM Plex Mono',monospace;font-size:26px;font-weight:600;letter-spacing:-.02em}
+.aging-hero .ah-nota{display:block;font-size:11.5px;color:var(--gris);margin-top:5px}
+.aging-hero .ah-venc{border-left:4px solid var(--rojo)}
+.aging-hero .ah-venc .v{color:var(--rojo)}
+.aging-hero .ah-venc .pct{display:block;font-size:12.5px;color:var(--rojo);margin-top:4px;font-weight:600}
+.aging-hero .ah-porvencer{border-left:4px solid var(--verde)}
+.aging-hero .ah-porvencer .v{color:var(--verde)}
+.aging-hero .ah-porvencer .nota2{display:block;font-size:12px;color:var(--gris);margin-top:4px}
+tr.vencido-alto>td{background:var(--rojo-bg)}
+tr.vencido-alto .enlace{color:var(--rojo);font-weight:600}
+
+/* Situación de vencimiento (dias_vencido formateado por ERP.venc) */
+.venc-si{color:var(--rojo);font-weight:600}
+.venc-no{color:var(--verde)}
+.venc-hoy{color:var(--ambar);font-weight:600}
+
+/* Indicador de historial de cambios (auditoría) en el estado de cuenta */
+.hist-ic{cursor:pointer;font-size:11px;opacity:.5;margin-left:3px;vertical-align:middle;line-height:1}
+.hist-ic:hover{opacity:1}
+
+/* ---------- Barras (aging, concentración) ---------- */
+.barra-row{margin-bottom:14px}
+.barra-top{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;gap:10px}
+.barra-top .b{font-family:'IBM Plex Mono',monospace;font-weight:600;white-space:nowrap}
+.barra{height:22px;background:var(--verde-claro);border-radius:4px;overflow:hidden;display:flex}
+.fill{height:100%;display:flex;align-items:center;padding-left:8px;font-family:'IBM Plex Mono',monospace;
+  font-size:10.5px;color:#fff;white-space:nowrap;min-width:0}
+.fill.rev{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.25) 0 6px,transparent 6px 12px)}
+
+/* ---------- Flujo semanal ---------- */
+.flujo{display:flex;gap:14px;align-items:flex-end;height:160px;padding-top:8px}
+.fcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;height:100%}
+.fbars{display:flex;gap:4px;align-items:flex-end;flex:1;width:100%;justify-content:center}
+.fb{width:26%;border-radius:3px 3px 0 0;min-height:3px}
+.fb.in{background:var(--verde)}
+.fb.out{background:#C9C6B8}
+.fneto{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600}
+.fneto.pos{color:var(--verde)}
+.fneto.negv{color:var(--rojo)}
+.fsem{font-size:11px;color:var(--gris)}
+
+/* ---------- Panel lateral (drawer) ---------- */
+.panel-ov{position:fixed;inset:0;background:rgba(20,38,28,.42);z-index:60;display:none}
+.panel-ov.abierto{display:block}
+.panel{
+  position:fixed;top:0;right:0;bottom:0;width:min(720px,100%);
+  background:var(--tarjeta);z-index:61;box-shadow:var(--sombra-alta);
+  transform:translateX(100%);transition:transform .2s ease;
+  display:flex;flex-direction:column;
+}
+.panel.abierto{transform:translateX(0)}
+.panel-head{padding:18px 22px;border-bottom:1px solid var(--linea);display:flex;align-items:flex-start;gap:12px;flex:none}
+.panel-head h3{font-family:'Archivo',sans-serif;font-size:19px;font-weight:800}
+.panel-head .sub{font-size:12.5px;color:var(--gris);margin-top:3px}
+.panel-head .cerrar{margin-left:auto;background:transparent;border:none;font-size:24px;line-height:1;
+  cursor:pointer;color:var(--gris);flex:none}
+.panel-body{padding:20px 22px 40px;overflow-y:auto;flex:1}
+.panel-body h4{font-family:'Archivo',sans-serif;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;
+  margin:20px 0 8px;color:var(--gris)}
+.panel-body h4:first-child{margin-top:0}
+
+.det-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:4px 0 6px}
+.det{background:var(--papel);border:1px solid var(--linea);border-radius:7px;padding:9px 11px}
+.det .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--gris);font-weight:700}
+.det .v{font-size:13px;margin-top:3px;word-break:break-word}
+.det .v.mono{font-family:'IBM Plex Mono',monospace}
+
+.flagbox{background:var(--ambar-bg);border:1px solid var(--ambar);border-radius:8px;padding:13px 15px;margin-top:18px}
+.flagbox .t{font-weight:800;color:var(--ambar);font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+.flagbox p{font-size:12.5px;margin-bottom:8px}
+.flagbox textarea{width:100%;border:1px solid var(--ambar);border-radius:6px;padding:8px 10px;font-size:13px;
+  font-family:'Inter',sans-serif;min-height:58px;resize:vertical}
+.flagbox button{margin-top:8px;background:var(--ambar);color:#fff;border:none;border-radius:6px;padding:9px 16px;
+  font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Archivo',sans-serif}
+.flagbox button:disabled{opacity:.5;cursor:wait}
+.flag-res{font-size:12.5px;margin-top:8px;display:none}
+.flag-res.ok{display:block;color:var(--verde)}
+.flag-res.err{display:block;color:var(--rojo)}
+
+/* Botón de captura en contexto dentro de una fila (+ cobro / + pago) */
+.btn-cap{margin-left:8px;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:9px;cursor:pointer;
+  background:var(--verde-claro);color:var(--verde);border:1px solid transparent;white-space:nowrap;vertical-align:middle}
+.btn-cap:hover{border-color:var(--verde);background:#D6E7DB}
+
+/* Toast — confirmación transitoria de captura en contexto */
+#toastHost{position:fixed;right:16px;bottom:16px;z-index:80;display:flex;flex-direction:column;gap:8px;max-width:min(92vw,380px)}
+.toast{background:var(--tarjeta);border:1px solid var(--linea);border-left:4px solid var(--verde);
+  border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:1.45;box-shadow:var(--sombra-alta);
+  opacity:0;transform:translateY(10px);transition:opacity .25s ease,transform .25s ease}
+.toast.visible{opacity:1;transform:none}
+.toast.ok{border-left-color:var(--verde)}
+.toast.warn{border-left-color:var(--ambar)}
+.toast.err{border-left-color:var(--rojo)}
+.toast b{font-weight:700}
+@media(max-width:620px){#toastHost{left:12px;right:12px;bottom:12px;max-width:none}}
+
+/* Tarjetas de la pantalla Flags (responder / cerrar) */
+.flag-card{background:var(--tarjeta);border:1px solid var(--linea);border-radius:10px;
+  padding:16px;margin-bottom:14px;box-shadow:var(--sombra)}
+.flag-card.sin-resp{border-left:4px solid var(--rojo)}
+.flag-card.respondido{border-left:4px solid var(--verde)}
+.flag-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
+.flag-po{font-family:'Archivo',sans-serif;font-weight:800;font-size:20px;letter-spacing:-.01em;line-height:1.15;word-break:break-word}
+.flag-folio{font-size:12px;color:var(--gris);margin-top:4px}
+.flag-folio .enlace{font-family:'IBM Plex Mono',monospace}
+.flag-ruta{font-size:13.5px;font-weight:600;margin-top:11px}
+.flag-cifras{font-size:12px;color:var(--gris);margin-top:5px;display:flex;gap:5px 16px;flex-wrap:wrap}
+.flag-pregunta{white-space:pre-wrap;font-size:13.5px;line-height:1.55;margin-top:12px;
+  padding:12px 14px;background:var(--papel);border:1px solid var(--linea);border-radius:8px}
+.flag-respuesta{margin-top:10px;padding:11px 14px;background:var(--verde-claro);border:1px solid var(--verde);border-radius:8px}
+.flag-respuesta .fr-cab{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--verde);font-weight:700;margin-bottom:5px}
+.flag-respuesta .fr-txt{white-space:pre-wrap;font-size:13px;line-height:1.5}
+.flag-acciones{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.flag-form{margin-top:12px}
+.flag-item{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--linea);align-items:flex-start}
+.flag-item:last-child{border-bottom:none}
+.ftag{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;background:var(--ambar-bg);
+  color:var(--ambar);border:1px solid var(--ambar);padding:2px 8px;border-radius:4px;white-space:nowrap;cursor:pointer}
+.flag-item p{font-size:12.5px;color:#3d453e}
+
+/* ---------- Login ---------- */
+.login-ov{position:fixed;inset:0;background:var(--papel);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
+.login-card{background:#fff;border:1px solid #E4E2D8;border-radius:14px;padding:34px 32px;width:340px;
+  box-shadow:0 8px 30px rgba(20,38,28,.08)}
+.login-card h1{font-family:'Archivo',sans-serif;font-size:20px;margin:0 0 4px}
+.login-card p{font-size:13px;color:var(--gris);margin:0 0 18px}
+.login-card label{display:block;font-size:12px;font-weight:600;color:#3C4A40;margin:12px 0 4px}
+.login-card input{width:100%;padding:10px 12px;border:1px solid #CFCDBF;border-radius:8px;font-size:14px;font-family:'Inter',sans-serif}
+.login-card button{width:100%;margin-top:18px;padding:11px;border:0;border-radius:8px;background:var(--verde);
+  color:#fff;font-weight:600;font-size:14px;cursor:pointer}
+.login-card button:disabled{opacity:.6;cursor:wait}
+.login-err{display:none;margin-top:12px;font-size:13px;color:var(--rojo)}
+
+/* ---------- Chip de perfil (header) ---------- */
+.perfil{display:flex;flex-direction:column;line-height:1.25;text-align:right;font-size:11.5px;
+  padding-right:10px;border-right:1px solid rgba(255,255,255,.2);white-space:nowrap}
+.perfil b{font-weight:600}
+.perfil span{opacity:.7;font-size:10.5px;text-transform:capitalize}
+
+/* ===== Presencia / En línea (modulo-presencia.js): widget de header + modal "¿Quién eres?" ===== */
+.presencia-online{display:flex;align-items:center;gap:10px;font-size:11.5px;white-space:nowrap}
+.pres-persona{display:inline-flex;align-items:center;gap:5px;color:#fff;opacity:.9}
+.pres-persona.yo{font-weight:700;opacity:1}
+.pres-dot{width:8px;height:8px;border-radius:50%;background:#37A957;box-shadow:0 0 0 2px rgba(55,169,87,.25);flex:none}
+.pres-vacio{color:rgba(255,255,255,.55);font-style:italic}
+.presencia-soy{font-size:11.5px;color:#fff;white-space:nowrap;padding-right:10px;border-right:1px solid rgba(255,255,255,.2)}
+.presencia-soy b{font-weight:600}
+.pres-cambiar{background:none;border:0;color:var(--verde-claro);font:inherit;cursor:pointer;padding:0;text-decoration:underline;opacity:.9}
+.pres-cambiar:hover{opacity:1}
+
+.pres-modal-ov{position:fixed;inset:0;background:rgba(20,38,28,.45);display:flex;align-items:center;
+  justify-content:center;z-index:120;padding:20px}
+.pres-modal{background:#fff;border:1px solid var(--linea);border-radius:14px;padding:28px 28px 24px;
+  width:360px;max-width:100%;box-shadow:var(--sombra-alta);text-align:center}
+.pres-modal h2{font-family:'Archivo',sans-serif;font-size:19px;margin:0 0 6px;color:var(--tinta)}
+.pres-modal p{font-size:13px;color:var(--gris);margin:0 0 20px}
+.pres-botones{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pres-botones button{padding:14px 10px;border:1px solid var(--linea);border-radius:10px;background:var(--verde-claro);
+  color:var(--verde);font-family:'Inter',sans-serif;font-size:15px;font-weight:600;cursor:pointer;transition:background .12s,border-color .12s}
+.pres-botones button:hover{background:var(--verde);color:#fff;border-color:var(--verde)}
+
+/* ---------- Pipeline de etapas ---------- */
+.pipeline{display:flex;align-items:center;gap:0;margin:2px 0 18px;flex-wrap:wrap}
+.etapa{display:flex;align-items:center;gap:7px;flex:1;min-width:0}
+.etapa .bolita{width:22px;height:22px;border-radius:50%;flex:none;display:flex;align-items:center;
+  justify-content:center;font-size:11px;font-weight:700;border:2px solid var(--linea);
+  background:var(--tarjeta);color:var(--gris-claro)}
+.etapa .nombre{font-size:11.5px;color:var(--gris-claro);font-weight:600;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.etapa .linea{flex:1;height:2px;background:var(--linea);min-width:12px}
+.etapa:last-child{flex:none}
+.etapa:last-child .linea{display:none}
+.etapa.hecha .bolita{background:var(--verde);border-color:var(--verde);color:#fff}
+.etapa.hecha .nombre{color:var(--verde)}
+.etapa.hecha .linea{background:var(--verde)}
+.etapa.actual .bolita{background:var(--lima);border-color:var(--verde);color:var(--tinta);
+  box-shadow:0 0 0 4px var(--verde-claro)}
+.etapa.actual .nombre{color:var(--tinta);font-weight:700}
+.pipeline-libre{display:flex;align-items:center;gap:10px;margin:2px 0 18px}
+
+/* ---------- Formularios de captura ---------- */
+.seccion-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:20px 0 8px}
+.seccion-head h4{margin:0}
+.btn-mini{background:var(--verde);color:#fff;border:none;border-radius:6px;padding:6px 12px;
+  font-family:'Archivo',sans-serif;font-weight:700;font-size:11.5px;cursor:pointer;white-space:nowrap}
+.btn-mini:hover{background:var(--verde-hover)}
+.btn-mini.gris{background:transparent;color:var(--gris);border:1px solid var(--linea)}
+.btn-mini:disabled{opacity:.5;cursor:wait}
+
+.form-erp{background:var(--papel);border:1px solid var(--linea);border-radius:8px;padding:14px;margin-bottom:12px}
+.form-erp .campos{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.form-erp .campo{display:flex;flex-direction:column;min-width:0}
+.form-erp .campo.ancho{grid-column:1/-1}
+.form-erp label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--gris);
+  font-weight:700;margin-bottom:4px}
+.form-erp input,.form-erp select,.form-erp textarea{
+  border:1px solid #CFCDBF;border-radius:6px;padding:8px 10px;font-size:13px;
+  font-family:'Inter',sans-serif;background:#fff;width:100%}
+.form-erp input:focus,.form-erp select:focus,.form-erp textarea:focus{outline:none;border-color:var(--verde)}
+.form-erp input.mono{font-family:'IBM Plex Mono',monospace}
+.form-erp textarea{min-height:52px;resize:vertical}
+.form-erp .acciones{display:flex;gap:8px;margin-top:12px;align-items:center}
+.form-erp .req{color:var(--rojo)}
+/* Subtítulo de grupo dentro de un formulario (Contacto / Facturación / Direcciones) */
+.form-erp .grupo-form{grid-column:1/-1;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--verde);font-weight:700;margin:8px 0 -2px;padding-top:8px;border-top:1px solid var(--linea)}
+.form-erp .grupo-form:first-child{border-top:none;padding-top:0}
+/* Ficha de detalle de contraparte (solo lectura) */
+.ficha-cp{display:flex;flex-direction:column;gap:2px}
+.ficha-cp .ficha-seccion{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--verde);
+  font-weight:700;margin:12px 0 4px;padding-top:8px;border-top:1px solid var(--linea)}
+.ficha-cp .ficha-seccion:first-child{border-top:none;padding-top:0;margin-top:0}
+.ficha-cp .ficha-linea{display:flex;gap:10px;padding:3px 0;font-size:13px;align-items:baseline}
+.ficha-cp .ficha-etq{flex:0 0 150px;color:var(--gris);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.ficha-cp .ficha-val{flex:1;min-width:0;color:var(--tinta);white-space:pre-wrap;word-break:break-word}
+.ficha-cp .ficha-val.mono{font-family:'IBM Plex Mono',monospace;font-size:12px}
+.ficha-cp .ficha-vacio{color:var(--gris-claro);font-style:italic;font-size:12px;padding:2px 0}
+.cp-nombre-link{background:none;border:none;padding:0;font:inherit;color:var(--verde);font-weight:600;
+  cursor:pointer;text-align:left}
+.cp-nombre-link:hover{text-decoration:underline}
+.chk-lista{max-height:150px;overflow:auto;border:1px solid var(--linea);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:5px;background:#fff}
+
+/* ---------- Combo con búsqueda ---------- */
+.combo{position:relative}
+.combo .combo-input{
+  width:100%;border:1px solid #CFCDBF;border-radius:6px;padding:8px 10px;font-size:13px;
+  font-family:'Inter',sans-serif;background:#fff;
+}
+.combo .combo-input:focus{outline:none;border-color:var(--verde)}
+.combo.elegido .combo-input{border-color:var(--verde);background:#FCFEFC}
+.combo.elegido.es-nuevo .combo-input{border-color:var(--ambar);background:var(--ambar-bg)}
+.combo-lista{
+  display:none;position:absolute;top:calc(100% + 3px);left:0;right:0;z-index:70;
+  background:#fff;border:1px solid var(--linea);border-radius:8px;
+  box-shadow:0 8px 24px rgba(20,38,28,.16);max-height:240px;overflow-y:auto;
+}
+.combo-lista.abierta{display:block}
+.combo-item{
+  display:flex;align-items:baseline;gap:8px;padding:9px 12px;cursor:pointer;font-size:13px;
+  border-bottom:1px solid var(--linea);
+}
+.combo-item:last-child{border-bottom:none}
+.combo-item.sel,.combo-item:hover{background:var(--verde-claro)}
+.combo-item .txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.combo-item .alias{font-size:11px;color:var(--gris);white-space:nowrap;font-style:italic}
+.combo-item.nuevo{color:var(--ambar);font-weight:600;background:var(--ambar-bg)}
+.combo-item.nuevo.sel,.combo-item.nuevo:hover{background:#F5E6C8}
+.combo-item.nuevo .mas{font-weight:800;font-size:15px;line-height:1}
+.combo-item.nuevo b{font-weight:700}
+/* Guía suave de producto por contraparte (E55): solo sube al principio y marca con ★ — nunca
+   oculta ni deshabilita el resto de las opciones. */
+.combo-destacado{color:var(--lima);font-size:11px;flex:0 0 auto}
+.combo-vacio{padding:12px;font-size:12.5px;color:var(--gris);text-align:center}
+
+/* En pantallas táctiles, filas cómodas de tocar */
+@media(pointer:coarse){
+  .combo-item{padding:13px 12px;min-height:44px}
+  .combo-lista{max-height:50vh}
+}
+
+.aviso{border-radius:7px;padding:10px 12px;font-size:12.5px;margin-top:10px;display:none}
+.aviso.visible{display:block}
+.aviso.ok{background:var(--verde-claro);border:1px solid var(--verde);color:var(--verde)}
+.aviso.err{background:var(--rojo-bg);border:1px solid var(--rojo);color:var(--rojo)}
+.aviso.warn{background:var(--ambar-bg);border:1px solid var(--ambar);color:var(--ambar)}
+.aviso b{font-weight:700}
+
+.solo-lectura{font-size:11.5px;color:var(--gris);font-style:italic}
+
+/* ---------- Documentos ---------- */
+.docs-zona{
+  border:2px dashed var(--linea);border-radius:10px;padding:18px;text-align:center;
+  background:var(--papel);cursor:pointer;transition:border-color .12s ease, background .12s ease;
+}
+.docs-zona:hover{border-color:var(--verde);background:#FCFEFC}
+.docs-zona.encima{border-color:var(--verde);background:var(--verde-claro)}
+.docs-zona.subiendo{cursor:wait;opacity:.7}
+.docs-zona .icono{font-size:24px;line-height:1;margin-bottom:6px}
+.docs-zona .titulo{font-size:13px;font-weight:600}
+.docs-zona .ayuda{font-size:11px;color:var(--gris);margin-top:4px}
+.docs-zona input[type=file]{display:none}
+
+.doc-fila{
+  display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--linea);
+}
+.doc-fila:last-child{border-bottom:none}
+.doc-fila .tipo{font-size:20px;line-height:1;flex:none;width:24px;text-align:center}
+.doc-fila .cuerpo{flex:1;min-width:0}
+.doc-fila .nombre{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc-fila .meta{font-size:11px;color:var(--gris);margin-top:2px}
+.doc-fila .meta .sep{opacity:.5;margin:0 5px}
+.doc-fila .nota-doc{font-size:11.5px;color:var(--gris);font-style:italic;margin-top:3px}
+.doc-fila .acciones-doc{display:flex;gap:6px;flex:none}
+.docs-vacio{padding:16px;text-align:center;font-size:12.5px;color:var(--gris)}
+
+.docs-form{margin-top:12px;display:none}
+.docs-form.abierto{display:block}
+
+/* ---------- Pestañas ---------- */
+.pestanas{display:flex;gap:4px;border-bottom:2px solid var(--linea);margin-bottom:18px}
+.pestana{
+  background:transparent;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;
+  padding:10px 16px;font-family:'Archivo',sans-serif;font-weight:700;font-size:13px;
+  color:var(--gris);cursor:pointer;white-space:nowrap;
+}
+.pestana:hover{color:var(--tinta)}
+.pestana.activa{color:var(--verde);border-bottom-color:var(--verde)}
+.pestana .cuenta{font-family:'IBM Plex Mono',monospace;font-weight:500;font-size:11px;opacity:.7;margin-left:5px}
+
+/* ---------- Alias ---------- */
+.alias-lista{display:flex;gap:4px;flex-wrap:wrap}
+.alias-chip{
+  display:inline-flex;align-items:center;gap:5px;
+  background:var(--papel);border:1px solid var(--linea);border-radius:12px;
+  padding:2px 4px 2px 9px;font-size:11.5px;white-space:nowrap;
+}
+.alias-chip.solo-ver{padding:2px 9px}
+.alias-chip button{
+  background:transparent;border:none;cursor:pointer;color:var(--gris);
+  font-size:14px;line-height:1;padding:0 3px;border-radius:50%;
+}
+.alias-chip button:hover{color:var(--rojo);background:var(--rojo-bg)}
+.sin-alias{font-size:11.5px;color:var(--gris-claro);font-style:italic}
+
+.alias-editor{border:1px solid #CFCDBF;border-radius:6px;padding:7px;background:#fff}
+.alias-editor:focus-within{border-color:var(--verde)}
+.alias-editor .alias-lista{margin-bottom:6px}
+.alias-editor input{border:none;padding:3px 2px;font-size:13px;width:100%;font-family:'Inter',sans-serif}
+.alias-editor input:focus{outline:none}
+.alias-ayuda{font-size:10.5px;color:var(--gris);margin-top:4px}
+
+/* ---------- Checkboxes de tipo ---------- */
+.checks{display:flex;gap:16px;align-items:center;padding-top:6px}
+.checks label{
+  display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;
+  color:var(--tinta);cursor:pointer;text-transform:none;letter-spacing:0;margin:0;
+}
+.checks input[type=checkbox]{width:auto;accent-color:var(--verde);cursor:pointer}
+
+.campo-fijo{background:var(--papel);border:1px dashed var(--linea);border-radius:6px;
+  padding:8px 10px;font-size:13px;color:var(--tinta)}
+.campo-fijo .aclara{font-size:10.5px;color:var(--gris);margin-top:2px}
+
+/* ---------- Tareas (kanban) ---------- */
+.kanban{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;align-items:start}
+.kan-col{background:var(--papel);border:1px solid var(--linea);border-radius:10px;padding:10px;min-height:120px}
+.kan-col.drop{border-color:var(--verde);background:var(--verde-claro)}
+.kan-col-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 4px 10px;
+  font-family:'Archivo',sans-serif;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--gris)}
+.kan-col-head .cuenta{font-family:'IBM Plex Mono',monospace;font-size:11px;background:var(--tarjeta);border:1px solid var(--linea);border-radius:9px;padding:1px 7px}
+.kan-card{background:var(--tarjeta);border:1px solid var(--linea);border-radius:8px;padding:10px 11px;margin-bottom:9px;
+  cursor:pointer;box-shadow:var(--sombra);position:relative}
+.kan-card:hover{border-color:var(--verde)}
+.kan-card.atrasada{border-left:3px solid var(--rojo)}
+.kan-card .k-titulo{font-size:13px;font-weight:600;line-height:1.3;margin-bottom:5px}
+.kan-card .k-meta{display:flex;flex-wrap:wrap;gap:5px;align-items:center;font-size:10.5px;color:var(--gris)}
+.kan-card .k-folio{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--gris)}
+.kan-card .k-asig{display:flex;align-items:center;gap:4px;margin-top:6px;font-size:11px;color:var(--tinta)}
+.kan-card .k-asig .sin{color:var(--gris-claro);font-style:italic}
+.kan-card .k-mov{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+.kan-card .k-mov button{background:var(--papel);border:1px solid var(--linea);border-radius:5px;font-size:10.5px;
+  padding:3px 7px;cursor:pointer;color:var(--tinta);font-weight:600}
+.kan-card .k-mov button:hover{border-color:var(--verde);color:var(--verde)}
+.pill.prio-urgente{background:var(--rojo-bg);color:var(--rojo)}
+.pill.prio-alta{background:var(--ambar-bg);color:var(--ambar)}
+.pill.prio-media{background:var(--verde-claro);color:var(--verde)}
+.pill.prio-baja{background:#EEEDE5;color:var(--gris)}
+.pill.badge-atrasada{background:var(--rojo);color:#fff}
+.k-vinculos{display:flex;gap:4px;flex-wrap:wrap;margin-top:7px}
+.k-vinc{font-family:'IBM Plex Mono',monospace;font-size:10px;background:var(--verde-claro);color:var(--verde);
+  border-radius:4px;padding:1px 6px;white-space:nowrap}
+.resumen-tareas{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.res-chip{background:var(--tarjeta);border:1px solid var(--linea);border-radius:8px;padding:7px 12px;font-size:12px}
+.res-chip b{font-family:'IBM Plex Mono',monospace;font-size:15px}
+.res-chip .atr{color:var(--rojo);font-weight:700;margin-left:6px}
+.comentario{padding:9px 0;border-bottom:1px solid var(--linea)}
+.comentario:last-child{border-bottom:none}
+.comentario .c-head{font-size:11px;color:var(--gris);margin-bottom:3px}
+.comentario .c-head b{color:var(--tinta)}
+.comentario .c-texto{font-size:13px;white-space:pre-wrap}
+@media(max-width:820px){
+  .kanban{grid-template-columns:1fr}
+}
+
+/* ---------- Cotizaciones y Órdenes ---------- */
+.lineas-doc{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+.linea-doc{border:1px solid var(--linea);border-radius:8px;padding:10px;background:var(--tarjeta);
+  display:grid;grid-template-columns:1fr 74px 70px 94px auto 26px;gap:8px;align-items:end}
+.linea-doc .lcol{min-width:0;display:flex;flex-direction:column}
+.linea-doc .lcol.prod{grid-column:1}
+.linea-doc label{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--gris);font-weight:700;margin-bottom:3px}
+.linea-doc input,.linea-doc .combo-input{border:1px solid #CFCDBF;border-radius:5px;padding:6px 7px;font-size:12.5px;width:100%;font-family:'Inter',sans-serif}
+.linea-doc input:focus,.linea-doc .combo-input:focus{outline:none;border-color:var(--verde)}
+.linea-doc input.mono{font-family:'IBM Plex Mono',monospace}
+.linea-doc .lcol-importe .val{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;padding:6px 0;white-space:nowrap;text-align:right}
+.linea-doc .quitar{background:transparent;border:none;color:var(--gris);font-size:18px;cursor:pointer;line-height:1;padding:4px}
+.linea-doc .quitar:hover{color:var(--rojo)}
+.doc-total{display:flex;justify-content:flex-end;gap:14px;align-items:baseline;padding:6px 2px 0;font-size:13px;color:var(--gris)}
+.doc-total .n{font-family:'IBM Plex Mono',monospace;font-size:19px;font-weight:700;color:var(--tinta)}
+.btn-linea{background:transparent;border:1px dashed var(--verde);color:var(--verde);border-radius:6px;
+  padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Archivo',sans-serif}
+.btn-linea:hover{background:var(--verde-claro)}
+.transiciones{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
+.doc-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 8px}
+@media(max-width:600px){
+  .doc-meta-grid{grid-template-columns:1fr}
+  .linea-doc{grid-template-columns:1fr 1fr 26px}
+  .linea-doc .lcol.prod{grid-column:1/3}
+  .linea-doc .quitar{align-self:center}
+}
+
+/* ---------- Estado de cuenta ---------- */
+.chips-folio{display:flex;gap:4px;flex-wrap:wrap}
+.chip-folio{
+  font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;
+  background:var(--verde-claro);color:var(--verde);border:1px solid transparent;
+  border-radius:4px;padding:1px 6px;cursor:pointer;white-space:nowrap;
+}
+.chip-folio:hover{border-color:var(--verde);background:#D6E7DB}
+.sin-carga{font-size:11.5px;color:var(--gris-claro)}
+.fechas{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--gris)}
+.fechas input{
+  border:1px solid var(--linea);border-radius:6px;padding:7px 8px;font-size:12.5px;
+  font-family:'IBM Plex Mono',monospace;background:var(--tarjeta);color:var(--tinta);
+}
+.fechas input:focus{outline:none;border-color:var(--verde)}
+tr.mov-anulado td{opacity:.5}
+tr.mov-anulado td:nth-child(2){text-decoration:line-through;text-decoration-color:var(--rojo)}
+
+/* Resalte temporal al llegar por navegación directa a un movimiento (Tesorería). Se desvanece
+   solo — la clase se quita por JS a los ~2.5s, nunca queda fija. */
+.fila-destacada{animation:destello 2.5s ease-out}
+@keyframes destello{
+  0%{background:var(--verde-claro)}
+  100%{background:transparent}
+}
+
+/* ---------- Carga anulada ---------- */
+.banner-anulada{
+  background:var(--rojo-bg);border:1px solid var(--rojo);border-left:5px solid var(--rojo);
+  border-radius:8px;padding:13px 15px;margin-bottom:18px;
+}
+.banner-anulada .t{font-family:'Archivo',sans-serif;font-weight:800;font-size:12px;
+  text-transform:uppercase;letter-spacing:.08em;color:var(--rojo);margin-bottom:5px}
+.banner-anulada .motivo{font-size:13px;color:var(--tinta);margin-bottom:6px}
+.banner-anulada .meta{font-size:11.5px;color:var(--gris)}
+
+/* La ficha de una carga anulada se lee, pero se ve apagada. */
+.ficha-anulada .det-grid,.ficha-anulada .tabla-wrap{opacity:.6}
+
+/* Filas anuladas en la lista */
+tr.anulada td{opacity:.55}
+tr.anulada td:nth-child(2) .enlace{text-decoration:line-through;text-decoration-color:var(--rojo)}
+.zona-peligro{margin-top:28px;padding-top:16px;border-top:1px dashed var(--linea);
+  display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.zona-peligro .nota{font-size:11.5px;color:var(--gris)}
+.btn-mini.peligro{background:transparent;color:var(--rojo);border:1px solid var(--rojo)}
+.btn-mini.peligro:hover{background:var(--rojo);color:#fff}
+.form-erp.peligro{border-color:var(--rojo);background:var(--rojo-bg)}
+.form-erp.peligro textarea{border-color:var(--rojo)}
+.btn-mini.confirmar-peligro{background:var(--rojo);color:#fff}
+.btn-mini.confirmar-peligro:hover{filter:brightness(1.1)}
+
+/* ---------- Responsive ---------- */
+@media(max-width:1000px){
+  .grid2{grid-template-columns:1fr}
+}
+@media(max-width:860px){
+  .btn-menu{display:block}
+  header.top{padding:0 14px;gap:10px}
+  header.top .marca{font-size:14px}
+  .estado{display:none}
+  nav.lateral{
+    position:fixed;top:60px;left:0;bottom:0;z-index:50;height:auto;
+    transform:translateX(-100%);transition:transform .2s ease;box-shadow:var(--sombra-alta);
+  }
+  nav.lateral.abierto{transform:translateX(0)}
+  .menu-fondo.abierto{display:block;position:fixed;inset:60px 0 0 0;background:rgba(20,38,28,.4);z-index:49}
+  main#app{padding:18px 14px 60px}
+  .det-grid{grid-template-columns:1fr 1fr}
+  .buscador{max-width:none}
+  .panel{width:100%}
+  .perfil{display:none !important}
+  .presencia-online{display:none !important}   /* en móvil no cabe la lista; se conserva "Soy: X" */
+  .form-erp .campos{grid-template-columns:1fr}
+  .pipeline{gap:6px}
+  .etapa .nombre{font-size:10.5px}
+}
+@media(max-width:620px){
+  /* En celular el buscador manda: la marca cede su espacio. */
+  header.top .marca{display:none}
+  .btn.lima,.btn.fantasma{padding:8px 11px}
+}
+@media(max-width:480px){
+  .det-grid{grid-template-columns:1fr}
+  .tarjeta .val{font-size:24px}
+}
+
+/* ===================== Invoices (editor + impresión) ===================== */
+/* Editor de líneas: inputs compactos dentro de la tabla */
+.fact-lineas input{width:100%;border:1px solid var(--linea);border-radius:5px;padding:5px 7px;font-size:12.5px;
+  font-family:inherit;background:var(--tarjeta)}
+.fact-lineas input:focus{outline:none;border-color:var(--verde)}
+.fact-lineas input.num{font-family:'IBM Plex Mono',monospace;text-align:right}
+.fact-lineas input:disabled{background:var(--papel);color:var(--gris)}
+.fact-lineas th{white-space:nowrap}
+.fact-editor .campo-fijo{padding:8px 10px;border:1px dashed var(--linea);border-radius:6px;color:var(--gris);
+  text-transform:capitalize;font-size:13px;background:var(--papel)}
+
+/* Área de impresión: oculta en pantalla; solo visible al imprimir */
+#areaImpresion{display:none}
+
+@media print{
+  body{background:#fff}
+  /* Oculta toda la app y muestra solo la factura */
+  body>*{display:none !important}
+  #areaImpresion{display:block !important}
+  #areaImpresion .inv-doc{box-shadow:none;margin:0}
+  /* El logo y los fondos de color deben SALIR en el PDF (si no, el navegador los omite). */
+  #areaImpresion, #areaImpresion *{
+    -webkit-print-color-adjust:exact !important;
+    color-adjust:exact !important;
+    print-color-adjust:exact !important;
+  }
+}
+
+/* Documento de factura (usa colores neutros para tinta) */
+.inv-doc{font-family:'Inter',Arial,sans-serif;color:#14261C;max-width:760px;margin:0 auto;padding:24px;font-size:12px;line-height:1.4}
+.inv-top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:22px}
+.inv-head-left{display:flex;gap:14px;align-items:flex-start}
+.inv-logo img{height:48px;width:auto;display:block}
+.inv-company{font-size:11px;line-height:1.45;max-width:280px}
+.inv-company .inv-co-name{font-family:'Archivo',sans-serif;font-weight:800;font-size:14px;color:#196B24;text-transform:uppercase;letter-spacing:.02em}
+.inv-company .inv-co-line{color:#4A5450}
+.inv-meta{text-align:right;min-width:220px}
+.inv-title{font-family:'Archivo',sans-serif;font-weight:800;font-size:30px;letter-spacing:.02em;color:#196B24;margin-bottom:8px}
+.inv-meta-tbl{margin-left:auto;border-collapse:collapse}
+.inv-meta-tbl td{padding:2px 6px;font-size:11px}
+.inv-meta-tbl td:first-child{color:#6B7268;font-weight:700;text-transform:uppercase;text-align:right}
+.inv-meta-tbl td:last-child{text-align:right;font-family:'IBM Plex Mono',monospace}
+.inv-boxes{display:flex;gap:14px;margin-bottom:16px}
+.inv-box{flex:1;border:1px solid #DDDCD2;border-radius:4px;overflow:hidden}
+.inv-box-h{background:#196B24;color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;padding:5px 10px;text-transform:uppercase}
+.inv-box-b{padding:9px 10px;white-space:pre-wrap;min-height:46px;font-size:11.5px}
+.inv-items{width:100%;border-collapse:collapse;margin-bottom:16px}
+.inv-items th{background:#196B24;color:#fff;font-size:10px;letter-spacing:.05em;text-transform:uppercase;padding:7px 8px;text-align:left}
+.inv-items th.num,.inv-items td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.inv-items th.ctr,.inv-items td.ctr{text-align:center;font-family:'IBM Plex Mono',monospace}
+.inv-items td{border:1px solid #DDDCD2;padding:6px 8px;height:22px;font-size:11.5px}
+.inv-bottom{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}
+/* min-width:0 evita que este flex-item se ensanche por el contenido (bug real: sin esto, la
+   tabla .inv-totals de al lado se auto-expandía a ~690px por su layout de tabla, dejando este
+   box en ~2px — afectaba a los 3 documentos oficiales, encontrado y corregido el 28-jul-2026). */
+.inv-comments{flex:1 1 auto;min-width:0;border:1px solid #DDDCD2;border-radius:4px;overflow:hidden}
+/* width fijo (no min-width) + flex:0 0 auto: una tabla sin table-layout:fixed se auto-expande a
+   ocupar el espacio flex disponible en vez de ceñirse a su contenido — ver comentario arriba. */
+.inv-totals{border-collapse:collapse;width:240px;flex:0 0 auto}
+.inv-totals td{padding:5px 10px;font-size:12px}
+.inv-totals td:first-child{color:#6B7268;font-weight:700;text-transform:uppercase}
+.inv-totals td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.inv-totals .inv-grand td{border-top:2px solid #196B24;font-weight:800;color:#196B24;font-size:14px}
+
+/* Invoice oficial con membrete Plein (modulo-facturas.js: htmlInvoiceOficial). Header CLARO
+   (idéntico al template): logo directo sobre el fondo claro (ya no necesita tarjeta blanca —
+   solo hacía falta contra un fondo verde), dirección de Plein debajo, INVOICE en verde de marca
+   a la derecha. El acento salvia "abanico" es puramente decorativo (::before, detrás del texto);
+   overflow:hidden en el propio masthead lo recorta a su caja, así nunca sangra fuera del doc. */
+.inv-masthead{position:relative;overflow:hidden;display:flex;justify-content:space-between;
+  align-items:flex-start;gap:20px;padding-bottom:18px;margin-bottom:22px;border-bottom:3px solid #196B24}
+.inv-masthead::before{
+  content:'';position:absolute;top:-38px;right:-38px;width:150px;height:150px;
+  background:repeating-conic-gradient(#E4EFE7 0deg 9deg, transparent 9deg 18deg);
+  border-radius:50%;z-index:0}
+.inv-masthead-left{position:relative;z-index:1;display:flex;flex-direction:column;gap:6px}
+.inv-masthead-logo{height:44px;width:auto;display:block}
+.inv-masthead-addr{font-size:10.5px;line-height:1.6;color:#4A5450}
+.inv-masthead-right{position:relative;z-index:1;text-align:right;min-width:220px}
+.inv-masthead-title{font-family:'Archivo',sans-serif;font-weight:800;font-size:30px;letter-spacing:.03em;
+  color:#196B24;margin-bottom:8px}
+.inv-masthead-meta{margin-left:auto;border-collapse:collapse}
+.inv-masthead-meta td{padding:2px 6px;font-size:11px;color:#14261C}
+.inv-masthead-meta td:first-child{color:#6B7268;font-weight:700;text-transform:uppercase;text-align:right}
+.inv-masthead-meta td:last-child{text-align:right;font-family:'IBM Plex Mono',monospace}
+.inv-footgreen{background:#196B24;color:#fff;text-align:center;font-size:11px;line-height:1.7;
+  margin:20px -24px -24px;padding:16px 24px}
+
+/* ===================== Expediente de embarque ===================== */
+.exp-acciones{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.exp-tabs{margin-bottom:16px}
+.doc-drop{border:2px dashed var(--linea);border-radius:10px;padding:22px;text-align:center;
+  font-size:13px;color:var(--gris);cursor:pointer;transition:border-color .15s,background .15s}
+.doc-drop.over{border-color:var(--verde);background:var(--verde-claro)}
+.doc-subir{margin-bottom:16px}
+
+/* Barra de exportación (Excel / PDF) */
+.exportar-barra{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-bottom:12px}
+
+/* ===================== Badge de estado de embarque (Fase 1.5) ===================== */
+.badge-estado{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:9px;white-space:nowrap;letter-spacing:.02em}
+.badge-estado.gris{background:#EEEDE5;color:var(--gris)}
+.badge-estado.verde{background:var(--verde-claro);color:var(--verde)}
+.badge-estado.ambar{background:var(--ambar-bg);color:var(--ambar)}
+.badge-estado.rojo{background:var(--rojo-bg);color:var(--rojo)}
+.badge-estado.azul{background:#E3EEF6;color:#2A6098}
+.badge-estado.lila{background:#F3E7F5;color:#9B3FAB}
+.badge-estado.naranja{background:#FDE7D6;color:#C25311}
+
+/* Chip "Cargas por Confirmar" (no cuenta como embarque): al inicio, tono lila del tablero de Samuel */
+.chip.chip-porconfirmar{border-color:#D9B7E0;color:#9B3FAB;background:#FBF4FC}
+.chip.chip-porconfirmar.activo{background:#9B3FAB;color:#fff;border-color:#9B3FAB}
+
+/* Modal overlay (cambiar estado, y reutilizable) */
+.modal-ov{position:fixed;inset:0;background:rgba(20,38,28,.38);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}
+.modal-box{background:#fff;border-radius:12px;padding:20px 22px;width:min(420px,100%);max-height:90vh;overflow:auto;box-shadow:0 12px 40px rgba(20,38,28,.28)}
+.modal-box h3{font-family:'Archivo',sans-serif;font-size:15px}
+
+/* Franja "Agenda de la semana" arriba de la lista de Embarques (reusa .hoy-cards/.hoy-card) */
+.agenda{margin-bottom:16px}
+.agenda-head{margin-bottom:2px}
+.agenda-toggle{background:none;border:none;cursor:pointer;font-family:'Archivo',sans-serif;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);font-weight:700;padding:4px 0;display:inline-flex;align-items:center;gap:6px}
+.agenda-toggle:hover{color:var(--verde)}
+.resp-sel{font-size:12px;padding:2px 4px;max-width:160px}
+/* Celda de acciones en "Datos faltantes": apila los controles */
+.acc-faltantes{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+/* Conteo dentro de un chip de filtro */
+.chip .chip-n{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;opacity:.7;margin-left:4px}
+
+/* Mini-barra de tendencia (flujo semanal en Finanzas) */
+.mini-bar{background:var(--verde-claro);border-radius:3px;height:12px;width:90px;overflow:hidden}
+.mini-fill{height:100%;background:var(--verde);border-radius:3px}
+.mini-fill.neg{background:var(--rojo)}
+
+/* Checkbox "Solo capturar" en la captura rápida */
+.check-solo{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--tinta);margin:4px 0 2px;cursor:pointer}
+.check-solo input{width:16px;height:16px}
+
+/* Bitácora — diff expandible por fila */
+.bit-det summary{cursor:pointer;font-size:12px;color:var(--verde);font-weight:600;list-style:none}
+.bit-det summary::-webkit-details-marker{display:none}
+.bit-det summary::before{content:'▸ ';color:var(--gris)}
+.bit-det[open] summary::before{content:'▾ '}
+.bit-difftbl{margin-top:6px;border-collapse:collapse;font-size:11.5px}
+.bit-difftbl td{padding:2px 8px;border:none;vertical-align:top}
+.bit-difftbl .bit-k{font-weight:700;color:var(--gris);white-space:nowrap}
+.bit-difftbl .bit-antes{color:var(--rojo);font-family:'IBM Plex Mono',monospace}
+.bit-difftbl .bit-despues{color:var(--verde);font-family:'IBM Plex Mono',monospace;font-weight:600}
+.bit-difftbl .bit-flecha{color:var(--gris-claro)}
+.bit-nada{font-size:11.5px;color:var(--gris)}
+
+/* Factura — recuadro de cobro (CxC) en la ficha */
+.fact-cxc{background:var(--papel);border:1px solid var(--linea);border-radius:8px;padding:12px 14px;margin:12px 0}
+.fact-cxc .fc-h{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--gris);font-weight:700;margin-bottom:8px}
+.fact-cxc .fc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.fact-cxc .fc-grid .l{display:block;font-size:10.5px;color:var(--gris);text-transform:uppercase;letter-spacing:.04em}
+.fact-cxc .fc-grid .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:13px}
+
+/* Órdenes de compra — chips de estado + select en el editor de líneas */
+.oc-estado{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:9px;white-space:nowrap;letter-spacing:.02em}
+.oc-estado.borrador{background:var(--ambar-bg);color:var(--ambar)}
+.oc-estado.enviada{background:#E3EEF6;color:#2A6098}
+.oc-estado.confirmada{background:var(--verde-claro);color:var(--verde)}
+.oc-estado.recibida{background:#14432B;color:#fff}
+.oc-estado.cancelada{background:#EEEDE5;color:var(--gris)}
+/* Chip de estado de Órdenes de Venta (Sales Orders): Borrador→Confirmada→Cerrada (+Cancelada). */
+.so-estado{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:9px;white-space:nowrap;letter-spacing:.02em}
+.so-estado.borrador{background:var(--ambar-bg);color:var(--ambar)}
+.so-estado.confirmada{background:var(--verde-claro);color:var(--verde)}
+.so-estado.cerrada{background:#14432B;color:#fff}
+.so-estado.cancelada{background:#EEEDE5;color:var(--gris)}
+.fact-lineas select{width:100%;border:1px solid var(--linea);border-radius:5px;padding:5px 6px;font-size:12.5px;font-family:inherit;background:var(--tarjeta)}
+.fact-lineas select:focus{outline:none;border-color:var(--verde)}
+.fact-lineas select:disabled{background:var(--papel);color:var(--gris)}
+
+/* ===================== Tareas E35 (kanban + tabla + ficha) ===================== */
+.oculto{display:none}
+.pill.azul{background:#E3EEF6;color:#2A6098}
+.seg{display:inline-flex;gap:4px}
+.kanban-col{background:var(--papel);border:1px solid var(--linea);border-radius:10px;padding:8px;min-height:90px}
+.kanban-h{font-family:'Archivo',sans-serif;font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;
+  padding:6px 8px;border-radius:7px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.kanban-h.estado-pendiente{background:#EEEDE5;color:var(--gris)}
+.kanban-h.estado-en_proceso{background:#E3EEF6;color:#2A6098}
+.kanban-h.estado-hecha{background:var(--verde-claro);color:var(--verde)}
+.kanban-h.estado-cancelada{background:var(--rojo-bg);color:var(--rojo)}
+.kanban-h .chip-n{opacity:.8}
+.kanban-vacio{color:var(--gris-claro);font-size:12px;text-align:center;padding:14px 0}
+.tarea-card{background:var(--tarjeta);border:1px solid var(--linea);border-radius:8px;padding:10px 11px;margin-bottom:8px;
+  cursor:pointer;box-shadow:var(--sombra)}
+.tarea-card:hover{border-color:var(--verde)}
+.tarea-card.atrasada{border-left:3px solid var(--rojo)}
+.tarea-card .tc-top{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px}
+.tarea-card .tc-folio{font-size:10.5px;color:var(--gris)}
+.tarea-card .tc-titulo{font-size:13px;font-weight:600;line-height:1.3;margin-bottom:6px}
+.tarea-card .tc-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.tarea-card .tc-asig{font-size:11px;color:var(--tinta)}
+.tarea-card .tc-pie{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--gris);margin-top:7px}
+.tarea-card .tc-vinc{display:flex;gap:4px;flex-wrap:wrap;margin-top:7px}
+.k-vinc{cursor:pointer}
+.k-vinc:hover{filter:brightness(.95)}
+.tarea-vinc{margin:10px 0;font-size:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tarea-vinc .l{color:var(--gris);font-weight:600}
+.tarea-hilo{display:flex;flex-direction:column;gap:8px}
+.tarea-com{background:var(--papel);border:1px solid var(--linea);border-radius:8px;padding:9px 11px}
+.tarea-com .tc-cab{font-size:11px;color:var(--gris);margin-bottom:4px}
+.tarea-com .tc-txt{font-size:13px;white-space:pre-wrap;line-height:1.45}
+.tarea-com-vacio{font-size:12.5px;color:var(--gris);padding:6px 0}
