@@ -1,5 +1,5 @@
 # MAPA-CAPTURA.md — Fuente única de captura y catálogos (ERP Plein)
-_Coordina el chat de BACKEND (Supabase) y Claude Code (frontend). Se construye sobre `INVENTARIO-CAPTURA-CATALOGOS.md` (inventario crudo) + el diseño acordado. Última actualización: E106, **plan completo Fase 1→3 CERRADO**._
+_Coordina el chat de BACKEND (Supabase) y Claude Code (frontend). Se construye sobre `INVENTARIO-CAPTURA-CATALOGOS.md` (inventario crudo) + el diseño acordado. Última actualización: post-autosuficiencia (2026-08-09), **plan completo Fase 1→3 CERRADO Y DESPLEGADO** (Fase 2c confirmada en producción por Miguel) + D-138 (Tema 1) + D-139 (consolidación `fn_alta_producto`)._
 
 ## Para qué sirve
 Antes de tocar cualquier captura o catálogo, los dos chats consultan este mapa. Define **qué lista va en qué cajón** (y por lo tanto quién la alimenta), cómo se organiza la captura, y qué huecos faltan. El objetivo: **todo lo rutinario se hace desde el sistema; el motor contable queda protegido.**
@@ -18,10 +18,10 @@ Regla dura: **cada uno debe tener panel de gestión (alta/edición) Y estar cone
 | Conceptos de costo | ✅ Catálogos → Conceptos | ✅ | **Listo** (P2, D-129) |
 | Categoría de deducción (liquidaciones) | ✅ Catálogos → Categorías de deducción | ✅ | **Listo** (Fase 2a, D-134) |
 | Categorías de gasto | ✅ Catálogos → Categorías de gasto | ✅ | **Listo** (Fase 2b, D-135) |
-| Productos | ✅ alta + editar | ✅ | **Backend listo** (Fase 2c, D-136/137) — front pendiente de correr |
-| Variedades | ✅ alta + editar | ✅ | **Backend listo** (Fase 2c, D-136/137) — front pendiente de correr |
+| Productos | ✅ alta + editar | ✅ | **Listo** (Fase 2c, D-136/137) — probado en producción |
+| Variedades | ✅ alta + editar | ✅ | **Listo** (Fase 2c, D-136/137) — probado en producción |
 
-**Cajón 1 completo.** Todo lo que el usuario alimenta ya tiene su panel (backend). Falta un solo despliegue de frontend (2c).
+**Cajón 1 completo.** Todo lo que el usuario alimenta tiene su panel, conectado a su picker, y **desplegado y probado en producción** — sin pendientes de frontend.
 
 ### 🟦 Cajón 2 — Motor contable (protegido, nunca editable en UI)
 - Tipos de movimiento estructurales: **Cliente, Proveedor, Inversión, Anticipo a productor, Financiamiento externo, Pasivo a socio, Traspaso, Comisión, Fletes, Aduanas, Materiales de empaque, Devolución, AJUSTE**.
@@ -55,7 +55,7 @@ Atajos directos de Cobranza/CxC y Pagos/CxP (por fila) se conservan aparte.
 | **1** | Puerta "+ Registrar" + Traspaso | `fn_traspaso` saneado (D-133) | router + panel traspaso | ✅ **Hecho y probado** |
 | **2a** | Categoría de deducción | tabla + RPCs + vista (D-134) | pestaña + Liquidaciones | ✅ **Hecho y probado** |
 | **2b** | Categorías de gasto | `fn_alta_categoria_gasto` + vista (D-135) | pestaña + Registrar gasto | ✅ **Hecho y probado** |
-| **2c** | Editar productos/variedades | `fn_editar_producto/variedad` + permisos (D-136/137) | botón Editar | ⏳ backend listo, **falta correr frontend** |
+| **2c** | Editar productos/variedades | `fn_editar_producto/variedad` + permisos (D-136/137) | botón Editar | ✅ **Hecho y probado en producción** |
 | **3** | Moneda centralizada + seeds confirmados | — | `ERP.MONEDAS` en comun.js | ✅ **Hecho y probado** |
 
 ## Contratos vivos (referencia rápida)
@@ -63,10 +63,12 @@ Atajos directos de Cobranza/CxC y Pagos/CxP (por fila) se conservan aparte.
 - `fn_alta_categoria_deduccion(p_codigo, p_nombre)` / `fn_editar_categoria_deduccion(p_id, p_nombre=null, p_activo=null, p_orden=null)`.
 - `fn_alta_categoria_gasto(p_nombre, p_grupo='gasto_operativo')` / `fn_editar_categoria_gasto(p_tipo, p_activo)`. Candado: `p_grupo` solo `gasto_operativo`/`gasto_financiero`.
 - `fn_editar_producto(p_id, p_nombre=null, p_codigo_item=null, p_activo=null)` / `fn_editar_variedad(p_id, p_nombre=null, p_activo=null)`. Permiso `capturar` (unificado, D-137).
+- `fn_alta_producto(p_nombre, p_codigo_item=null)` — **firma única** desde D-139 (antes 2 firmas duplicadas; consolidada con detección de duplicado exacto=RAISE y "parecido"=warning en `data[0].advertencia`).
+- `v_carga_contrapartes` (folio_carga, contraparte_id, contraparte_nombre, rol['cliente'|'proveedor'|'costo']) — D-138. Una fila por carga↔contraparte↔rol; cubre proveedores de SERVICIO (flete/comisión/reempaque) que `v_carga_detalle` (solo encabezado) no traía. La usa `modulo-tesoreria.js` → "Aplicar a carga" (filtro por ID).
 
-## Siguiente (fuera de este plan, ya cerrado)
-- **Tema 1** (filtro de cargas por contraparte de servicio) — pendiente, no forma parte de autosuficiencia.
-- **Consolidar `fn_alta_producto` duplicada** — parqueado hasta lectura completa del repo.
+## Cerrado post-plan (fuera de Fase 1→3, resuelto igual)
+- ✅ **Tema 1 — filtro de cargas por contraparte de servicio (D-138):** ver Contratos vivos arriba. Backend + frontend desplegados y verificados en vivo.
+- ✅ **`fn_alta_producto` duplicada consolidada (D-139):** ver Contratos vivos arriba. Corrige bug mudo (aviso de "parecido" que nunca se mostraba) sin tocar frontend.
 
 ---
-_Numeración de decisiones backend: D-### (al cierre de esta sesión: D-137)._
+_Numeración de decisiones backend: D-### (al cierre de esta sesión: D-139)._

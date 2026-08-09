@@ -1,5 +1,5 @@
 # CLAUDE.md — Cómo trabajar en ERP Plein
-_Instrucciones operativas para cualquier sesión (backend u operación). Última actualización: E95._
+_Instrucciones operativas para cualquier sesión (backend u operación). Última actualización: post-autosuficiencia (2026-08-09), E102-E106 + D-138/D-139._
 
 ## Quién es quién
 - **Miguel Arámbula (PP04-MA)** — admin/finanzas. **NO es programador**: toda acción fuera del chat necesita pasos detallados (dónde hacer clic, qué escribir, qué esperar). Actor MCP = PP04-MA (permisos admin/editar/administrar/capturar). En E86 Miguel ya opera el ERP él mismo (capturó y emitió su 1ª liquidación real).
@@ -11,8 +11,8 @@ _Instrucciones operativas para cualquier sesión (backend u operación). Última
 ## Negocio en un párrafo
 Plein Produce LLC, trading de fruta/verdura fresca (US-registered). ERP a medida en Supabase + frontend vanilla JS/Vercel. **Modalidades:** margen fijo (costo al embarque); consignación (ingreso al **COBRO**, no al embarque; el costo puede preceder al ingreso); comisión pura (Plein no compra; solo comisión — Alpine Fresh AX001–AX0013, Kabocha CRI, Carrifoods en POs específicas: **costo 0 y margen 100% son correctos**, `modalidad='comision'`). Dos ejes: **costo en el LOTE, venta en la SALES ORDER**. Flujo = Order-to-Cash de 11 pasos.
 
-## Estado (E87): USO REAL
-La base está **CERRADA** (A-16 auditada, D-97). Foco = cargar datos reales y operar, **no auditar backend** salvo que algo rompa el Cuadre. Liquidaciones PACA en uso real (LQ-2026-0002 emitida). Siguiente feature: **Anticipo a productor / disposición de proyecto** (crear movimiento tipo "Anticipo a productor" desde el front, ligado a proyecto).
+## Estado (post-autosuficiencia, 2026-08-09): USO REAL, plan de autosuficiencia CERRADO
+La base está **CERRADA** (A-16 auditada, D-97). Foco = cargar datos reales y operar, **no auditar backend** salvo que algo rompa el Cuadre. Liquidaciones PACA en uso real (LQ-2026-0002 emitida). **Anticipo a productor / disposición de proyecto: HECHO** (D-102, luego generalizado en Tema 2/D-120..124 — línea de proyecto, aportación de socio, origen de fondeo). El plan de "autosuficiencia" (E102-E106: Tema 2 + P1 + P2 + Fase 1/2a/2b/2c/3, D-120..D-137) está **cerrado y desplegado** — Miguel ya opera captura y catálogos casi 100% desde el sistema, sin depender del chat de backend. Ver "Actualización E102-E106" abajo y `PENDIENTES-BACKEND.md`/`MAPA-CAPTURA.md` para el detalle vivo.
 
 ## Reglas de oro
 - **BANCO MANDA:** Banco → V8 → ERP. Llave de cotejo = **P.O.**, nunca folio.
@@ -92,3 +92,23 @@ Detalle completo en **`SISTEMA-DISEÑO.md`** (dirección/tokens/componentes/plan
 - **Método probado (repetir):** verificar marcado en vivo → wrapper `.pantalla-XXX` → CSS anidado con especificidad extra → tokens, cero hex → drawers `#panelBody` fuera del scope → no inventar datos, reusar el componente que ya cumple el rol → verificar claro/oscuro + que otras pantallas no cambien (por color computado) → `node --check` → NO desplegar (Miguel) → actualizar REPORTE-FRONTEND.md.
 - **Falta:** resto de pantallas de tablas (Finanzas, Directorio, Programas, Proyectos, etc.) y, **al final**, el **MARCO** (riel de íconos + barra de módulo + menú agrupado, respetando `ERP.perfil.modulos` de D-105) — antes de tocar el MARCO, mostrar a Miguel la propuesta de agrupación del menú para aprobar. Pendiente menor: `.pos/.neg` en Embarques/CxC/CxP aún no son theme-aware.
 - **Regla dura frontend:** Claude Code solo frontend, nunca el esquema Supabase; verificar en vivo; `node --check` limpio; NO desplegar (lo hace Miguel).
+
+## Actualización E96–E101 (FRONTEND, nota breve — detalle en REPORTE-FRONTEND.md)
+Lo que la sección de arriba (E89–E95) marcaba como "Falta" ya se hizo: resto de pantallas de tablas vestidas, y el **MARCO** (riel de íconos + barra de módulo + menú agrupado, D-105) desplegado. Detalle pantalla por pantalla en `REPORTE-FRONTEND.md`.
+
+## Actualización E102-E106 + post-autosuficiencia (2026-08-09)
+Plan de "autosuficiencia" **CERRADO Y DESPLEGADO** — objetivo: que captura + catálogos se operen 100% desde el sistema. Detalle completo y contratos vivos en `PENDIENTES-BACKEND.md` y `MAPA-CAPTURA.md` (fuente de verdad); resumen aquí para que este archivo no se desincronice:
+- **Tema 2 (D-120..124):** línea de proyecto (`fn_ajustar_linea_proyecto`), aportación de socio genérica (`fn_registrar_aportacion_socio`, 3 naturalezas), origen de fondeo en anticipo, `v_deuda_socios`. Miguel ya opera esto solo.
+- **P1 (D-125..128):** Directorio autosuficiente — `recibe_pagos` + rastro de captura, `v_directorio_contrapartes`, picker de gasto desacoplado de `clase`.
+- **P2 (D-129..132):** Conceptos de costo y Cuentas (banco/virtual) autoservibles.
+- **Fase 1 (D-133):** puerta única "+ Registrar" en Tesorería (chooser de intención) + `fn_traspaso` saneado.
+- **Fase 2a/2b (D-134/135):** Categorías de deducción y de gasto autoservibles (antes CHECK fijo).
+- **Fase 2c (D-136/137):** Editar productos/variedades + permisos unificados a `capturar`. **Confirmado en producción por Miguel** (capturas de pantalla).
+- **Fase 3:** moneda (USD/MXN) centralizada en `ERP.MONEDAS`; enums de sistema confirmados (no son catálogo de usuario).
+- **D-138 (Tema 1, cerrado post-plan):** vista `v_carga_contrapartes` (folio_carga, contraparte_id, contraparte_nombre, rol) une encabezado + contrapartes de línea de costo (proveedores de servicio: flete/comisión/reempaque). "Aplicar a carga" en Tesorería ahora filtra por ID, no por nombre.
+- **D-139 (cerrado post-plan):** `fn_alta_producto` consolidada a una sola firma `(p_nombre, p_codigo_item)`; corrige un bug mudo (el aviso de "parecido a uno existente" nunca se mostraba en producción).
+- **`documentos.entidad='load'` — incertidumbre RESUELTA:** el CHECK constraint de `documentos` sí incluye `'load'` desde D-71 (E76); ya estaba soportado, solo faltaba documentarlo (la duda vivía en un comentario de `modulo-loads.js`, nunca fue un hueco real de backend).
+- **Backlog de liquidación actualizado:** $54,224.70/11 cargas → **$44,224.70/10 cargas** (Cornejos P-043 ya liquidado).
+- **Anclas al cierre:** Cuadre 0.00 · seg 0/0/0 · CxC 565,985.13 · CxP 526,469.78 · JPM 46,808.54 · cargas 85 · folio_max 400.
+
+**Siguiente:** ver `PENDIENTES-BACKEND.md` (🟠 Prioridad media: liga única de venta, diferencia F2 en CxP, liquidar backlog).

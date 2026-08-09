@@ -2039,3 +2039,54 @@ fase: FRONTEND (rediseño visual profesional + flujos operativos). Ver NORTE.md 
 - FIFO auditado — `fn_aplicar_fifo` es SECUENCIAL (más viejo primero, LEAST por carga) y ON-DEMAND (0 triggers, 0 funciones lo llaman). El "reparto" percibido era el prorrateo de pantalla, ya corregido. No requiere fix. Manual ya lo tiene: `fn_aplicar_a_carga` + `fn_desaplicar`.
 - Flujo SO diagnosticado — contabilidad OK: `v_ingreso_reconocido` (por carga_folio: ingreso_reconocido) da los importes reales (SO-0075/0078 = 17,280; SO-0083 = 12,690). Los "ceros" eran de pantalla (calculaba cajas×precio de sales_order_cargas, NULL). Deuda estructural: doble liga sales_order_cargas/lote_ventas.
 - ANCLAS al cierre E101: Cuadre 0.00 · seg 0/0/0 · CxP directo 496,368.03 · CxC directo 570,023.13 · JPM ~79,261 (con cobro Crystal mov 389 +70k). CxP atribuido (pantalla) espeja el Drive por proveedor.
+## Sesión E102-E106 (2026-08-09) — Autosuficiencia (Tema 2 + P1 + P2 + Fase 1/2a/2b/2c/3)
+Objetivo: que lo rutinario (captura + catálogos) se opere 100% desde el sistema, sin depender de
+que el chat de backend lo haga a mano, dejando el motor contable protegido. Plan CERRADO Y
+DESPLEGADO. Detalle vivo en `PENDIENTES-BACKEND.md`/`MAPA-CAPTURA.md`.
+
+### Tema 2 — Línea de proyecto + socios
+- D-120 — `fn_ajustar_linea_proyecto(p_proyecto, p_nueva_linea, p_motivo)`: ajusta el monto de la línea de crédito de un proyecto. Money-neutral, candado backend ≥ dispuesto (no se puede bajar la línea por debajo de lo ya dispuesto). Frontend: botón "Ajustar línea" en ficha de Proyecto.
+- D-121 — `fn_registrar_aportacion_socio(...)`: RPC genérica para las 3 naturalezas de aportación (préstamo sin interés / financiamiento con tasa / custodia), reemplaza captura ad-hoc por backend. Frontend: "+ Aportación de socio" en Tesorería/Proyecto.
+- D-122 — Origen de fondeo opcional en `fn_anticipo_productor` (retrocompatible, NULL = sin cambio de comportamiento). Frontend: selector Origen en el panel de Anticipo.
+- D-123 — Balance "Deuda a socios" generalizado (antes solo cubría un caso) + vista `v_deuda_socios`.
+- D-124 — Verificación end-to-end: Miguel ya opera línea de proyecto + aportación de socio + anticipo con origen él solo (folio 397, PRJ-005).
+
+### P1 — Directorio autosuficiente
+- D-125 — `contrapartes.recibe_pagos` (bool) + `capturado_por`/`capturado_ts` (rastro de quién/cuándo dio de alta cada contraparte).
+- D-126 — Picker de "Registrar gasto" desacoplado de `clase`: antes solo mostraba clase='gasto', ahora cualquier contraparte con `recibe_pagos=true` puede recibir un gasto tipo Sueldo (Samuel/Juan ya salen, sin ser clase='gasto').
+- D-127 — `fn_alta_contraparte`/`fn_editar_contraparte` ganan el parámetro `recibe_pagos` + guardan el rastro de captura.
+- D-128 — Vista `v_directorio_contrapartes` (fuente para el panel de gestión de Catálogos → Directorio).
+
+### P2 — Catálogos autoservibles
+- D-129 — Conceptos de costo autoservibles: `fn_alta_concepto_costo`/`fn_editar_concepto_costo` + tabla/vista de catálogo. Antes el selector de "+ Agregar costo" en la ficha de carga dependía de una lista fija.
+- D-130 — Cuentas: columna `tipo` (`banco`|`virtual`) para distinguir cuentas de banco real de bolsas virtuales de socio (JEAMS, SAMUEL).
+- D-131 — `fn_alta_cuenta`/`fn_editar_cuenta`: solo permiten crear/editar cuentas `tipo='banco'` (las virtuales se gestionan aparte, tocan balance directo).
+- D-132 — Balance "Banco" recalculado por `tipo='banco'` en vez de una lista hardcoded de ids de cuenta.
+
+### Fase 1 — Puerta única de captura
+- D-133 — `fn_traspaso(p_origen, p_destino, p_monto, p_fecha, p_nota=null)` saneado: gate de permiso (`capturar`), `fn_actor()` para el rastro, folios asignados por rango dedicado. Frontend: los 4 botones sueltos de Tesorería (+ Movimiento / + Registrar gasto / + Anticipo / + Aportación) se reemplazan por un botón único "+ Registrar" que abre un chooser de intención (Cobro/pago de carga · Gasto de operación · Anticipo a productor · Aportación de socio · Traspaso entre cuentas) y enruta al panel correspondiente — ninguno de los 4 paneles cambió, solo el punto de entrada, más el panel nuevo de Traspaso.
+
+### Fase 2a — Categoría de deducción
+- D-134 — Tabla `categorias_deduccion` + `fn_alta_categoria_deduccion(p_codigo, p_nombre)` (el código se normaliza en backend a minúsculas_con_guiones) + `fn_editar_categoria_deduccion(p_id, p_nombre=null, p_activo=null, p_orden=null)` + vistas `v_categorias_deduccion`/`_admin`. `liquidacion_deducciones.categoria` pasó de CHECK fijo (7 valores) a FK al catálogo. Frontend: pestaña de gestión en Catálogos + el selector de "+ Agregar deducción" en Liquidaciones ahora lee la vista.
+
+### Fase 2b — Categorías de gasto
+- D-135 — `tipos_movimiento.activo` (columna nueva) + `fn_alta_categoria_gasto(p_nombre, p_grupo='gasto_operativo')` (clona el comportamiento contable del grupo elegido — `gasto_operativo` o `gasto_financiero`, candado impide crear tipos estructurales como 'Cliente'/'Proveedor') + `fn_editar_categoria_gasto(p_tipo, p_activo)` (solo activa/desactiva, `tipo` es la llave, sin rename) + vistas `v_categorias_gasto`/`_admin`. Frontend: pestaña de gestión + "Registrar gasto" lee el catálogo en vez del hardcode `TIPOS_GASTO`.
+
+### Fase 2c — Editar productos/variedades
+- D-136 — `fn_editar_producto(p_id, p_nombre=null, p_codigo_item=null, p_activo=null)` / `fn_editar_variedad(p_id, p_nombre=null, p_activo=null)`. NULL=no tocar. Rechazan nombre/código duplicado con mensaje claro.
+- D-137 — Permisos de las 5 RPCs de producto/variedad (alta+editar de ambos, más una quinta) unificados a `capturar` — 2 de ellas no tenían gate explícito antes (hueco cerrado). Frontend: botón "Editar" en Catálogos → Productos/Variedades + gate del módulo alineado a `capturar`. **✅ Confirmado en producción por Miguel** (capturas de pantalla, 2026-08-09): el botón existe y funciona (nombre, código de ítem, Activo, "Guardar cambios").
+
+### Fase 3 — limpieza
+- Moneda (USD/MXN) centralizada en `ERP.MONEDAS` (comun.js) — antes duplicada literal en 3 archivos frontend (modulo-ventas.js, modulo-comercial.js, modulo-ordenes.js). No numerada como D-## (limpieza de frontend, no cambio de backend).
+- Seeds de categorías de documento/evento/presupuesto confirmados como enums de sistema — no requieren panel de gestión de usuario.
+- Estado de Load (`en_origen|en_cruce|en_transito|entregado`) decidido como enum fijo — no es catálogo de usuario, queda igual.
+
+**ANCLAS al cierre E102-E106:** Cuadre 0.00 · seg 0/0/0 · CxC 565,985.13 · CxP 526,469.78 · JPM ~50,308.54 (antes de capturas de Miguel post-sesión) · cargas 85 · folio_max ~401.
+
+## Sesión post-autosuficiencia (2026-08-09) — Tema 1 (D-138) + consolidación fn_alta_producto (D-139)
+- D-138 — Tema 1, filtro de "Aplicar a carga" (backend + frontend, cerrado y desplegado): vista nueva `v_carga_contrapartes` (folio_carga, contraparte_id, contraparte_nombre, rol['cliente'|'proveedor'|'costo']) — una fila por combinación carga↔contraparte↔rol, une el cliente/proveedor de ENCABEZADO con las contrapartes de línea de costo (proveedores de SERVICIO: flete/comisión/reempaque, ej. SUAREZ BROKERAGE en P-076, que antes nunca aparecían porque solo viven en `carga_costos.contraparte_id`). `modulo-tesoreria.js` → `editarMovimiento()`: el selector "Aplicar a carga" ahora filtra por **ID** contra esta vista en vez de por nombre contra el encabezado (`v_carga_detalle`). Verificado en vivo (4 casos: proveedor de servicio, regresión con proveedor normal, fallback sin contraparte_id, toggle "Ver todas"), `node --check` limpio. Commit `04e8be3` (Claude Code, solo `.md` aparte del código).
+- D-139 — Consolidar `fn_alta_producto` (backend): unificada a una sola firma `(p_nombre, p_codigo_item)` con detección de duplicado exacto (RAISE) y de "parecido" (warning en `data[0].advertencia`). Antes había 2 firmas vivas: la de 1-arg (con la validación de "parecido", pero sin call-site en el frontend) y la de 2-arg (la que sí usaba `modulo-catalogos.js`, SIN esa validación) — el aviso de "parecido a uno existente" nunca se mostraba en producción porque el frontend esperaba `data[0].advertencia` y la función viva no la mandaba. La fusión corrige ese bug mudo sin tocar frontend (el front ya esperaba esa forma de respuesta).
+- `documentos.entidad='load'` — confirmado que el CHECK constraint de la tabla `documentos` SÍ incluye `'load'` desde D-71 (E76); ya estaba soportado, solo faltaba documentarlo (la incertidumbre vivía en un comentario de `modulo-loads.js`, nunca fue un hueco real de backend).
+- Backlog de liquidación actualizado: 4 productores / 11 cargas / $54,224.70 → **4 productores / 10 cargas / $44,224.70** (Cornejos P-043, $10,000, ya se liquidó; queda Cornejos P-047 $11,571.20, Carrifoods 6 $20,329.50, Akambarhu P-073/075 $11,874, Agrofepac P-071 $450).
+
+**ANCLAS al cierre de esta sesión:** Cuadre 0.00 · seg 0/0/0 · CxC 565,985.13 · CxP 526,469.78 · JPM 46,808.54 · cargas 85 · folio_max 400.

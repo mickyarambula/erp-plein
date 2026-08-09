@@ -17,7 +17,7 @@ Plein Produce LLC, trading de fruta/verdura fresca. ERP a medida en Supabase. Mo
 ## HECHO (continuidad, E86)
 - **BASE CERRADA / lista para uso real** (A-16 auditada, 0 espejos fantasma). Ya NO se audita backend; foco = usar el ERP con datos reales.
 - **Liquidaciones PACA EN USO REAL.** Miguel emitió su 1ª liquidación real **LQ-2026-0002** (Cornejos, P-019+P-021, bruto $103,624.50, saldo $13,464.02). Flujo: "Liquidación automática" → revisa desglose → emitir → PDF account-of-sales con membrete. Reversible (anular).
-- **Señal "listo para liquidar" en 4 lugares:** agenda de la semana, panel arriba del módulo Liquidaciones (cards por productor), badge en el menú, y chip en la ficha del embarque. **Backlog:** 4 productores / 11 cargas / **$54,224.70** (Cornejos P-043/047, Carrifoods 6, Akambarhu P-073/075, Agrofepac P-071).
+- **Señal "listo para liquidar" en 4 lugares:** agenda de la semana, panel arriba del módulo Liquidaciones (cards por productor), badge en el menú, y chip en la ficha del embarque. **Backlog (actualizado 2026-08-09):** 4 productores / 10 cargas / **$44,224.70** — Cornejos P-043 ($10,000) ya se liquidó; queda Cornejos P-047, Carrifoods 6, Akambarhu P-073/075, Agrofepac P-071.
 - **Akambarhu CERRADO:** préstamos = disposiciones de Proyectos (no ligadas a carga); sus cargas = consignación normal. No es duda abierta.
 - **P-035** (rechazo Candy Fresh) sigue corregido (D-96): deuda viva $2,505.
 
