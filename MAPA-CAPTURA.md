@@ -1,5 +1,5 @@
 # MAPA-CAPTURA.md — Fuente única de captura y catálogos (ERP Plein)
-_Coordina el chat de BACKEND (Supabase) y Claude Code (frontend). Se construye sobre `INVENTARIO-CAPTURA-CATALOGOS.md` (inventario crudo) + el diseño acordado. Última actualización: E104, Fase 1 hecha._
+_Coordina el chat de BACKEND (Supabase) y Claude Code (frontend). Se construye sobre `INVENTARIO-CAPTURA-CATALOGOS.md` (inventario crudo) + el diseño acordado. Última actualización: E106, **plan completo Fase 1→3 CERRADO**._
 
 ## Para qué sirve
 Antes de tocar cualquier captura o catálogo, los dos chats consultan este mapa. Define **qué lista va en qué cajón** (y por lo tanto quién la alimenta), cómo se organiza la captura, y qué huecos faltan. El objetivo: **todo lo rutinario se hace desde el sistema; el motor contable queda protegido.**
@@ -8,8 +8,6 @@ Antes de tocar cualquier captura o catálogo, los dos chats consultan este mapa.
 
 ## La regla — 3 cajones
 
-Toda "lista" que aparece al capturar cae en uno de estos:
-
 ### 🟩 Cajón 1 — Catálogos que el usuario alimenta
 Regla dura: **cada uno debe tener panel de gestión (alta/edición) Y estar conectado a su picker.**
 
@@ -17,51 +15,58 @@ Regla dura: **cada uno debe tener panel de gestión (alta/edición) Y estar cone
 |---|---|---|---|
 | Contrapartes (cliente/proveedor/socio/gasto) | ✅ Directorio Comercial | ✅ | **Listo** (P1, D-125..128) |
 | Cuentas de banco | ✅ Catálogos → Cuentas | ✅ | **Listo** (P2, D-130..132) |
-| Conceptos de costo | ✅ Catálogos → Conceptos | ✅ (+Agregar costo en carga) | **Listo** (P2, D-129) |
-| Productos | ⚠️ solo alta | ✅ | 🟠 falta EDITAR (Fase 2c) |
-| Variedades | ⚠️ solo alta | ✅ | 🟠 falta EDITAR (Fase 2c) |
-| **Categorías de gasto** (Sueldo, Viáticos…) | ❌ hardcoded (`TIPOS_GASTO`) | — | 🔴 falta panel (Fase 2b) |
-| **Categoría de deducción** (liquidaciones) | ❌ ni tabla (`CATEGORIAS`) | — | 🔴 falta todo (Fase 2a) |
+| Conceptos de costo | ✅ Catálogos → Conceptos | ✅ | **Listo** (P2, D-129) |
+| Categoría de deducción (liquidaciones) | ✅ Catálogos → Categorías de deducción | ✅ | **Listo** (Fase 2a, D-134) |
+| Categorías de gasto | ✅ Catálogos → Categorías de gasto | ✅ | **Listo** (Fase 2b, D-135) |
+| Productos | ✅ alta + editar | ✅ | **Backend listo** (Fase 2c, D-136/137) — front pendiente de correr |
+| Variedades | ✅ alta + editar | ✅ | **Backend listo** (Fase 2c, D-136/137) — front pendiente de correr |
+
+**Cajón 1 completo.** Todo lo que el usuario alimenta ya tiene su panel (backend). Falta un solo despliegue de frontend (2c).
 
 ### 🟦 Cajón 2 — Motor contable (protegido, nunca editable en UI)
-Cada tipo define cómo pega al balance/P&L. Se gestionan SOLO en backend con GATE+ENSAYO.
 - Tipos de movimiento estructurales: **Cliente, Proveedor, Inversión, Anticipo a productor, Financiamiento externo, Pasivo a socio, Traspaso, Comisión, Fletes, Aduanas, Materiales de empaque, Devolución, AJUSTE**.
-- Enums de RPC atados a comportamiento contable: **Naturaleza de aportación** (préstamo sin interés / con tasa / custodia), **Origen del fondeo** (propio/socio), **Tipo de movimiento de línea de proyecto**, **Tipo de movimiento de lote** (merma/rts).
+- Enums de RPC atados a comportamiento contable: Naturaleza de aportación, Origen del fondeo, Tipo de movimiento de línea de proyecto, Tipo de movimiento de lote.
 
-> Nota: "Categorías de gasto" (Cajón 1) SON tipos de movimiento del grupo `gasto_operativo/financiero`, pero todas pegan igual al P&L → agregar una nueva es seguro (clona el comportamiento del grupo). Por eso viven en Cajón 1 con un candado que impide crear tipos estructurales.
+> Categorías de gasto (Cajón 1) SON tipos de movimiento del grupo `gasto_operativo/financiero`, pero agregar uno nuevo es seguro (clona el comportamiento del grupo, candado impide crear tipos estructurales — D-135).
 
 ### ⬜ Cajón 3 — Enums de comportamiento (reglas del sistema; no son catálogo de usuario)
-Respaldados por CHECK constraints o config de negocio. Cambiarlos = cambio de programa, no de captura.
-- Modalidad de carga (margen_fijo/consignación/comisión), estados de carga (`v_estados_carga`, con catálogo backend) y de Load (hardcoded, sin catálogo), Área/Prioridad/Estado de tarea, Absorbe / Fuente de fondeo / Costo financiero (proyecto), Modalidad/Ingreso base/Frecuencia/Vía/Término (programa), **Revenue Model** (4 modelos sembrados: Fixed Fee, Margin per Box, Margin Consignment, Buy & Resell), Moneda (USD/MXN).
+Modalidad de carga, estados de carga/Load, Área/Prioridad/Estado de tarea, Absorbe/Fuente de fondeo, Modalidad/Ingreso base de programa, Revenue Model (4 sembrados), Moneda (ahora `ERP.MONEDAS` centralizado), categorías de documento/evento/presupuesto (confirmadas como CHECK de sistema, Fase 3). **Se quedan como están — confirmado, no son huecos.**
 
 ---
 
 ## La captura — puerta única "+ Registrar" (Fase 1, HECHA)
-En Tesorería, un solo botón **"+ Registrar"** abre "¿Qué vas a registrar?" con intención explícita:
-1. **Cobro o pago de una carga** — entra de cliente / sale a proveedor, ligado a embarque (FIFO) → `capturarMovimiento`
-2. **Gasto de operación** — sueldo, viáticos, renta… no ligado a carga → `formGasto`
-3. **Anticipo a productor** — disposición de línea de proyecto → `capturarAnticipoProductor`
-4. **Aportación de socio** — entra capital de socio → `capturarAportacionSocio`
-5. **Traspaso entre cuentas** — mover entre JPM y bolsas de socio → `formTraspaso` (`fn_traspaso`)
+En Tesorería, un solo botón **"+ Registrar"** abre "¿Qué vas a registrar?":
+1. **Cobro o pago de una carga** → `capturarMovimiento`
+2. **Gasto de operación** → `formGasto` (tipo de gasto ahora lee `v_categorias_gasto`, contextual con beneficiario)
+3. **Anticipo a productor** → `capturarAnticipoProductor`
+4. **Aportación de socio** → `capturarAportacionSocio`
+5. **Traspaso entre cuentas** → `formTraspaso` (`fn_traspaso`)
 
 Atajos directos de Cobranza/CxC y Pagos/CxP (por fila) se conservan aparte.
 
-**Principio transversal:** pickers **contextuales** — muestran solo lo que aplica (ej. "Registrar gasto": tipo Sueldo → solo quien tiene `recibe_pagos`). Aplicar en todo lo que tenga sentido.
+**Principio transversal (aplicado):** pickers contextuales — "Registrar gasto" filtra beneficiario por tipo (Sueldo → solo `recibe_pagos`; Viáticos → mixto; resto → gasto/operativo).
 
 ---
 
-## Plan de build (fases)
+## Plan de build — TODO CERRADO
 
 | Fase | Qué | Backend | Frontend | Estado |
 |---|---|---|---|---|
-| **1** | Puerta "+ Registrar" + Traspaso | `fn_traspaso` saneado (D-133) | router + panel traspaso | ✅ **Hecho** |
-| **2a** | Categoría de deducción autoservible | tabla + RPCs + vista | pestaña + Liquidaciones lee la vista | ⏳ siguiente |
-| **2b** | Categorías de gasto autoservibles | `fn_alta_categoria_gasto` (clona grupo, con candado) + vista | pestaña + Registrar gasto lee la vista | ⏳ |
-| **2c** | Editar productos/variedades | `fn_editar_producto` / `fn_editar_variedad` | botón Editar | ⏳ |
-| **3** | Limpieza: moneda centralizada, estado de Load, confirmar seeds (documento/evento/presupuesto) | según toque | según toque | ⏳ |
+| **1** | Puerta "+ Registrar" + Traspaso | `fn_traspaso` saneado (D-133) | router + panel traspaso | ✅ **Hecho y probado** |
+| **2a** | Categoría de deducción | tabla + RPCs + vista (D-134) | pestaña + Liquidaciones | ✅ **Hecho y probado** |
+| **2b** | Categorías de gasto | `fn_alta_categoria_gasto` + vista (D-135) | pestaña + Registrar gasto | ✅ **Hecho y probado** |
+| **2c** | Editar productos/variedades | `fn_editar_producto/variedad` + permisos (D-136/137) | botón Editar | ⏳ backend listo, **falta correr frontend** |
+| **3** | Moneda centralizada + seeds confirmados | — | `ERP.MONEDAS` en comun.js | ✅ **Hecho y probado** |
 
-## Contrato vivo — `fn_traspaso` (Fase 1)
-`fn_traspaso(p_origen text, p_destino text, p_monto numeric, p_fecha date, p_nota text=null)` → `(folio_egreso int, folio_ingreso int)`. Permiso `capturar`. Cuadre-neutral (par egreso+ingreso tipo `Traspaso`/neutro). Rechaza misma cuenta y monto ≤ 0. Folios por rango de cuenta.
+## Contratos vivos (referencia rápida)
+- `fn_traspaso(p_origen, p_destino, p_monto, p_fecha, p_nota=null)` → `(folio_egreso, folio_ingreso)`. Permiso `capturar`.
+- `fn_alta_categoria_deduccion(p_codigo, p_nombre)` / `fn_editar_categoria_deduccion(p_id, p_nombre=null, p_activo=null, p_orden=null)`.
+- `fn_alta_categoria_gasto(p_nombre, p_grupo='gasto_operativo')` / `fn_editar_categoria_gasto(p_tipo, p_activo)`. Candado: `p_grupo` solo `gasto_operativo`/`gasto_financiero`.
+- `fn_editar_producto(p_id, p_nombre=null, p_codigo_item=null, p_activo=null)` / `fn_editar_variedad(p_id, p_nombre=null, p_activo=null)`. Permiso `capturar` (unificado, D-137).
+
+## Siguiente (fuera de este plan, ya cerrado)
+- **Tema 1** (filtro de cargas por contraparte de servicio) — pendiente, no forma parte de autosuficiencia.
+- **Consolidar `fn_alta_producto` duplicada** — parqueado hasta lectura completa del repo.
 
 ---
-_Mantener este archivo al día conforme se cierran fases. Numeración de decisiones backend: D-### (al cierre de Fase 1: D-133)._
+_Numeración de decisiones backend: D-### (al cierre de esta sesión: D-137)._
