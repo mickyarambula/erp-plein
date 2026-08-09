@@ -3954,3 +3954,55 @@ propaga a los 3 puntos de captura automáticamente.
 **node --check:** ✅ limpio en `comun.js`, `modulo-ventas.js`, `modulo-comercial.js`, `modulo-ordenes.js`.
 
 **NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
+
+---
+## E110 (2026-08-09) — Tema 1: "Aplicar a carga" filtra por ID contra v_carga_contrapartes (D-138)
+_Backend cerró el Tema 1 (D-138): vista nueva `v_carga_contrapartes` (folio_carga, contraparte_id,
+contraparte_nombre, rol['cliente'|'proveedor'|'costo']), una fila por combinación carga↔
+contraparte↔rol — cubre lo que `v_carga_detalle` (solo encabezado `cliente_id`/`proveedor_id`) se
+perdía: proveedores de **servicio** (flete, comisión, reempaque) que solo viven en
+`carga_costos.contraparte_id`, nunca en el encabezado de la carga._
+
+**El bug (antes de este fix):** el selector de "Aplicar a carga" (dentro de "Editar movimiento",
+Tesorería) filtraba comparando **por nombre** (`norm(mov.contraparte) === norm(c.cliente/c.proveedor)`)
+contra `v_carga_detalle`. Un pago a un proveedor de servicio (ej. **SUAREZ BROKERAGE**, que cobra
+flete en P-076 pero nunca aparece como `cliente`/`proveedor` de esa carga) nunca coincidía con
+nada — el combo se quedaba vacío o cafa al "sin cargas de X — mostrando todas", obligando a
+buscar la carga a mano entre TODAS las cargas del catálogo.
+
+**El fix (`modulo-tesoreria.js`, `editarMovimiento()`):**
+- Se agregó `v_carga_contrapartes` al mismo `Promise.all()` de siempre (junto a `cargasCat`),
+  pedida filtrada por `contraparte_id` cuando `mov.contraparte_id` existe
+  (`&contraparte_id=eq.N`) — si el movimiento no tiene contraparte ligada, **ni se hace el fetch**
+  (se resuelve con `Promise.resolve([])`, sin gastar el viaje redondo), cayendo directo al mismo
+  fallback de "mostrar todas" de siempre.
+- `cargasFiltradas` cambió de comparar NOMBRE contra el encabezado a armar un `Set` de
+  `folio_carga` desde `v_carga_contrapartes` (sin importar el rol — cliente, proveedor de
+  producto o proveedor de servicio, los 3 cuentan) y filtrar `cargasCat` contra ese set por
+  **ID**, no por nombre.
+- El checkbox "Ver todas las cargas" y el resto de `formAplicarHtml()` **no se tocaron** — sigue
+  exactamente la misma UI/UX, solo cambió de dónde sale el filtro inicial.
+
+**Verificación EN VIVO (harness local + Chrome DevTools MCP; `comun.js` y `modulo-tesoreria.js`
+REALES, solo la red stubbeada; mock con SUAREZ BROKERAGE como proveedor de SERVICIO en P-076,
+rol='costo', ausente del encabezado de esa carga):**
+- ✅ **Caso clave**: editar un movimiento con contraparte SUAREZ BROKERAGE → el combo de "Aplicar
+  a carga" muestra **P-076 directo**, sin marcar "Ver todas" (antes habría salido vacío/con el
+  aviso de "sin cargas de X"). Confirmado que sí se pidió `v_carga_contrapartes` filtrada por
+  `contraparte_id=eq.50`.
+- ✅ **Sin regresión**: un pago a un proveedor normal de encabezado sigue filtrando exactamente
+  igual que antes (solo su carga, sin las de otros).
+- ✅ **Fallback sin contraparte_id**: un movimiento sin contraparte ligada NO dispara el fetch de
+  `v_carga_contrapartes` y cae directo a mostrar todas las cargas, igual que siempre.
+- ✅ El checkbox manual "Ver todas las cargas" sigue alternando correctamente entre el catálogo
+  filtrado y el completo.
+- Harness temporal creado y **borrado** al terminar; no queda basura en el repo.
+
+**node --check:** ✅ limpio en `modulo-tesoreria.js`.
+
+**Cómo probar (para Miguel, después de `npx vercel --prod`):** Tesorería → clic en un movimiento
+con contraparte "Las Brisas Produce" o "SUAREZ BROKERAGE" → Editar → bajar a "Aplicar a carga" →
+debe mostrar P-076 directo, sin necesitar "Ver todas". Confirmar que un pago a un proveedor común
+se sigue filtrando igual que siempre.
+
+**NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
