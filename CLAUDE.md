@@ -56,6 +56,7 @@ La base está **CERRADA** (A-16 auditada, D-97). Foco = cargar datos reales y op
 ## Instrucciones para Claude Code (cuando aplique)
 - SIEMPRE en bloque de código para pegar en Terminal, sin excepción por longitud. Nunca crear archivo descargable salvo que Miguel lo pida.
 - Claude Code toca **solo frontend**; nunca el esquema de Supabase (regla dura). Verificar que exista el call-site en frontend antes de envolver un RPC. Verificar columnas/vistas EN VIVO antes de programar. `node --check` limpio; NO desplegar (Miguel corre `npx vercel --prod`). Actualizar REPORTE-FRONTEND.md.
+- **Commit + push automático de documentación (regla permanente, autorizada de antemano):** al cierre de cada sesión, o cada vez que se actualice REPORTE-FRONTEND.md u otro `.md`, hacer `git add` + `git commit` + `git push` de esos archivos `.md` con un mensaje descriptivo — **sin pedir permiso**, ya autorizado por Miguel. Esto cubre SOLO documentación (`.md`); el código (`.js`/`.css`/`.html`) nunca se commitea/push sin que Miguel lo pida explícitamente en esa sesión.
 
 ## Prompts de continuación (7 secciones fijas)
 (1) sesión/objetivo · (2) estado plan maestro (0→A→B→C→D→E→F) · (3) anclas numéricas al cierre · (4) infraestructura viva (vistas/RPCs/frontend) · (5) pendientes parqueados con dueño · (6) tarea de sesión · (7) protocolo. En un solo bloque de código autocontenido.

@@ -3801,3 +3801,156 @@ sin catálogo. Ahora tiene pantalla de gestión propia y el picker lee la vista 
 **node --check:** ✅ limpio en `modulo-catalogos.js` y `modulo-liquidaciones.js`.
 
 **NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
+
+---
+## E107 (2026-08-09) — Fase 2b: "Categorías de gasto" autoservibles (backend D-135)
+_Cierra el gap #2 del inventario de captura (`TIPOS_GASTO`, 7 valores hardcoded en
+`modulo-tesoreria.js`): ahora tiene pantalla de gestión propia y "Registrar gasto" lee la vista
+en vivo. Mismo patrón que Fase 2a (Categorías de deducción, E106)._
+
+**A) Nueva pestaña "Categorías de gasto" — `modulo-catalogos.js`.** A diferencia de
+Conceptos/Deducciones, aquí **`tipo` es la llave** (texto, sin id numérico — lo confirma la vista
+`v_categorias_gasto_admin`), y la RPC de edición **solo activa/desactiva** (no hay rename: "el
+tipo es llave"). Por eso el patrón se simplificó respecto a Fase 2a:
+- Lista desde `v_categorias_gasto_admin` (activas primero, `&order=activo.desc,tipo.asc`):
+  **Tipo**, **Grupo** (badge "Operativo" / "Financiero" — ambar para financiero), **Estado**
+  (badge Activo/Inactivo), **Usos** (cuántos movimientos ya lo usan).
+- "+ Nueva categoría de gasto": Nombre + selector Tipo (Operativo=`gasto_operativo` por default /
+  Financiero=`gasto_financiero`) → `fn_alta_categoria_gasto(p_nombre, p_grupo)`. El backend
+  rechaza grupo fuera de esos 2 valores (nunca "estructural") y nombres duplicados — mensaje tal
+  cual.
+- **Sin panel de edición**: por fila hay un botón inline "Activar"/"Desactivar" (no hace falta un
+  drawer completo para un solo booleano) → `fn_editar_categoria_gasto(p_tipo, p_activo)`. Si la
+  categoría ya tiene `usos > 0` y se va a desactivar, se pide confirmación explicando que NO borra
+  el historial, solo la retira del selector — cancelable, no bloquea.
+- Gate: `ERP.puede('capturar')`, igual que el resto de P1/P2.
+
+**B) "Registrar gasto" — `modulo-tesoreria.js` (`formGasto`).**
+- La constante `TIPOS_GASTO` (7 valores fijos) se **eliminó por completo** — confirmado por grep
+  que no se usaba en ningún otro archivo del repo, solo en este mismo (build del `<select>` y una
+  validación de submit).
+- `formGasto()` ahora también pide `q('v_categorias_gasto','&order=tipo.asc')` (solo activas) en
+  el mismo `Promise.all` que beneficiarios/cuentas; si el catálogo viene vacío, lanza error y no
+  deja abrir el form (mismo criterio que ya tenía "cuentas" — es un campo obligatorio, no hay
+  default seguro al que degradar, a diferencia de la categoría de deducción que sí tenía
+  'general').
+- El `<select id="gTipo">` arma sus opciones desde ese catálogo (`value=tipo`, texto=`tipo`).
+- La validación en `guardarGasto()` cambió de `TIPOS_GASTO.includes(tipo)` a solo `!tipo` — como
+  el `<select>` únicamente puede contener valores que vinieron del catálogo, no hace falta
+  revalidar contra una lista aparte.
+- **El filtro contextual de beneficiario (`beneficiariosParaTipo`, E104) no se tocó**: Sueldo →
+  `recibe_pagos`; Viaticos → `recibe_pagos` O clase∈(gasto,operativo); cualquier otro tipo
+  (incluidas categorías nuevas del catálogo) → clase∈(gasto,operativo). Sigue funcionando igual
+  porque solo depende del STRING del tipo elegido, no de dónde salió la lista de tipos.
+
+**Verificación EN VIVO (harness local + Chrome DevTools MCP; `comun.js`, `modulo-catalogos.js` y
+`modulo-tesoreria.js` REALES, solo la red stubbeada):**
+- ✅ Pestaña "Categorías de gasto": activas primero, badges Grupo/Estado correctos, columna Usos.
+- ✅ Alta ("Renta de bodega", grupo Financiero) → `fn_alta_categoria_gasto({p_nombre:'Renta de
+  bodega', p_grupo:'gasto_financiero'})`.
+- ✅ Toggle Desactivar con `usos>0` ("Sueldo", 12 usos): cancelar el confirm → NO llama al RPC;
+  aceptar → `fn_editar_categoria_gasto({p_tipo:'Sueldo', p_activo:false})`.
+- ✅ **Integración end-to-end**: tras desactivar "Sueldo" y crear "Renta de bodega" en Catálogos,
+  el `<select>` de "Registrar gasto" en Tesorería refleja ambos cambios de inmediato (Sueldo
+  desaparece, Renta de bodega aparece) — sin recargar la página.
+- ✅ Filtro contextual de beneficiario intacto: tipo Viaticos → Samuel (recibe_pagos) + proveedor
+  de gasto; tipo Gastos Financieros ("cualquier otro") → solo el proveedor de gasto, sin Samuel.
+- ✅ Guardar un gasto con la categoría nueva → `fn_capturar_mov` recibe `p_tipo:'Renta de bodega'`.
+- Harness temporal creado y **borrado** al terminar; no queda basura en el repo.
+
+**node --check:** ✅ limpio en `modulo-catalogos.js` y `modulo-tesoreria.js`.
+
+**NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
+
+---
+## E108 (2026-08-09) — Fase 2c: Editar en Productos/Variedades + gate alineado a 'capturar' (D-136/D-137)
+_Cierra el último gap de permisos desalineado en Catálogos: productos/variedades eran las únicas
+2 pestañas del módulo que seguían gateadas a `administrar` mientras el backend ya las movió a
+`capturar` (decisión de Miguel: se gestionan igual que contrapartes/conceptos/cuentas/categorías).
+También cierra el gap de "solo alta, nunca edición" en esas 2 pestañas._
+
+**A) Editar producto.** Botón "Editar" nuevo por fila (`formEditarProducto`/`guardarEditarProducto`)
+→ formulario con Nombre, Código de ítem y toggle Activo → `fn_editar_producto(p_id, p_nombre,
+p_codigo_item, p_activo)` — diff (NULL=no tocar; `''` explícito si el código se vació a propósito;
+guard "no cambiaste ningún valor"). El backend rechaza nombre o código duplicado — mensaje tal
+cual. **Sin vista nueva**: `v_catalogo_productos` ya se leía con `select=*` (patrón fijo de
+`q()` en `comun.js`), así que `codigo_item`/`activo` ya venían en cada fila aunque nadie los
+usara antes — no hizo falta pedir nada aparte.
+
+**B) Editar variedad.** Las variedades se mostraban como chips de solo lectura dentro de la fila
+de su producto (sin ninguna interacción). Ahora, con permiso de captura, cada chip es un
+`<button>` clicable (`formEditarVariedad`/`guardarEditarVariedad`) → Nombre + toggle Activo →
+`fn_editar_variedad(p_id, p_nombre, p_activo)` — mismo patrón de diff. Sin permiso de captura, el
+chip sigue siendo el `<span class="alias-chip solo-ver">` de siempre (sin regresión visual para
+lectores). Reutiliza la clase `.alias-chip` ya existente — cero CSS nueva.
+
+**Indicador visual de inactivo (extra, sin pedirlo explícito, pero natural al agregar el toggle):**
+fila de producto atenuada (`color:var(--i2)`) + badge "Inactivo" cuando `p.activo === false`;
+chip de variedad atenuado con el mismo color cuando `v.activo === false`. Ninguna columna/clase
+CSS nueva — reusa el patrón de texto atenuado ya usado en el resto del archivo.
+
+**C) Gate de permiso — `barra()` y `pintarProductos()`.** El único `ERP.puede('administrar')` que
+quedaba en todo el módulo (variable `admin` en `barra()`, usada solo para decidir si mostrar
+"+ Nuevo producto") se eliminó; ahora `puedeAlta = puedeCap` para las 7 pestañas por igual
+(contrapartes, productos, conceptos, cuentas, deducciones, gastos). Mensaje de solo-lectura
+unificado a "necesitas permiso de captura" (antes decía "el alta de productos es de
+administrador"). Comentario de cabecera del archivo actualizado para reflejar que **todo** el
+módulo es ahora `capturar` — no queda ninguna pestaña en `administrar`.
+
+**Verificación EN VIVO (harness local + Chrome DevTools MCP; `comun.js` y `modulo-catalogos.js`
+REALES, solo la red stubbeada; perfil de prueba = Samuel, rol `operacion`, `puede_capturar:true`
+/ `puede_administrar:false` — el caso exacto que antes NO veía estos botones):**
+- ✅ Con Samuel (sin `administrar`): "+ Nuevo producto", botón "Editar" por producto, y chips de
+  variedad clicables — los 3 aparecen (antes de este cambio, ninguno habría aparecido).
+- ✅ Editar producto: precarga nombre/código/activo reales; cambiar solo el código →
+  `fn_editar_producto` recibe `{p_id:1, p_nombre:null, p_codigo_item:'MNG-02', p_activo:null}`.
+- ✅ Rechazo de nombre duplicado: renombrar a un nombre ya usado por otro producto → el mensaje
+  del backend ("Ya existe un producto con ese nombre.") se muestra tal cual, sin interpretarlo.
+- ✅ Editar variedad (clic en el chip "Ataulfo tardio", inactiva): título muestra "Variedad —
+  Producto"; precarga `activo=false`; reactivar → `fn_editar_variedad` recibe
+  `{p_id:11, p_nombre:null, p_activo:true}`.
+- ✅ Guard "sin cambios": guardar sin tocar nada → no llama al RPC, avisa en el form.
+- ✅ Indicador visual: fila de "Papaya Maradol" (inactivo) y chip de "Ataulfo tardio" (inactiva)
+  con `style="color:var(--i2)"` aplicado correctamente.
+- ✅ Con perfil de solo lectura (`puede_capturar:false`): ni "+Nuevo" ni "Editar" ni chips
+  clicables — los chips de variedad caen al `<span class="alias-chip solo-ver">` de siempre.
+- Harness temporal creado y **borrado** al terminar; no queda basura en el repo.
+
+**node --check:** ✅ limpio en `modulo-catalogos.js`.
+
+**NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
+
+---
+## E109 (2026-08-09) — Centralizar la constante de moneda (USD/MXN)
+_Limpieza de duplicación detectada en el inventario de captura: la lista USD/MXN vivía repetida
+literal en 3 archivos. Sin cambio de comportamiento — mismos valores, mismo orden, mismos labels._
+
+**PASO 1 — diagnóstico.** `grep` por archivos con `USD` y `MXN` a la vez → exactamente 3:
+`modulo-ventas.js` (`#soMoneda`, "Nueva orden de venta"), `modulo-comercial.js` (`#cMoneda`,
+Cotización/Orden de compra — motor genérico `TIPOS`), `modulo-ordenes.js` (`#ocMoneda`, "Nueva
+orden de compra"). Los 3 tenían el **mismo literal exacto**, carácter por carácter:
+`<select id="X"><option value="USD">USD</option><option value="MXN">MXN</option></select>`
+— solo cambiaba el `id` del `<select>`. No era un array JS repetido, era HTML inline duplicado.
+(Los usos sueltos de `'USD'` como valor default de fallback, ej. `moneda || 'USD'` al mostrar una
+orden ya guardada, NO son parte de esta lista — son un valor por default distinto, se dejaron
+intactos a propósito.)
+
+**PASO 2 — centralización.** Nueva constante `MONEDAS = ['USD', 'MXN']` en `comun.js`, junto a los
+demás helpers de Formato (`num`/`fmt`/`usd`), expuesta como `ERP.MONEDAS`. Los 3 archivos ahora
+arman su `<select>` con `${MONEDAS.map(m => \`<option value="${m}">${m}</option>\`).join('')}` en
+vez del HTML literal — agregar o quitar una moneda a futuro es un cambio en un solo lugar que se
+propaga a los 3 puntos de captura automáticamente.
+
+**Verificación EN VIVO (harness local + Chrome DevTools MCP; `comun.js`, `modulo-ventas.js`,
+`modulo-comercial.js` y `modulo-ordenes.js` REALES, solo la red stubbeada):**
+- ✅ `ERP.MONEDAS` expuesto correctamente (`["USD","MXN"]`).
+- ✅ "Nueva orden de venta" (`#soMoneda`): 2 opciones, USD/MXN, mismo texto/value de siempre.
+- ✅ "Nueva cotización" (`#cMoneda`, modulo-comercial.js): idéntico.
+- ✅ "Nueva orden de compra" (`#ocMoneda`): idéntico.
+- Sin regresión de comportamiento visible: mismas 2 opciones, mismo orden, USD sigue siendo la
+  primera (default del navegador al abrir el form, igual que antes).
+- Harness temporal creado y **borrado** al terminar; no queda basura en el repo.
+
+**node --check:** ✅ limpio en `comun.js`, `modulo-ventas.js`, `modulo-comercial.js`, `modulo-ordenes.js`.
+
+**NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
