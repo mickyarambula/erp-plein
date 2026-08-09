@@ -60,6 +60,12 @@ window.ERP = (function () {
 
   /* ============ Formato ============ */
 
+  /** Monedas que ofrece el ERP en los selectores de "Nueva orden de venta"/"Cotización-Orden de
+      compra"/"Orden de compra" (antes repetido literal en 3 archivos: modulo-ventas.js,
+      modulo-comercial.js, modulo-ordenes.js). Única fuente — agregar una moneda aquí la propaga
+      a los 3 sin tocar cada archivo. */
+  const MONEDAS = ['USD', 'MXN'];
+
   const num = v => (v === null || v === undefined || v === '') ? 0 : Number(v);
 
   const fmt = n => num(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -650,7 +656,7 @@ window.ERP = (function () {
 
   return {
     sb, q, rpc, eq, limpiarCache, recargar,
-    num, fmt, fmt0, usd, usd0, pct, utilidadColor, utilidadTexto, margenTexto, cablearInfoNota, estatusCobro, chipCobroHTML, venc, fecha, mesTexto, esc, norm, semaforo, estadoEmbarque, badgeEstado, cargarEstados, catalogoEstados, estadoInfo, folioNormalizado,
+    num, fmt, fmt0, usd, usd0, pct, MONEDAS, utilidadColor, utilidadTexto, margenTexto, cablearInfoNota, estatusCobro, chipCobroHTML, venc, fecha, mesTexto, esc, norm, semaforo, estadoEmbarque, badgeEstado, cargarEstados, catalogoEstados, estadoInfo, folioNormalizado,
     columna, tablaAuto, etiqueta, enlazarFolios, detallePor, crearCombo,
     abrirPanel, panelCuerpo, cerrarPanel, panelAbierto, toast, enviarPorCorreoDoc,
     registrar, moduloExiste, ir, irModulo, rutaActual, despachar,

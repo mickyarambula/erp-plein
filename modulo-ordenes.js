@@ -15,7 +15,7 @@
 
 (function () {
   'use strict';
-  const { q, rpc, esc, usd, num } = ERP;
+  const { q, rpc, esc, usd, num, MONEDAS } = ERP;
 
   const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   function fecha4(f) {
@@ -284,7 +284,7 @@
           <div class="campo ancho"><label>Proveedor <span class="req">*</span></label><div id="ocProv"></div>
             <div class="alias-ayuda">Solo proveedores comerciales. Los días de crédito se heredan del proveedor.</div></div>
           <div class="campo"><label>Moneda</label>
-            <select id="ocMoneda"><option value="USD">USD</option><option value="MXN">MXN</option></select></div>
+            <select id="ocMoneda">${MONEDAS.map(m => `<option value="${m}">${m}</option>`).join('')}</select></div>
           <div class="campo"><label>Entrega estimada</label>
             <input id="ocEntrega" type="date"></div>
           <div class="campo ancho"><label>Embarque ligado (opcional)</label><div id="ocCarga"></div>

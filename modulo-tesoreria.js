@@ -24,11 +24,8 @@
   /* "Registrar gasto" cubre SOLO costo fijo/administrativo. El costo operativo ligado a
      un embarque (fletes, aduanas, comisión, empaque) NO va aquí: tiene su propio camino
      por la ficha de carga → costos, para no desconectarlo de la rentabilidad de su carga.
-     Por eso p_tipo se limita a estas 7, nunca 'Cliente'/'Proveedor'. */
-  const TIPOS_GASTO = [
-    'Gastos Administrativos', 'Gastos Financieros', 'Otros gastos',
-    'Paca', 'Sueldo', 'Viaticos', 'Seguro'
-  ];
+     p_tipo nunca es 'Cliente'/'Proveedor' — el selector de tipos (Fase 2b, D-135) ahora sale de
+     v_categorias_gasto (Catálogos → "Categorías de gasto"), no de una lista fija en el código. */
 
   /* ================= Resúmenes (lo que ya existía) ================= */
 
@@ -409,15 +406,18 @@
     ERP.abrirPanel('Registrar gasto', 'Costo fijo o administrativo — no ligado a una carga',
       '<div class="skel">Cargando catálogos…</div>');
 
-    let beneficiariosCat, cuentas;
+    let beneficiariosCat, cuentas, tiposGastoCat;
     try {
-      [beneficiariosCat, cuentas] = await Promise.all([
+      [beneficiariosCat, cuentas, tiposGastoCat] = await Promise.all([
         // Sin filtro de clase= aquí: se trae TODO (incluye socios) y se filtra en el cliente
         // según el Tipo de gasto elegido (beneficiariosParaTipo), no en la query.
         q('v_catalogo_beneficiarios_gasto', '&order=nombre.asc'),
-        q('v_catalogo_cuentas', '&order=id.asc')
+        q('v_catalogo_cuentas', '&order=id.asc'),
+        // Fase 2b (D-135): tipos de gasto en vivo (solo activos), ya no una lista fija en el código.
+        q('v_categorias_gasto', '&order=tipo.asc')
       ]);
       if (!cuentas.length) throw new Error('no hay cuentas en el catálogo');
+      if (!tiposGastoCat.length) throw new Error('no hay categorías de gasto en el catálogo');
     } catch (e) {
       ERP.abrirPanel('Registrar gasto', '', `<div class="errbox">
         No se pudieron leer los catálogos: ${esc(e.message)}<br>Intenta de nuevo.</div>`);
@@ -436,7 +436,7 @@
             <label>Tipo de gasto <span class="req">*</span></label>
             <select id="gTipo">
               <option value="">Elige un tipo…</option>
-              ${TIPOS_GASTO.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}
+              ${tiposGastoCat.map(c => `<option value="${esc(c.tipo)}">${esc(c.tipo)}</option>`).join('')}
             </select>
           </div>
           <div class="campo">
@@ -522,7 +522,9 @@
     limpiarAvisoG();
 
     if (!beneficiario) { avisoG('err', 'Elige un beneficiario de la lista.'); return; }
-    if (!TIPOS_GASTO.includes(tipo)) { avisoG('err', 'Elige un tipo de gasto.'); return; }
+    // El <select> solo se llena con tipos del catálogo (v_categorias_gasto) — cualquier valor no
+    // vacío ya es válido; no hace falta una lista aparte para revalidarlo.
+    if (!tipo) { avisoG('err', 'Elige un tipo de gasto.'); return; }
     if (!cuenta) { avisoG('err', 'Elige una cuenta.'); return; }
     if (!fecha) { avisoG('err', 'La fecha es obligatoria.'); return; }
     if (!(monto > 0)) { avisoG('err', 'El monto debe ser mayor a cero.'); return; }
@@ -536,7 +538,7 @@
         p_descripcion: descripcion,
         p_egreso: monto,                 // magnitud positiva; el backend normaliza el signo
         p_contraparte: beneficiario,     // nombre canónico, clase=gasto
-        p_tipo: tipo,                    // una de las 7; nunca 'Cliente'/'Proveedor'
+        p_tipo: tipo,                    // categoría de gasto elegida; nunca 'Cliente'/'Proveedor'
         p_cuenta: cuenta,
         p_nota: nota || null
         // sin fn_aplicar_fifo: un gasto general no se aplica a ninguna carga

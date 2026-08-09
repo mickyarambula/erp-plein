@@ -1,8 +1,8 @@
-/* Módulo Catálogos — alta y edición de contrapartes (por clase), productos, conceptos de costo
-   y cuentas. Lectura para todos. Escritura: contrapartes/conceptos/cuentas piden permiso
-   'capturar' (P1/P2, D-125..D-132); productos/variedades siguen pidiendo 'administrar'. El
-   backend también valida cada permiso — esta pantalla solo oculta el botón cuando sabe que le
-   van a rechazar la escritura.
+/* Módulo Catálogos — alta y edición de contrapartes (por clase), productos, conceptos de costo,
+   cuentas, categorías de deducción y categorías de gasto. Lectura para todos. Escritura: TODO
+   este módulo pide permiso 'capturar' (P1/P2/Fase 2, D-125..D-137) — incluidos productos y
+   variedades desde Fase 2c (D-136/D-137), ya no 'administrar'. El backend también valida cada
+   permiso — esta pantalla solo oculta el botón cuando sabe que le van a rechazar la escritura.
 
    La palabra "contraparte" es vocabulario de la base, no de la pantalla: aquí cada clase
    se llama por lo que es (cliente, proveedor, beneficiario de gasto, socio). */
@@ -88,7 +88,8 @@
   let conceptosCosto = [];   // v_conceptos_costo_admin: id, nombre, activo
   let cuentas = [];          // v_cuentas_admin: id, nombre, banco, moneda, tipo, capturado_por, capturado_ts, saldo, tiene_movimientos
   let categoriasDed = [];    // v_categorias_deduccion_admin: id, codigo, nombre, activo, orden, capturado_por, capturado_ts
-  let pestana = 'comercial';       // clase | 'productos' | 'conceptos' | 'cuentas' | 'deducciones'
+  let categoriasGasto = [];  // v_categorias_gasto_admin: tipo, grupo, activo, linea, usos — `tipo` es la llave (texto), sin id numérico
+  let pestana = 'comercial';       // clase | 'productos' | 'conceptos' | 'cuentas' | 'deducciones' | 'gastos'
   let subfiltro = 'todos';
   let busqueda = '';
 
@@ -766,6 +767,129 @@
     btn.disabled = false;
   }
 
+  /* ================= Editar producto / variedad (Fase 2c, D-136/D-137) =================
+     fn_editar_producto(p_id, p_nombre=null, p_codigo_item=null, p_activo=null) — NULL=no tocar.
+     fn_editar_variedad(p_id, p_nombre=null, p_activo=null) — NULL=no tocar. Ninguna vista nueva:
+     v_catalogo_productos/v_catalogo_variedades ya se leen con `select=*`, así que codigo_item/
+     activo llegan en la fila aunque nadie los usara antes — se leen tal cual, sin inventar
+     columnas ni pedir nada aparte. */
+
+  function formEditarProducto(p) {
+    const inactivo = p.activo === false;
+    ERP.abrirPanel(esc(p.nombre), inactivo ? 'Inactivo' : 'Activo', `
+      <div class="form-erp">
+        <div class="campos">
+          <div class="campo ancho">
+            <label>Nombre <span class="req">*</span></label>
+            <input id="prEdNombre" type="text" maxlength="80" value="${esc(p.nombre)}">
+          </div>
+          <div class="campo ancho">
+            <label>Código de ítem</label>
+            <input id="prEdCodigo" class="mono" type="text" maxlength="20" value="${esc(p.codigo_item || '')}" placeholder="Opcional">
+          </div>
+          <div class="campo ancho">
+            <label>Estado</label>
+            <div class="checks">
+              <label><input type="checkbox" id="prEdActivo" ${inactivo ? '' : 'checked'}> Activo (aparece en los combos de producto)</label>
+            </div>
+          </div>
+        </div>
+        <div class="acciones">
+          <button class="btn-mini" id="prEdGuardar">Guardar cambios</button>
+          <button class="btn-mini gris" id="prEdCancelar">Cancelar</button>
+        </div>
+        <div class="aviso" id="prEdAviso"></div>
+      </div>`);
+    document.getElementById('prEdCancelar').addEventListener('click', ERP.cerrarPanel);
+    document.getElementById('prEdGuardar').addEventListener('click', () => guardarEditarProducto(p));
+  }
+
+  async function guardarEditarProducto(p) {
+    const nombre = document.getElementById('prEdNombre').value.trim();
+    const codigo = document.getElementById('prEdCodigo').value.trim();
+    const activo = document.getElementById('prEdActivo').checked;
+    const btn = document.getElementById('prEdGuardar');
+    limpiarAviso('prEdAviso');
+    if (!nombre) { aviso('prEdAviso', 'err', 'El nombre es obligatorio.'); return; }
+
+    const nombreCambio = nombre !== p.nombre;
+    const codigoCambio = codigo !== (p.codigo_item || '');
+    const activoCambio = activo !== (p.activo !== false);
+    if (!nombreCambio && !codigoCambio && !activoCambio) { aviso('prEdAviso', 'warn', 'No cambiaste ningún valor.'); return; }
+
+    btn.disabled = true;
+    try {
+      await rpc('fn_editar_producto', {
+        p_id: p.id,
+        p_nombre: nombreCambio ? nombre : null,
+        // '' explícito borra el código; NULL = no tocar (mismo criterio que el resto del módulo).
+        p_codigo_item: codigoCambio ? codigo : null,
+        p_activo: activoCambio ? activo : null
+      });
+      await refrescar();
+      aviso('prEdAviso', 'ok', `<b>${esc(nombre)}</b> actualizado.`);
+      setTimeout(ERP.cerrarPanel, 700);
+    } catch (e) {
+      // El backend rechaza nombre o código duplicado — se muestra tal cual.
+      aviso('prEdAviso', 'err', `No se guardó: ${esc(e.message)}`);
+      btn.disabled = false;
+    }
+  }
+
+  function formEditarVariedad(v, producto) {
+    const inactiva = v.activo === false;
+    ERP.abrirPanel(`${esc(v.nombre)} — ${esc(producto.nombre)}`, inactiva ? 'Inactiva' : 'Activa', `
+      <div class="form-erp">
+        <div class="campos">
+          <div class="campo ancho">
+            <label>Nombre <span class="req">*</span></label>
+            <input id="vrEdNombre" type="text" maxlength="80" value="${esc(v.nombre)}">
+          </div>
+          <div class="campo ancho">
+            <label>Estado</label>
+            <div class="checks">
+              <label><input type="checkbox" id="vrEdActivo" ${inactiva ? '' : 'checked'}> Activa (aparece en el selector de variedad)</label>
+            </div>
+          </div>
+        </div>
+        <div class="acciones">
+          <button class="btn-mini" id="vrEdGuardar">Guardar cambios</button>
+          <button class="btn-mini gris" id="vrEdCancelar">Cancelar</button>
+        </div>
+        <div class="aviso" id="vrEdAviso"></div>
+      </div>`);
+    document.getElementById('vrEdCancelar').addEventListener('click', ERP.cerrarPanel);
+    document.getElementById('vrEdGuardar').addEventListener('click', () => guardarEditarVariedad(v));
+  }
+
+  async function guardarEditarVariedad(v) {
+    const nombre = document.getElementById('vrEdNombre').value.trim();
+    const activo = document.getElementById('vrEdActivo').checked;
+    const btn = document.getElementById('vrEdGuardar');
+    limpiarAviso('vrEdAviso');
+    if (!nombre) { aviso('vrEdAviso', 'err', 'El nombre es obligatorio.'); return; }
+
+    const nombreCambio = nombre !== v.nombre;
+    const activoCambio = activo !== (v.activo !== false);
+    if (!nombreCambio && !activoCambio) { aviso('vrEdAviso', 'warn', 'No cambiaste ningún valor.'); return; }
+
+    btn.disabled = true;
+    try {
+      await rpc('fn_editar_variedad', {
+        p_id: v.id,
+        p_nombre: nombreCambio ? nombre : null,
+        p_activo: activoCambio ? activo : null
+      });
+      await refrescar();
+      aviso('vrEdAviso', 'ok', `<b>${esc(nombre)}</b> actualizada.`);
+      setTimeout(ERP.cerrarPanel, 700);
+    } catch (e) {
+      // El backend rechaza nombre duplicado dentro del mismo producto — se muestra tal cual.
+      aviso('vrEdAviso', 'err', `No se guardó: ${esc(e.message)}`);
+      btn.disabled = false;
+    }
+  }
+
   /* ================= Tablas ================= */
 
   const deClase = clase => contrapartes.filter(c => c.clase === clase);
@@ -863,30 +987,50 @@
     const t = norm(busqueda);
     const filas = t ? productos.filter(p => norm(p.nombre).includes(t)) : productos;
     const cont = document.getElementById('catTabla');
-    const admin = ERP.puede('administrar');
+    // Fase 2c (D-136/D-137): alta Y edición de productos/variedades ya es 'capturar', no 'administrar'.
+    const puedeCap = ERP.puede('capturar');
     document.getElementById('catConteo').textContent = `${filas.length} de ${productos.length}`;
 
     cont.innerHTML = filas.length
       ? `<div class="tabla-wrap"><table>
-          <thead><tr><th>Producto</th><th>Variedades</th>${admin ? '<th></th>' : ''}</tr></thead>
+          <thead><tr><th>Producto</th><th>Variedades</th>${puedeCap ? '<th></th>' : ''}</tr></thead>
           <tbody>${filas.map(p => {
             const vs = variedadesDe(p.id);
-            return `<tr>
-              <td>${esc(p.nombre)}</td>
+            const prodInactivo = p.activo === false;
+            return `<tr${prodInactivo ? ' style="color:var(--i2)"' : ''}>
+              <td>${esc(p.nombre)}${prodInactivo ? ' <span class="pill gris">Inactivo</span>' : ''}</td>
               <td>${vs.length
-                ? `<span class="alias-lista">${vs.map(v => `<span class="alias-chip solo-ver">${esc(v.nombre)}</span>`).join('')}</span>`
+                ? `<span class="alias-lista">${vs.map(v => {
+                    const vInactiva = v.activo === false;
+                    const colorInactiva = vInactiva ? ';color:var(--i2)' : '';
+                    return puedeCap
+                      ? `<button type="button" class="alias-chip" data-editar-variedad="${esc(v.id)}" style="cursor:pointer${colorInactiva}">${esc(v.nombre)}</button>`
+                      : `<span class="alias-chip solo-ver"${vInactiva ? ' style="color:var(--i2)"' : ''}>${esc(v.nombre)}</span>`;
+                  }).join('')}</span>`
                 : '<span class="sin-alias">— sin variedades —</span>'}</td>
-              ${admin ? `<td><button class="btn-mini gris" data-variedad="${esc(p.id)}">+ Variedad</button></td>` : ''}
+              ${puedeCap ? `<td style="white-space:nowrap">
+                <button class="btn-mini gris" data-editar-producto="${esc(p.id)}">Editar</button>
+                <button class="btn-mini gris" data-variedad="${esc(p.id)}">+ Variedad</button></td>` : ''}
             </tr>`;
           }).join('')}</tbody>
         </table></div>
-        <div class="leyenda">Estos son los productos que ofrece el combo al crear una carga, con sus variedades.</div>`
+        <div class="leyenda">Estos son los productos que ofrece el combo al crear una carga, con sus variedades. Clic en una variedad para editarla. Un producto o variedad inactivo no se ofrece en los combos nuevos, pero el historial que ya lo usa no se toca.</div>`
       : '<div class="vacio">Nada coincide con la búsqueda.</div>';
 
-    if (admin) {
+    if (puedeCap) {
       cont.querySelectorAll('button[data-variedad]').forEach(b => b.addEventListener('click', () => {
         const p = productos.find(x => String(x.id) === b.dataset.variedad);
         if (p) formNuevaVariedad(p);
+      }));
+      cont.querySelectorAll('button[data-editar-producto]').forEach(b => b.addEventListener('click', () => {
+        const p = productos.find(x => String(x.id) === b.dataset.editarProducto);
+        if (p) formEditarProducto(p);
+      }));
+      cont.querySelectorAll('button[data-editar-variedad]').forEach(b => b.addEventListener('click', () => {
+        const v = variedades.find(x => String(x.id) === b.dataset.editarVariedad);
+        if (!v) return;
+        const p = productos.find(x => String(x.id) === String(v.producto_id));
+        if (p) formEditarVariedad(v, p);
       }));
     }
   }
@@ -1362,11 +1506,117 @@
     }
   }
 
+  /* ================= Categorías de gasto (Fase 2b, D-135) =================
+     v_categorias_gasto_admin (tipo, grupo, activo, linea, usos). Sin id numérico: `tipo` ES la
+     llave (fn_editar_categoria_gasto la recibe como p_tipo, no hay rename posible — solo
+     activar/desactivar). El grupo (gasto_operativo | gasto_financiero) define el comportamiento
+     contable que el tipo nuevo clona; nunca se ofrece un tercer grupo "estructural" desde aquí
+     (el backend lo rechazaría). Alimenta el selector "Tipo de gasto" de Registrar gasto en
+     Tesorería (v_categorias_gasto, solo activas — modulo-tesoreria.js no se toca aquí). */
+
+  function pintarCategoriasGasto() {
+    const t = norm(busqueda);
+    const filas = t ? categoriasGasto.filter(c => norm(c.tipo).includes(t)) : categoriasGasto;
+    const cont = document.getElementById('catTabla');
+    const puedeCap = ERP.puede('capturar');
+    document.getElementById('catConteo').textContent = `${filas.length} de ${categoriasGasto.length}`;
+
+    const grupoTxt = g => g === 'gasto_financiero' ? 'Financiero' : 'Operativo';
+    const grupoPill = g => g === 'gasto_financiero' ? 'pill ambar' : 'pill';
+
+    cont.innerHTML = filas.length
+      ? `<div class="tabla-wrap"><table>
+          <thead><tr><th>Tipo</th><th>Grupo</th><th>Estado</th><th class="num">Usos</th>${puedeCap ? '<th></th>' : ''}</tr></thead>
+          <tbody>${filas.map(c => `<tr>
+              <td>${esc(c.tipo)}</td>
+              <td><span class="${grupoPill(c.grupo)}">${esc(grupoTxt(c.grupo))}</span></td>
+              <td><span class="pill${c.activo ? '' : ' gris'}">${c.activo ? 'Activo' : 'Inactivo'}</span></td>
+              <td class="num">${c.usos == null ? '—' : esc(c.usos)}</td>
+              ${puedeCap ? `<td><button class="btn-mini gris" data-tipo="${esc(c.tipo)}" data-activar="${c.activo ? '0' : '1'}">${c.activo ? 'Desactivar' : 'Activar'}</button></td>` : ''}
+            </tr>`).join('')}</tbody>
+        </table></div>
+        <div class="leyenda">Estos son los tipos que ofrece "Registrar gasto" en Tesorería. Sin renombrar ni borrar — desactivar un tipo lo retira del selector sin perder el historial de gastos ya capturados con él (columna Usos).</div>`
+      : '<div class="vacio">Nada coincide con la búsqueda.</div>';
+
+    if (puedeCap) {
+      cont.querySelectorAll('button[data-tipo]').forEach(b => b.addEventListener('click', () => {
+        const c = categoriasGasto.find(x => x.tipo === b.dataset.tipo);
+        if (c) alternarActivoCategoriaGasto(c, b.dataset.activar === '1');
+      }));
+    }
+  }
+
+  /** Toggle inline (sin panel): es el único campo editable, un drawer completo sería de más.
+      Si ya tiene usos y se va a desactivar, se avisa antes — no bloquea, solo informa. */
+  async function alternarActivoCategoriaGasto(c, nuevoActivo) {
+    if (!nuevoActivo && num(c.usos) > 0) {
+      const ok = window.confirm(`"${c.tipo}" tiene ${c.usos} gasto${c.usos === 1 ? '' : 's'} capturado${c.usos === 1 ? '' : 's'}.\n\nDesactivarla la retira del selector de "Registrar gasto" — NO afecta el historial ya capturado.\n\n¿Continuar?`);
+      if (!ok) return;
+    }
+    try {
+      await rpc('fn_editar_categoria_gasto', { p_tipo: c.tipo, p_activo: nuevoActivo });
+      await refrescar();
+      ERP.toast('ok', `<b>${esc(c.tipo)}</b> ${nuevoActivo ? 'activada' : 'desactivada'}.`);
+    } catch (e) {
+      if (!ERP.avisarSiPermiso(e)) ERP.toast('err', `No se pudo actualizar: ${esc(e.message)}`);
+    }
+  }
+
+  function formNuevaCategoriaGasto() {
+    ERP.abrirPanel('Nueva categoría de gasto', 'Se agrega al selector de "Registrar gasto" en Tesorería', `
+      <div class="form-erp">
+        <div class="campos">
+          <div class="campo ancho">
+            <label>Nombre <span class="req">*</span></label>
+            <input id="cgNombre" type="text" maxlength="80" placeholder="Ej. Renta de bodega">
+          </div>
+          <div class="campo ancho">
+            <label>Tipo</label>
+            <select id="cgGrupo">
+              <option value="gasto_operativo" selected>Operativo</option>
+              <option value="gasto_financiero">Financiero</option>
+            </select>
+            <div class="alias-ayuda">El tipo nuevo clona el comportamiento contable del grupo elegido.</div>
+          </div>
+        </div>
+        <div class="acciones">
+          <button class="btn-mini" id="cgGuardar">Crear categoría</button>
+          <button class="btn-mini gris" id="cgCancelar">Cancelar</button>
+        </div>
+        <div class="aviso" id="cgAviso"></div>
+      </div>`);
+    document.getElementById('cgCancelar').addEventListener('click', ERP.cerrarPanel);
+    document.getElementById('cgGuardar').addEventListener('click', guardarNuevaCategoriaGasto);
+    document.getElementById('cgNombre').focus();
+  }
+
+  async function guardarNuevaCategoriaGasto() {
+    const nombre = document.getElementById('cgNombre').value.trim();
+    const grupo = document.getElementById('cgGrupo').value;
+    const btn = document.getElementById('cgGuardar');
+    limpiarAviso('cgAviso');
+    if (!nombre) { aviso('cgAviso', 'err', 'El nombre es obligatorio.'); return; }
+
+    btn.disabled = true;
+    try {
+      // El backend rechaza p_grupo fuera de {gasto_operativo,gasto_financiero} y nombres
+      // duplicados — el mensaje se muestra tal cual.
+      const data = await rpc('fn_alta_categoria_gasto', { p_nombre: nombre, p_grupo: grupo });
+      const r = (data && data[0]) || {};
+      await refrescar();
+      aviso('cgAviso', 'ok', `Categoría <b>${esc(r.tipo || nombre)}</b> creada.`);
+    } catch (e) {
+      aviso('cgAviso', 'err', `No se creó: ${esc(e.message)}`);
+    }
+    btn.disabled = false;
+  }
+
   const pintarTabla = () => {
     if (pestana === 'productos') return pintarProductos();
     if (pestana === 'conceptos') return pintarConceptosCosto();
     if (pestana === 'cuentas') return pintarCuentasAdmin();
     if (pestana === 'deducciones') return pintarCategoriasDeduccion();
+    if (pestana === 'gastos') return pintarCategoriasGasto();
     return pintarContrapartes();
   };
 
@@ -1392,7 +1642,7 @@
 
   async function traer() {
     let cxcCliente, cxpProveedor, agingCliente, diasPago, contraparteProgramas, contraparteRecencia, directorio;
-    [contrapartes, productos, variedades, cxcCliente, cxpProveedor, agingCliente, diasPago, contraparteProgramas, contraparteRecencia, directorio, conceptosCosto, cuentas, categoriasDed] = await Promise.all([
+    [contrapartes, productos, variedades, cxcCliente, cxpProveedor, agingCliente, diasPago, contraparteProgramas, contraparteRecencia, directorio, conceptosCosto, cuentas, categoriasDed, categoriasGasto] = await Promise.all([
       q('v_catalogo_admin', '&order=nombre.asc'),
       q('v_catalogo_productos', '&order=nombre.asc'),
       q('v_catalogo_variedades', '&order=producto_id.asc,nombre.asc'),
@@ -1415,7 +1665,10 @@
       q('v_conceptos_costo_admin', '&order=activo.desc,nombre.asc'),
       q('v_cuentas_admin', '&order=tipo.asc,nombre.asc'),
       // Fase 2a (D-134): "Categorías de deducción" — activas primero, mismo criterio que Conceptos.
-      q('v_categorias_deduccion_admin', '&order=activo.desc,orden.asc,nombre.asc')
+      q('v_categorias_deduccion_admin', '&order=activo.desc,orden.asc,nombre.asc'),
+      // Fase 2b (D-135): "Categorías de gasto" — activas primero, orden alfabético por tipo
+      // (que es a la vez el nombre visible y la llave — sin id numérico en esta vista).
+      q('v_categorias_gasto_admin', '&order=activo.desc,tipo.asc')
     ]);
     cxcPorCliente = indexarPor(cxcCliente, 'cliente');
     cxpPorProveedor = indexarPor(cxpProveedor, 'proveedor');
@@ -1451,13 +1704,16 @@
   }
 
   function barra() {
-    const admin = ERP.puede('administrar');       // productos/variedades: sigue siendo administrador
-    const puedeCap = ERP.puede('capturar');        // contrapartes/conceptos/cuentas: gate real de sus RPCs (P1/P2)
+    // Fase 2c (D-136/D-137): productos/variedades se movieron de 'administrar' a 'capturar' —
+    // mismo gate que contrapartes/conceptos/cuentas/deducciones/gastos. Ya no queda ninguna
+    // pestaña de este módulo gateada a 'administrar'.
+    const puedeCap = ERP.puede('capturar');
     const esProductos = pestana === 'productos';
     const esConceptos = pestana === 'conceptos';
     const esCuentas = pestana === 'cuentas';
     const esDeducciones = pestana === 'deducciones';
-    const puedeAlta = esProductos ? admin : puedeCap;
+    const esGastos = pestana === 'gastos';
+    const puedeAlta = puedeCap;
     const cl = claseDe(pestana);
     const sueltas = huerfanas();
 
@@ -1465,13 +1721,15 @@
       : esConceptos ? 'Buscar concepto…'
       : esCuentas ? 'Buscar por id, nombre o banco…'
       : esDeducciones ? 'Buscar por nombre o código…'
+      : esGastos ? 'Buscar por tipo…'
       : 'Buscar por nombre, alias o nota…';
     const labelNuevo = esProductos ? '+ Nuevo producto'
       : esConceptos ? '+ Nuevo concepto'
       : esCuentas ? '+ Nueva cuenta de banco'
       : esDeducciones ? '+ Nueva categoría'
+      : esGastos ? '+ Nueva categoría de gasto'
       : (cl ? cl.alta : '+ Nuevo');
-    const soloLecturaTxt = esProductos ? 'el alta de productos es de administrador' : 'necesitas permiso de captura';
+    const soloLecturaTxt = 'necesitas permiso de captura';
 
     return `
       ${sueltas.length ? `<div class="errbox">Hay ${sueltas.length} registro${sueltas.length === 1 ? '' : 's'}
@@ -1489,6 +1747,8 @@
           Cuentas <span class="cuenta">${cuentas.length}</span></button>
         <button class="pestana ${esDeducciones ? 'activa' : ''}" data-pestana="deducciones">
           Categorías de deducción <span class="cuenta">${categoriasDed.length}</span></button>
+        <button class="pestana ${esGastos ? 'activa' : ''}" data-pestana="gastos">
+          Categorías de gasto <span class="cuenta">${categoriasGasto.length}</span></button>
       </div>
 
       ${pestana === 'comercial' ? `<div class="filtros" id="catSub">
@@ -1537,6 +1797,7 @@
       if (pestana === 'conceptos') return formNuevoConcepto();
       if (pestana === 'cuentas') return formNuevaCuenta();
       if (pestana === 'deducciones') return formNuevaCategoriaDeduccion();
+      if (pestana === 'gastos') return formNuevaCategoriaGasto();
       return formNueva(pestana);
     });
   }
@@ -1553,7 +1814,7 @@
 
   ERP.registrar('catalogos', {
     titulo: 'Directorio Comercial',
-    descripcion: 'Clientes, proveedores, beneficiarios de gasto, socios, productos, conceptos de costo, cuentas y categorías de deducción',
+    descripcion: 'Clientes, proveedores, beneficiarios de gasto, socios, productos, conceptos de costo, cuentas, categorías de deducción y categorías de gasto',
     render
   });
 })();

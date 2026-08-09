@@ -6,7 +6,7 @@
 
 (function () {
   'use strict';
-  const { q, rpc, esc, num, fmt } = ERP;
+  const { q, rpc, esc, num, fmt, MONEDAS } = ERP;
 
   /* ================= Configuración por tipo ================= */
 
@@ -155,7 +155,7 @@
         <div class="doc-meta-grid">
           <div class="campo"><label>${esc(cfg.contraLabel)} <span class="req">*</span></label><div id="cContra"></div></div>
           <div class="campo"><label>Moneda</label>
-            <select id="cMoneda"><option value="USD">USD</option><option value="MXN">MXN</option></select></div>
+            <select id="cMoneda">${MONEDAS.map(m => `<option value="${m}">${m}</option>`).join('')}</select></div>
           ${extra}
         </div>
 

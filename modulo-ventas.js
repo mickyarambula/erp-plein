@@ -27,7 +27,7 @@
 
 (function () {
   'use strict';
-  const { q, rpc, esc, usd, num } = ERP;
+  const { q, rpc, esc, usd, num, MONEDAS } = ERP;
 
   const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   function fecha4(f) {
@@ -213,7 +213,7 @@
           <div class="campo ancho"><label>Programa comercial (opcional)</label>
             <select id="soPrograma">${opcionesPrograma(null)}</select></div>
           <div class="campo"><label>Moneda</label>
-            <select id="soMoneda"><option value="USD">USD</option><option value="MXN">MXN</option></select></div>
+            <select id="soMoneda">${MONEDAS.map(m => `<option value="${m}">${m}</option>`).join('')}</select></div>
           <div class="campo"><label>Días de crédito</label><input id="soDias" class="mono" type="number" step="1" min="0" placeholder="—"></div>
           <div class="campo"><label>Incoterm</label><input id="soIncoterm" type="text" maxlength="20" placeholder="Ej. FOB, DAP"></div>
           <div class="campo ancho"><label>Nota</label><textarea id="soNota" rows="2"></textarea></div>
