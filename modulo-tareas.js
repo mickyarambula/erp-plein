@@ -101,7 +101,7 @@
     const chipsArea = `<button class="chip ${fArea === '' ? 'activo' : ''}" data-area="">Todas <span class="chip-n">${nTotal()}</span></button>` +
       AREAS.map(a => `<button class="chip ${fArea === a ? 'activo' : ''}" data-area="${a}">${esc(AREA_LABEL[a])} <span class="chip-n">${nArea(a)}</span></button>`).join('');
 
-    cont.innerHTML = `
+    cont.innerHTML = `<div class="pantalla-tareas">
       <div class="filtros">
         ${puedeCap ? '<button class="btn-mini" id="tareaNueva">+ Nueva tarea</button>' : ''}
         <span class="seg" id="tareaVista">
@@ -123,7 +123,8 @@
       ${ERP.botonesExportar ? ERP.botonesExportar('Tareas', 'Tareas', '#tblTareas') : ''}
       <div id="tareaBody"></div>
       <div class="leyenda">Tareas en rojo = <b>atrasadas</b> (pasó su fecha límite). En Kanban, cada columna es un estado;
-        en celular las columnas se apilan. Toca una tarea para abrir su ficha.</div>`;
+        en celular las columnas se apilan. Toca una tarea para abrir su ficha.</div>
+    </div>`;
 
     const btnN = document.getElementById('tareaNueva');
     if (btnN) btnN.addEventListener('click', () => nuevaTarea());

@@ -11,7 +11,12 @@
   const FONDEO = { propio: 'Propio', agrocapital: 'AgroCapital', back_to_back: 'Back to back', otro: 'Otro' };
   const COSTOFIN = { no_aplica: 'No aplica', plein: 'Plein', productor: 'Productor', compartido: 'Compartido' };
   const EFECTO_CLASE = { cargo: 'ambar', abono: 'verde', informativo: 'gris' };
-  const hoyISO = () => new Date().toISOString().slice(0, 10);
+  // Fecha LOCAL, no toISOString() (UTC): en Sonora (UTC-7) toISOString ya muestra el día
+  // siguiente después de las 17:00, prellenando mal los <input type="date">.
+  const hoyISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
   const textoRpc = data => (typeof data === 'string' ? data : ((data && data[0]) || 'Listo.'));
   const fondeoTxt = p => (FONDEO[p.fuente_fondeo] || p.fuente_fondeo || '—') + (p.fondeador ? ` · ${esc(p.fondeador)}` : '');
   const numOrNull = v => (v === '' || v === null || v === undefined) ? null : Number(v);
@@ -50,7 +55,7 @@
         <div class="campo ancho"><label>Nombre del proyecto <span class="req">*</span></label>
           <input id="pyNombre" type="text" maxlength="120"></div>
         <div class="campo"><label>Productor <span class="req">*</span></label><div id="pyProductor"></div>
-          <small style="color:var(--gris);font-size:11px">Si no aparece, dalo de alta primero en Directorio Comercial.</small></div>
+          <small style="color:var(--i2);font-size:11px">Si no aparece, dalo de alta primero en Directorio Comercial.</small></div>
         <div class="campo"><label>Código</label><input id="pyCodigo" class="mono" type="text" maxlength="20" placeholder="auto si se deja vacío"></div>
         <div class="campo ancho"><label>Temporada</label><input id="pyTemporada" type="text" maxlength="120" placeholder="ej. Baby Broccoli 8oz SBB 26/27"></div>
         <div class="campo"><label>Vigencia desde</label><input id="pyFIni" type="date"></div>
@@ -159,14 +164,14 @@
     try { filas = await q('v_proyectos', '&order=codigo.asc'); }
     catch (e) { cont.innerHTML = `<div class="errbox">No se pudieron leer los proyectos: ${esc(e.message)}</div>`; return; }
     if (!filas.length) {
-      cont.innerHTML = `<div class="exp-acciones">${ERP.puede('capturar') ? '<button class="btn-mini" id="btnNuevoProyecto">+ Proyecto</button>' : ''}</div>
-        <div class="vacio" style="padding:24px">Sin proyectos.</div>`;
+      cont.innerHTML = `<div class="pantalla-proyectos"><div class="exp-acciones">${ERP.puede('capturar') ? '<button class="btn-mini" id="btnNuevoProyecto">+ Proyecto</button>' : ''}</div>
+        <div class="vacio" style="padding:24px">Sin proyectos.</div></div>`;
       const bN = document.getElementById('btnNuevoProyecto');
       if (bN) bN.addEventListener('click', nuevoProyecto);
       return;
     }
 
-    cont.innerHTML = `
+    cont.innerHTML = `<div class="pantalla-proyectos">
       <div class="exp-acciones">${ERP.puede('capturar') ? '<button class="btn-mini" id="btnNuevoProyecto">+ Proyecto</button>' : ''}</div>
       ${ERP.botonesExportar ? ERP.botonesExportar('Proyectos', 'Proyectos', '#tblProyectos') : ''}
       <div class="card" style="padding:14px"><div class="tabla-wrap"><table id="tblProyectos">
@@ -189,7 +194,8 @@
             <td>${esc(fondeoTxt(p))}</td>
           </tr>`;
         }).join('')}</tbody>
-      </table></div></div>`;
+      </table></div></div>
+    </div>`;
 
     cont.querySelectorAll('tr.clic[data-codigo]').forEach(tr =>
       tr.addEventListener('click', () => verProyecto(tr.dataset.codigo)));
@@ -231,14 +237,20 @@
 
   function pintarFicha() {
     const p = estado.p;
-    const titulo = `${esc(p.codigo)} <span style="font-weight:400;color:var(--gris)">· ${esc(p.nombre || '')}</span>`;
+    const titulo = `${esc(p.codigo)} <span style="font-weight:400;color:var(--i2)">· ${esc(p.nombre || '')}</span>`;
     const sub = `${badgeProy(p.estado)} · ${esc(p.productor || '—')} · ${esc(p.temporada || '—')}`;
     ERP.abrirPanel(titulo, sub, cuerpoFicha());
 
     const bEdit = document.getElementById('prjEditar');
     if (bEdit) bEdit.addEventListener('click', editarProyecto);
+    const bAjuste = document.getElementById('prjAjustarLinea');
+    if (bAjuste) bAjuste.addEventListener('click', ajustarLinea);
     const bMov = document.getElementById('prjMovLinea');
     if (bMov) bMov.addEventListener('click', registrarMovLinea);
+    const bAnt = document.getElementById('prjAnticipo');
+    if (bAnt) bAnt.addEventListener('click', () => ERP.capturarAnticipoProductor({ proyecto: estado.codigo }));
+    const bApo = document.getElementById('prjAportacion');
+    if (bApo) bApo.addEventListener('click', () => ERP.capturarAportacionSocio({ proyecto: estado.codigo }));
     const bPre = document.getElementById('prjPresu');
     if (bPre) bPre.addEventListener('click', capturarPresupuesto);
     // Navegación cruzada del libro y las ligas.
@@ -269,7 +281,7 @@
     const sinLinea = p.monto_linea == null || Math.abs(num(p.monto_linea)) < 0.005;
     const kl = v => sinLinea ? '—' : usd(v);
     const tasa = p.tasa_anual == null
-      ? '<span style="color:var(--gris)">pendiente</span>'
+      ? '<span style="color:var(--i2)">pendiente</span>'
       : `${fmt(p.tasa_anual)}% anual${p.tasa_vigencia_desde ? ` · desde ${esc(fecha(p.tasa_vigencia_desde))}` : ''}`;
 
     const header = `<div class="det-grid">
@@ -300,7 +312,7 @@
           <tr><td>Ingreso proyectado</td><td class="num">${usd(r.ingreso_proyectado)}</td></tr>
           <tr><td>− Costo financiero real</td><td class="num neg">${usd(r.costo_financiero_real)}</td></tr>
           <tr><td>− Gastos del proyecto</td><td class="num neg">${usd(r.gastos_proyecto)}</td></tr>
-          <tr class="total"><td>UTILIDAD REAL</td><td class="num" style="color:${u >= 0 ? 'var(--verde)' : 'var(--rojo)'};font-weight:700">${usd(r.utilidad_real)}</td></tr>
+          <tr class="total"><td>UTILIDAD REAL</td><td class="num" style="color:${u >= 0 ? 'var(--money)' : 'var(--red)'};font-weight:700">${usd(r.utilidad_real)}</td></tr>
         </tbody></table></div>
         <div class="leyenda">Regla de costo financiero: <b>${esc(r.costo_financiero_regla || '—')}</b>. Presupuesto Plein (informativo, no entra en la utilidad): <b>${usd(r.presupuesto_plein)}</b>.</div>`;
     })() : '<div class="vacio">Sin datos de rentabilidad.</div>';
@@ -308,6 +320,7 @@
     return `
       <div class="exp-acciones">
         ${puedeEd ? '<button class="btn-mini" id="prjEditar">Editar proyecto</button>' : ''}
+        ${puedeEd ? '<button class="btn-mini gris" id="prjAjustarLinea">Ajustar línea</button>' : ''}
       </div>
       ${header}
       ${kpis}
@@ -373,7 +386,7 @@
       ? `cruza a positivo en ${esc(mesLargo(pico.mes_cruce_positivo))}`
       : 'no cruza a positivo dentro del horizonte del plan';
     return `<div style="margin:0 0 10px;padding:11px 15px;border-radius:8px;font-weight:700;
-      background:${roja ? 'var(--rojo-bg)' : '#EEEDE5'};color:${roja ? 'var(--rojo)' : 'var(--gris)'}">
+      background:${roja ? 'var(--rojo-bg)' : '#EEEDE5'};color:${roja ? 'var(--red)' : 'var(--i2)'}">
       Pico de exposición: ${usd(pico.monto_pico)} en ${esc(mesLargo(pico.mes_pico))} · ${cruceTxt} · cierre ${usd(pico.saldo_final)}.
     </div>`;
   }
@@ -391,7 +404,7 @@
     // Ticks del eje X: se muestran cada N puntos para no amontonar etiquetas si hay muchos meses.
     const paso = Math.max(1, Math.ceil(g.n / 7));
     const ticks = serie.map((p, i) => (i % paso === 0 || i === g.n - 1)
-      ? `<text x="${g.x(i).toFixed(1)}" y="${g.H - 8}" font-size="9" fill="var(--gris)" text-anchor="middle">${esc(mesLargo(p.mes))}</text>`
+      ? `<text x="${g.x(i).toFixed(1)}" y="${g.H - 8}" font-size="9" fill="var(--i2)" text-anchor="middle">${esc(mesLargo(p.mes))}</text>`
       : '').join('');
 
     const idxPico = pico ? marcadorMes(serie, pico.mes_pico) : null;
@@ -400,7 +413,7 @@
       if (idx == null) return '';
       const val = num(serie[idx][campoAcum]);
       const [px, py] = [g.x(idx), g.y(val)];
-      const color = val < 0 ? 'var(--rojo)' : 'var(--verde)';
+      const color = val < 0 ? 'var(--red)' : 'var(--money)';
       return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="3.5" fill="${color}" stroke="#fff" stroke-width="1.2"/>
         <text x="${px.toFixed(1)}" y="${(py + (arriba ? -8 : 14)).toFixed(1)}" font-size="9" font-weight="700" text-anchor="middle" fill="${color}">${etiqueta}</text>`;
     };
@@ -416,8 +429,8 @@
       <line x1="0" y1="${g.yZero.toFixed(1)}" x2="${g.W}" y2="${g.yZero.toFixed(1)}" stroke="var(--gris-claro)" stroke-width="1" stroke-dasharray="3,3"/>
       <path d="${area}" fill="var(--verde-claro)" clip-path="url(#prjClipPos)"/>
       <path d="${area}" fill="var(--rojo-bg)" clip-path="url(#prjClipNeg)"/>
-      <path d="${linea}" fill="none" stroke="var(--verde)" stroke-width="1.8" clip-path="url(#prjClipPos)"/>
-      <path d="${linea}" fill="none" stroke="var(--rojo)" stroke-width="1.8" clip-path="url(#prjClipNeg)"/>
+      <path d="${linea}" fill="none" stroke="var(--money)" stroke-width="1.8" clip-path="url(#prjClipPos)"/>
+      <path d="${linea}" fill="none" stroke="var(--red)" stroke-width="1.8" clip-path="url(#prjClipNeg)"/>
       ${ticks}
       ${marcador(idxPico, 'Pico', false)}
       ${idxCruce != null ? marcador(idxCruce, 'Cruce', true) : ''}
@@ -459,7 +472,7 @@
       <thead><tr><th>Producto</th><th>Periodo</th><th class="num">Cargas/sem</th><th class="num">Cargas est.</th>
         <th class="num">Ganancia/carga</th><th class="num">Ganancia est.</th><th class="num">Precio/caja</th></tr></thead>
       <tbody>${rows.map(c => `<tr>
-        <td>${esc(c.producto || '—')}${c.descripcion ? ` <span style="color:var(--gris)">· ${esc(c.descripcion)}</span>` : ''}</td>
+        <td>${esc(c.producto || '—')}${c.descripcion ? ` <span style="color:var(--i2)">· ${esc(c.descripcion)}</span>` : ''}</td>
         <td class="mono">${esc(fecha(c.f_desde))} — ${esc(fecha(c.f_hasta))}</td>
         <td class="num">${c.cargas_por_semana ?? '—'}</td>
         <td class="num">${c.cargas_estimadas ?? '—'}</td>
@@ -470,7 +483,9 @@
   }
 
   function libro(rows, puedeCap) {
-    const btn = puedeCap ? '<button class="btn-mini" id="prjMovLinea" style="margin-bottom:10px">+ Registrar movimiento de línea</button>' : '';
+    const btn = puedeCap ? `<button class="btn-mini" id="prjMovLinea" style="margin-bottom:10px">+ Registrar movimiento de línea</button>
+      <button class="btn-mini gris" id="prjAnticipo" style="margin-bottom:10px;margin-left:6px">+ Anticipo a productor</button>
+      <button class="btn-mini gris" id="prjAportacion" style="margin-bottom:10px;margin-left:6px">+ Aportación de socio</button>` : '';
     if (!rows.length) return `${btn}<div class="vacio">Sin movimientos en la línea.</div>`;
     return `${btn}<div class="tabla-wrap"><table>
       <thead><tr><th>Fecha</th><th>Tipo</th><th>Efecto</th><th class="num">Monto</th><th>Mov.</th><th>Embarque</th><th>Nota</th></tr></thead>
@@ -538,6 +553,48 @@
     ov.addEventListener('click', e => { if (e.target === ov) cerrar(); });
     const setA = (tipo, html) => { const a = ov.querySelector('#mAviso'); a.className = 'aviso visible ' + tipo; a.innerHTML = html; };
     return { ov, cerrar, setA };
+  }
+
+  /* Ajustar la LÍNEA (monto autorizado) del proyecto — D-120. fn_ajustar_linea_proyecto(p_codigo,
+     p_nueva_linea, p_motivo). Money-neutral (no mueve dinero, solo el tope). Candado backend: si la
+     nueva línea < dispuesto, lanza excepción con mensaje claro → se muestra tal cual. */
+  function ajustarLinea() {
+    const p = estado.p;
+    const sinLinea = p.monto_linea == null || Math.abs(num(p.monto_linea)) < 0.005;
+    const kl = v => sinLinea && (v == null) ? '—' : usd(v);
+    const { ov, cerrar, setA } = abrirModal(`Ajustar línea · ${esc(estado.codigo)}`, `
+      <div class="det-grid" style="margin-bottom:12px">
+        <div class="det"><div class="l">Línea actual</div><div class="v mono">${kl(p.monto_linea)}</div></div>
+        <div class="det"><div class="l">Dispuesto</div><div class="v mono">${kl(p.dispuesto)}</div></div>
+        <div class="det"><div class="l">Disponible</div><div class="v mono">${kl(p.linea_disponible)}</div></div>
+      </div>
+      <div class="form-erp"><div class="campos">
+        <div class="campo"><label>Nueva línea <span class="req">*</span></label>
+          <input id="alMonto" class="mono" type="number" step="0.01" min="0" value="${p.monto_linea == null ? '' : esc(p.monto_linea)}" placeholder="0.00"></div>
+        <div class="campo ancho"><label>Motivo</label>
+          <input id="alMotivo" type="text" maxlength="200" placeholder="Queda en la bitácora (opcional)"></div>
+      </div>
+      <div class="leyenda">La nueva línea no puede ser menor a lo ya dispuesto (${kl(p.dispuesto)}); si lo es, el ERP lo rechaza.</div>
+      <div class="acciones"><button class="btn-mini" id="alGuardar">Guardar</button><button class="btn-mini gris" id="alCancelar">Cancelar</button></div></div>`);
+    ov.querySelector('#alCancelar').addEventListener('click', cerrar);
+    const val = id => ov.querySelector('#' + id).value;
+    ov.querySelector('#alGuardar').addEventListener('click', async () => {
+      const nueva = numOrNull(val('alMonto'));
+      if (nueva == null || nueva < 0) { setA('err', 'La nueva línea debe ser un número mayor o igual a cero.'); return; }
+      const btn = ov.querySelector('#alGuardar'); btn.disabled = true; setA('warn', 'Guardando…');
+      try {
+        const data = await rpc('fn_ajustar_linea_proyecto', {
+          p_codigo: estado.codigo,
+          p_nueva_linea: nueva,
+          p_motivo: val('alMotivo').trim() || null
+        });
+        ERP.marcarDatosSucios(); ERP.toast('ok', esc(textoRpc(data))); cerrar(); verProyecto(estado.codigo);
+      } catch (e) {
+        // Candado backend (nueva < dispuesto) y cualquier otro rechazo: se muestra tal cual.
+        if (!ERP.avisarSiPermiso(e)) setA('err', `El ERP rechazó el ajuste: ${esc(e.message)}`);
+        btn.disabled = false;
+      }
+    });
   }
 
   function registrarMovLinea() {

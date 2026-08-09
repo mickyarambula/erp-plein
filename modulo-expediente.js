@@ -13,6 +13,14 @@
   'use strict';
   const { q, rpc, esc, usd, num } = ERP;
 
+  // Fecha LOCAL, no toISOString() (UTC): en Sonora (UTC-7) toISOString ya muestra el día
+  // siguiente después de las 17:00 — rompía tanto el default del <input type="date"> de
+  // Confirmar entrega como el "no puede ser futura" (fecha > hoy) que lo valida.
+  const hoyISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
   const MODALIDAD = { margen_fijo: 'Margen Fijo', consignacion: 'Consignación' };
 
   let estado = null;   // { folio, d, apls, costos, mc, tab }
@@ -21,9 +29,9 @@
 
   async function verExpediente(folio) {
     ERP.abrirPanel(esc(folio), 'Cargando expediente…', '<div class="skel">Cargando expediente…</div>');
-    let det, apls, costos, mc, cx, pc, progc;
+    let det, apls, costos, mc, cx, pc, progc, agendaLiq;
     try {
-      [det, apls, costos, mc, cx, pc, progc] = await Promise.all([
+      [det, apls, costos, mc, cx, pc, progc, agendaLiq] = await Promise.all([
         q('v_carga_detalle', `&folio=${ERP.eq(folio)}`),
         q('v_carga_aplicaciones', `&carga_folio=${ERP.eq(folio)}&order=fecha.asc`).catch(() => []),
         q('v_carga_costos_det', `&carga_folio=${ERP.eq(folio)}`).catch(() => []),
@@ -33,7 +41,10 @@
         // v_carga_detalle no trae proyecto_id: se lee de v_proyecto_cargas por folio (chip 🌱, opcional).
         q('v_proyecto_cargas', `&folio=${ERP.eq(folio)}`).catch(() => []),
         // Mapa carga→programa (E47, chip "PC-0XX", opcional): una consulta para ESTE embarque.
-        q('v_cargas_programa', `&folio=${ERP.eq(folio)}`).catch(() => [])
+        q('v_cargas_programa', `&folio=${ERP.eq(folio)}`).catch(() => []),
+        // Señal "lista para liquidar al productor" (v_agenda_operativa, categoria dedicada, chip
+        // verde opcional): una consulta para ESTE embarque.
+        q('v_agenda_operativa', `&folio=${ERP.eq(folio)}&categoria=eq.liquidar_productor`).catch(() => [])
       ]);
     } catch (e) {
       ERP.abrirPanel(esc(folio), '', `<div class="errbox">No se pudo cargar el expediente: ${esc(e.message)}</div>`);
@@ -43,7 +54,7 @@
       ERP.abrirPanel(esc(folio), '', '<p style="font-size:13px">No existe ese embarque. Revisa el folio (ej. P-043).</p>');
       return;
     }
-    estado = { folio, d: det[0], apls, costos, mc: (mc && mc[0]) || null, cx: (cx && cx[0]) || null, proyecto: (pc && pc[0] && pc[0].proyecto_codigo) || null, programa: (progc && progc[0] && progc[0].programa_codigo) || null, programaEtiqueta: (progc && progc[0] && progc[0].programa_etiqueta) || null, tab: 'resumen' };
+    estado = { folio, d: det[0], apls, costos, mc: (mc && mc[0]) || null, cx: (cx && cx[0]) || null, proyecto: (pc && pc[0] && pc[0].proyecto_codigo) || null, programa: (progc && progc[0] && progc[0].programa_codigo) || null, programaEtiqueta: (progc && progc[0] && progc[0].programa_etiqueta) || null, listaLiquidar: agendaLiq.length > 0, tab: 'resumen' };
     pintarShell();
   }
 
@@ -51,7 +62,7 @@
     const d = estado.d;
     const rev = !!d.revision_pendiente;
     const titulo = `${esc(d.folio)}${d.po ? ` <span style="font-weight:400;color:var(--gris)">· ${esc(d.po)}</span>` : ''}`;
-    const sub = `${ERP.badgeEstado(d.estado)}${d.anulado ? '' : ` · ${ERP.chipCobroHTML(estado.cx)}`}${estado.proyecto ? ` · <span class="pill verde" id="expChipProy" style="cursor:pointer" title="Ver proyecto ${esc(estado.proyecto)}">🌱 ${esc(estado.proyecto)}</span>` : ''}${estado.programa ? ` · <span class="pill verde" id="expChipPrograma" style="cursor:pointer" title="Ver programa: ${esc(estado.programaEtiqueta || estado.programa)}">🌾 ${esc(estado.programa)}</span>` : ''} · ${esc(MODALIDAD[d.modalidad] || d.modalidad || '—')} · ${esc(d.cliente || '—')}${d.anulado ? ' · ANULADO' : ''}`;
+    const sub = `${ERP.badgeEstado(d.estado)}${d.anulado ? '' : ` · ${ERP.chipCobroHTML(estado.cx)}`}${estado.proyecto ? ` · <span class="pill verde" id="expChipProy" style="cursor:pointer" title="Ver proyecto ${esc(estado.proyecto)}">🌱 ${esc(estado.proyecto)}</span>` : ''}${estado.programa ? ` · <span class="pill verde" id="expChipPrograma" style="cursor:pointer" title="Ver programa: ${esc(estado.programaEtiqueta || estado.programa)}">🌾 ${esc(estado.programa)}</span>` : ''}${estado.listaLiquidar ? ' · <span class="pill verde">Lista para liquidar al productor</span>' : ''} · ${esc(MODALIDAD[d.modalidad] || d.modalidad || '—')} · ${esc(d.cliente || '—')}${d.anulado ? ' · ANULADO' : ''}`;
     const TABS = [['resumen', 'Resumen'], ['pagos', 'Pagos y Cobros'], ['documentos', 'Documentos'], ['factura', 'Factura y OC']];
 
     ERP.abrirPanel(titulo, sub, `
@@ -107,10 +118,12 @@
     }
     else if (estado.tab === 'documentos') montarDocumentos(body, estado.folio, estado.d.anulado);
     else if (estado.tab === 'factura') {
-      body.innerHTML = '<div id="expFacturas"></div><div id="expVentas" style="margin-top:22px"></div><div id="expOrdenes" style="margin-top:22px"></div>';
+      body.innerHTML = '<div id="expFacturas"></div><div id="expVentas" style="margin-top:22px"></div><div id="expLote" style="margin-top:22px"></div><div id="expOrdenes" style="margin-top:22px"></div><div id="expEventos" style="margin-top:22px"></div>';
       if (ERP.montarFacturasCarga) ERP.montarFacturasCarga(document.getElementById('expFacturas'), estado.folio, !estado.d.anulado);
       if (ERP.montarVentasCarga) ERP.montarVentasCarga(document.getElementById('expVentas'), estado.folio);
+      if (ERP.montarLoteCarga) ERP.montarLoteCarga(document.getElementById('expLote'), estado.folio);
       if (ERP.montarOrdenesCarga) ERP.montarOrdenesCarga(document.getElementById('expOrdenes'), estado.folio, !estado.d.anulado);
+      if (ERP.montarEventosCarga) ERP.montarEventosCarga(document.getElementById('expEventos'), estado.folio, !estado.d.anulado);
     }
   }
 
@@ -194,7 +207,7 @@
     if (!cont) return;
     if (cont.innerHTML) { cont.innerHTML = ''; return; }   // toggle
 
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = hoyISO();
     cont.innerHTML = `<div class="form-erp" style="margin-top:10px">
       <div class="leyenda" style="margin:0 0 8px">Confirmar la entrega también avanza el estado a <b>Entregada</b> automáticamente — no hace falta cambiarlo a mano después.</div>
       <div class="campos">
@@ -219,7 +232,7 @@
     const fecha = document.getElementById('ceFecha').value;
     const nota = document.getElementById('ceNota').value.trim();
     const btn = document.getElementById('ceGuardar');
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = hoyISO();
     const setAviso = (tipo, html) => {
       const a = document.getElementById('ceAviso');
       if (a) { a.className = 'aviso visible ' + tipo; a.innerHTML = html; }

@@ -557,6 +557,9 @@ window.ERP = (function () {
     moduloActivo = modulo;
     document.querySelectorAll('nav.lateral a.item').forEach(a =>
       a.classList.toggle('activo', a.dataset.modulo === modulo));
+    // E97 (MARCO): avisa al riel/barra de módulo para sincronizar grupo activo + miga de pan.
+    // Desacoplado por evento: comun.js no conoce el marco; app.js escucha 'erp:navegar'.
+    window.dispatchEvent(new CustomEvent('erp:navegar', { detail: { modulo } }));
     cerrarMenu();
     cerrarPanel();
     window.scrollTo(0, 0);
@@ -598,7 +601,8 @@ window.ERP = (function () {
 
   const PERFIL_SIN_PERMISOS = {
     socio_codigo: null, nombre: null, rol: null,
-    puede_ver: false, puede_capturar: false, puede_editar: false, puede_administrar: false
+    puede_ver: false, puede_capturar: false, puede_editar: false, puede_administrar: false,
+    modulos: []   // E88: claves de módulo visibles para este perfil; vacío = nada (fail-closed)
   };
   let perfil = { ...PERFIL_SIN_PERMISOS };
 
@@ -640,11 +644,15 @@ window.ERP = (function () {
     window.dispatchEvent(new Event('erp:escritura'));
   }
 
+  /** true si el drawer de captura está abierto — para que el auto-refresco no interrumpa
+      una captura en curso (ver app.js). */
+  function panelAbierto() { return document.getElementById('panel').classList.contains('abierto'); }
+
   return {
     sb, q, rpc, eq, limpiarCache, recargar,
     num, fmt, fmt0, usd, usd0, pct, utilidadColor, utilidadTexto, margenTexto, cablearInfoNota, estatusCobro, chipCobroHTML, venc, fecha, mesTexto, esc, norm, semaforo, estadoEmbarque, badgeEstado, cargarEstados, catalogoEstados, estadoInfo, folioNormalizado,
     columna, tablaAuto, etiqueta, enlazarFolios, detallePor, crearCombo,
-    abrirPanel, panelCuerpo, cerrarPanel, toast, enviarPorCorreoDoc,
+    abrirPanel, panelCuerpo, cerrarPanel, panelAbierto, toast, enviarPorCorreoDoc,
     registrar, moduloExiste, ir, irModulo, rutaActual, despachar,
     alternarMenu, cerrarMenu, cargarPerfil, puede, esPermisoDenegado, avisarSiPermiso, marcarDatosSucios,
     get perfil() { return perfil; },

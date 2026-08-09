@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ERP Plein — Test Harness E98</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <div id="app"></div>
+  
+  <script>
+    // Mock Supabase & ERP
+    window.ERP = {
+      registrar: (name, cfg) => (window._modules = window._modules || {}, window._modules[name] = cfg),
+      q: async (view) => [],
+      rpc: async () => ({}),
+      esc: (s) => String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'),
+      usd: (n) => '$' + (Number(n) || 0).toFixed(2),
+      num: (n) => Number(n) || 0,
+      fmt0: (n) => Math.round(Number(n) || 0).toLocaleString(),
+      pct: (n) => (Number(n) || 0).toFixed(2) + '%',
+      fmt: (n) => (Number(n) || 0).toLocaleString(),
+      norm: (s) => (String(s) || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''),
+      puede: () => true,
+      marcarDatosSucios: () => {},
+      toast: () => {},
+      abrirPanel: (t, d, c) => console.log(`Panel: ${t}`),
+      cerrarPanel: () => {},
+      perfil: {id:'admin', email:'test@plein.com', activo: true, modulos: ['inicio','embarques','facturas','liquidaciones','inventario','concentracion','cierres','usuarios','bitacora','flags','datos-faltantes','tareas','ventas','comercial','programas','proyectos','cargas','cobranza','pagos','tesoreria','finanzas','catalogos','liquidaciones','carga-rapida','lotes']},
+      despachar: function(mod) {
+        const cfg = this._modules && this._modules[mod];
+        if (cfg && cfg.render) {
+          const cont = document.getElementById('app');
+          cont.innerHTML = '';
+          cfg.render(cont).catch(e => cont.innerHTML = `<div style="color:red">Error: ${e.message}</div>`);
+        }
+      }
+    };
+    window._modules = {};
+  </script>
+
+  <!-- Cargar todos los módulos -->
+  <script src="modulo-inicio.js"></script>
+  <script src="modulo-embarques.js"></script>
+  <script src="modulo-cargas.js"></script>
+  <script src="modulo-cobranza.js"></script>
+  <script src="modulo-pagos.js"></script>
+  <script src="modulo-facturas.js"></script>
+  <script src="modulo-liquidaciones.js"></script>
+  <script src="modulo-inventario.js"></script>
+  <script src="modulo-concentracion.js"></script>
+  <script src="modulo-cierres.js"></script>
+  <script src="modulo-usuarios.js"></script>
+  <script src="modulo-bitacora.js"></script>
+  <script src="modulo-flags.js"></script>
+  <script src="modulo-datos-faltantes.js"></script>
+  <script src="modulo-tareas.js"></script>
+  <script src="modulo-ventas.js"></script>
+  <script src="modulo-comercial.js"></script>
+  <script src="modulo-programas.js"></script>
+  <script src="modulo-proyectos.js"></script>
+  <script src="modulo-catalogos.js"></script>
+  <script src="modulo-tesoreria.js"></script>
+  <script src="modulo-finanzas.js"></script>
+  <script src="modulo-carga-rapida.js"></script>
+  <script src="modulo-lotes.js"></script>
+  <script src="modulo-antiquedad.js"></script>
+
+  <script>
+    // Probar Facturación
+    setTimeout(() => {
+      console.log('Renderizando Facturación...');
+      ERP.despachar('facturas');
+    }, 500);
+  </script>
+</body>
+</html>

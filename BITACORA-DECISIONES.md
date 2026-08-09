@@ -74,8 +74,52 @@
 | D-54 | Sales Order = documento padre; params del modelo como columnas; sin líneas propias | E65 | Vigente |
 | D-55 | Numeración del SO: folio interno `SO-####` desde `parametros`, no `documento_serie` | E65 | Vigente |
 | D-56 | Eventos de Carga (C.1b): bitácora tipificada append-only que registra, no ejecuta; el dinero se referencia por id | E66 | Vigente |
+| D-57 | Módulo Presencia: actor auto-declarado (no fn_actor); objetos nacen cerrados | E68 | Vigente |
+| D-58 | Corrección V8 P-082/083/084 (Otro→Materia prima + comisión, CxP +480); P-034 Rechazo = wash | E68 | Vigente |
+| D-59 | Kabocha 370/372 no son préstamo, sólo sin aplicar; el adelanto excede el costo de la carga (anticipo a productor) | E69 | Vigente |
+| D-60 | Backfill 73 cargas claras → 73 SO Borrador; FRONTERA = Materia prima + Comisión SIN logística; pct_comision=10 en consignación (RM-003) | E70 | Vigente |
+| D-61 | Reconciliación V8 Fase 1 (Chase, 7 movs 375-381) + Fase 2 (conceptos): JPM→15,989.29, 0 cargas nuevas | E71 | Vigente |
+| D-62 | Reconciliación V8 Fase 3 (montos): única corrección P-076; V8 CERRADA (captura directa Miguel en adelante) | E72 | Vigente |
+| D-63 | Rumbo C.2: el LOTE es el eje de compra (no OC ni Carga); enlace Lote↔Orden de Venta con cantidades | E72 | Vigente |
+| D-64 | Fase C.2 construida: entidad LOTE (eje de compra) + reparto Lote↔OV + rentabilidad por lote; dinero intacto | E73 | Vigente |
+| D-65 | Re-ancla de costos: `carga_costos.lote_folio` reemplaza el puente como fuente de costo en las 3 vistas (alcance solo-costo); trigger + índice UNIQUE parcial; 0 discrepancias | E74 | Vigente |
+| D-66 | Pricing (A1+B+C): `lote_ventas.precio_caja` + quitar UNIQUE(lote,SO)=multi-tranche; v_lote_rentabilidad revenue/utilidad del lote por formula_tipo; RPCs re-firmadas (fn_desasignar_venta_lote(p_id)); P&L a nivel lote; número-preservador | E74 | Vigente |
+| D-67 | Fase C.2 · Estados de inventario por lote (estilo Silo Reconcile): tabla `lote_movimientos` (`merma|rts`, guard `Σ(vendido+merma+rts) ≤ cajas`, soft-delete) + `v_lote_inventario` (total/sold/waste/rts/on_hand/ats) + RPCs `fn_registrar_mov_lote` / `fn_anular_mov_lote`. MONEY-NEUTRAL (no toca CxC/CxP/Cuadre); número-preservador (0 discrepancias vs cajas_disponibles). `tipo` sin `ajuste`; una RPC parametrizada | E75 | Vigente |
+| D-67b | `v_lote_movimientos` (vista detalle merma/rts por lote, GRANT authenticated) — habilita listar + anular por `id` en el frontend. Frontend "Inventario del lote" + ripple D-66 desplegados en `modulo-lotes.js` (gate de "Quitar" corregido a `editar`) | E75 | Vigente |
+| D-68 | Auto-espejo de LOTE al alta de carga (peldaño 1 Dos Ejes): trigger AFTER INSERT `tg_cargas_crear_lote_espejo` crea `lotes`+`lote_items` base 1:1 con NEW.lote. Cierra frontera D-65. Money-neutral; biyección `ux_lotes_carga_folio` preservada; SET search_path + REVOKE PUBLIC/anon (advisor 0 menciones) | E76 | Vigente |
+| D-69 | Factura-desde-SO (Fase C, aditivo end-state): `facturas.so_folio` (FK sales_orders) + `carga_folio` nullable + CHECK `facturas_ancla_chk`; RPC `fn_crear_factura_desde_so(p_so_folio,p_numero)` arma líneas desde `lote_ventas.precio_caja` (canónico D-66), bloquea `pct_venta`/`comision_por_caja`, exige SO Confirmada/Cerrada; `v_facturas` INNER→LEFT + `po`=COALESCE(carga,SO) + so_folio (18 cols). Ruta carga intacta. Documental, money-neutral | E76 | Vigente |
+| D-70 | Liquidación al productor auto-poblada (Fase C): RPC `fn_crear_liquidacion_auto(productor,cargas[],comision_pct?,nota?)` computa bruto=Σ `cargas.ingreso_venta` y auto-pobla `liquidacion_ventas` desde la venta real; reusa `fn_crear_liquidacion` (comisión 10% default, deducciones auto excl. Materia prima+Comisión, anticipos=materia prima) + `fn_recalc`. Guard: consignación + ya liquidada + del productor. Money-neutral | E76 | Vigente |
+| D-71 | Shipping / Embarque físico (Load) (Fase C): entidad logística que agrupa 1+ cargas (consolidación-ready) MX→USA. Tablas `loads`/`load_cargas`/`load_serie` (cerradas, folio `LD-YYYY-####`), campos logísticos TODOS opcionales; RPCs `fn_crear_load(+cargas[])`/`fn_asignar_carga_load`/`fn_desasignar_carga_load`/`fn_editar_load`/`fn_anular_load`; vistas `v_loads`/`v_load_cargas`; documentos entidad extendida a `load`. Money-neutral (flete sigue en carga_costos). Respaldo: investigación industria produce MX→USA + V8 no captura logística hoy | E76 | Vigente |
+| D-82 | Flip venta→eje-SO: CxC y P&L reconocidos en el eje-SO (money-neutral) | E82 | Vigente |
+| D-82b | Detector v_venta_ejes compara contra v_ingreso_reconocido (RM-001 cuota fija) | E82 | Vigente |
+| D-83 | Vistas read-only relación programa↔cliente↔productor + bandera consistencia | E83 | Vigente |
+| D-83b | Vista read-only de recencia por contraparte (última operación) | E83 | Vigente |
 
 ---
+## E70 — 2026-07-31 · Backfill 73 cargas → Sales Orders
+
+### D-60 (E70). Backfill 73 cargas claras → 73 SO Borrador; regla FRONTERA; pct_comision=10 en consignación
+
+**Qué se decidió.** Se crearon **73 Sales Orders** (SO-0001..SO-0073), **1 SO por carga**, todas en estado **Borrador**, vía `fn_crear_so` + `fn_asignar_carga_so` (cajas_asignadas = carga.cajas, precio NULL). Mapeo por modalidad/costos: **RM-001** comisión = 13 (Alpine), **RM-003** consignación = 17 (incluye P-073/P-075, ya resueltas en E69), **RM-002** margen puro = 10, **RM-004** buy&resell = 33. En las 17 de consignación se fijó **`pct_comision = 10`** (regla firme: Plein siempre 10% del gross). Fuera del backfill: las **7 FRONTERA** (P-059/066/074/078/082/083/084, esperan D-50), **P-089** (flag) y **P-034** (wash). Total 82 ✓.
+
+**Regla de clasificación (la que hay que recordar).** Una `margen_fijo` es **FRONTERA** (ambigua RM-002 vs RM-004, la decide D-50) **sólo si** tiene líneas `Materia prima` + `Comisión` y **NADA de logística**. Si además trae flete/aduana/etc. es **RM-004 clara** (buy&resell). Sólo `Materia prima` sin comisión → **RM-002**. Un primer intento marcó como FRONTERA a toda margen_fijo con línea `Comisión` y dio 33 (invertido con RM-004=7); **validar siempre los conteos contra el tablero E68 (13/10/17/33 + 7)** antes de escribir.
+
+**Por qué esta solución y no otra.** El backfill de las 73 claras es **independiente de D-50** (D-50 sólo mueve las 7 FRONTERA), así que no había razón para esperar a socios. Se crean en Borrador con params NULL (salvo pct_comision) porque `tg_valida_so_params` sólo exige los params del modelo al **Confirmar/Cerrar**, no en Borrador — el layer comercial queda sembrado sin forzar precios que aún no se capturan.
+
+**Consecuencia operativa permanente.** Toda carga clara ya tiene su SO. Los SO **no tocan contabilidad** (CxC/CxP/Cuadre intactos: la creación de SO no mueve anclas de dinero). Al **confirmar** un SO, `tg_valida_so_params` exigirá los params de su modelo (comision_por_caja / pct_comision / precios). Las 7 FRONTERA siguen sin SO hasta D-50.
+
+---
+
+## E69 — 2026-07-31 · Kabocha 370/372 aplicados (ejecución de D-59)
+
+**Qué se ejecutó.** Se aplicaron los dos movimientos que estaban **sin aplicar** (no eran préstamo — ver D-59) a las cargas Kabocha: **mov 370** (Akambarhu −10,000, adelanto) → **3,250 a P-073** (completa el costo proveedor: el flete pendiente; pagado 8,697 → 11,947 = costo total); **mov 372** (CRI +8,000) → **7,562 a P-073** (completa la venta liquidada) **+ 438 a P-075** (remanente CRI, deja 372 consumido al 100%). El **sobrante de 370 ($6,750)** quedó **PARKEADO sin aplicar** como *anticipo a productor Akambarhu*, con nota explícita en el movimiento para que no vuelva a saltar como "sin aplicar", hasta que se capture **PO 1003 / P-089**.
+
+**Efecto en anclas.** CxC 595,807.09 → **587,807.09** (−8,000, cobros aplicados) · CxP 510,595.14 → **507,345.14** (−3,250, pago aplicado) · aplicaciones 186 → **189** · Cuadre **0.00** intacto · seg 0/0/0. Los tres montos calzaron **exactos** en los topes del trigger `chk_aplicacion` (guardas de sobre-cobro/sobre-pago ±0.005). Resultado: P-073 queda proveedor y cliente al 100% (lista para liquidar consignación cuando toque); P-075 con 438 cobrado de 4,312 (falta 3,874).
+
+**Nota de reconciliación.** Esto cierra las viejas hipótesis TAR-0001/0003 sobre movs "Adelanto Kabocha": el adelanto de Akambarhu es más grande que el costo de la carga 1001, y el remanente es anticipo a productor, no préstamo PRJ-001.
+
+---
+
 ## E65 — 2026-07-31 · C.1 Orden de Venta (sales_orders)
 
 ### D-54 (E65). Sales Order = documento padre; params del modelo como columnas; sin líneas propias
@@ -143,6 +187,22 @@ igual que ya lo hace `fn_cambiar_estado_orden`.
 > Si más adelante se documentan decisiones de E63/E64 desde sus transcripts, se agregarán con los
 > números disponibles en ese momento (append-only: el número sigue el orden de escritura, no el de
 > sesión).
+
+---
+
+## E67–E68 — 2026-07-31 · Análisis D-50, módulo Presencia, corrección V8, diagnóstico Kabocha
+
+### D-59 (E68→E69). Kabocha/Akambarhu 370-372: no son préstamo, sólo estaban sin aplicar
+Los movimientos 370 (Akambarhu −$10,000) y 372 (CRI +$8,000) tienen el `tipo` correcto (Proveedor/Cliente) desde antes; **NO son préstamo**. El único pendiente era que quedaron SIN APLICAR a la carga 1001 (P-073). Confirmado contra V8 Chase (comentarios "Adelanto Kabocha carga 1001"). **Hallazgo que explica por qué rebotaba en cada chat:** el adelanto ($10,000) es mayor que el costo total de la carga 1001 ($11,462 s/V8 Cargas) → sólo caben $3,250 en P-073 (completa costo proveedor: pagado 8,697 de 11,947) y $7,562 del lado cliente (venta liquidada); el resto ($6,750 y $438) es adelanto que corre por delante de lo liquidado (anticipo a productor / remanente a P-075). Ejecución en E69: aplicar lo que cabe con `fn_aplicar_a_carga` + parkear el sobrante, con nota explícita para que no vuelva a saltar. **Regla reforzada:** si un movimiento es préstamo del proyecto, el comentario/tipo lo dice; si dice "carga X", va aplicado a la carga.
+
+### D-58 (E68). Corrección de datos vía V8: P-082/083/084 y P-034
+Con el V8 (Chase + Cargas) como fuente y cotejando por P.O.: P-082/083/084 (Crystal Valley/espárrago, prov. Pampa Store) tenían el costo del producto mal etiquetado como `Otro` y sin la comisión. Corregido con `fn_editar_costo` (`Otro`→`Materia prima`, mismo monto) + `fn_agregar_costo` (`Comisión` $150/$90/$240). Cuadre 0.00, sentinelas 0/0/0, **CxP +$480 → 510,595.14** (costo real que faltaba). Efecto: pasan a `Materia prima + Comisión` = patrón FRONTERA → la decisión D-50 ahora mueve **7** cargas, no 4; REVISAR queda en 0. **P-034** (PO 7568, "Rechazo"): pago + devolución, neto cero (wash); se deja sin costo y fuera del backfill. Folio-drift V8↔ERP en 2 de ellas (se cotejó por P.O., nunca por folio).
+
+### D-57 (E68). Módulo Presencia / En línea
+Saber quién está conectado al ERP (como el Drive). Diseño: actor **auto-declarado** desde el frontend (selector "¿Quién eres?" + localStorage), **NO** `fn_actor()`, porque hoy todos entran con la sesión compartida de PP04-MA (todas las capturas salen PP04-MA). Backend nace cerrado (RLS + sin SELECT a authenticated; `fn_latido` sin EXECUTE a anon): tablas `presencia`/`presencia_log`, RPC `fn_latido`, vistas `v_presencia_online`/`v_presencia_historial`. Frontend `modulo-presencia.js` en prod. Parqueado: migrar a `fn_actor()` cuando haya login por usuario (adopción de Samuel); limpiar `presencia_log` (>90 días). El repo quedó bajo git por primera vez (local, sin remoto).
+
+### E67 (read-only). Análisis para el GATE de socios D-50
+Sin escrituras. Se analizaron las 51 cargas margen_fijo vivas para el split RM-002 (Margin, sólo producto) vs RM-004 (Buy & Resell, con logística prorrateable). Resultado en Excel `D-50_split_margen_fijo.xlsx`. La línea `Comisión` es el único punto gris (decisión de socios). Tras la corrección D-58 el tablero queda: 10 RM-002 · 33 RM-004 · 7 FRONTERA (P-059/066/074/078/082/083/084) · P-034 fuera (wash). Backfill de las 73 claras listo, bloqueado por D-50.
 
 ---
 
@@ -1168,3 +1228,814 @@ descartaron. Esta sección es la que más valor tiene dentro de seis meses.>
 ```
 
 Y se actualiza el índice de arriba.
+
+
+---
+
+## E71–E72 — 2026-07-31 · Reconciliación V8 (Fases 1-3) y rumbo de C.2 (Lote)
+
+### D-61 (E71). Reconciliación V8, Fase 1 (Chase) + Fase 2 (conceptos)
+- El pivote Chase del V8 = suma cruda EXACTA (846,879.60 / −830,890.31 / 15,989.29); sin wash
+  interno en la pestaña Chase (a diferencia del FRX histórico).
+- ERP JPM (107-374) y V8 (107-941) contiguos, sin huecos. Solape 268: folios **363-368 son un
+  REORDEN de folio** (mismo conjunto de montos, cero impacto — confirma "cotejar por contraparte,
+  nunca por folio"); 28 Types distintos V8↔ERP = reclasificaciones ya decididas y horneadas en
+  anclas (Hanna, viáticos Samuel, wash AJUSTE, cartón, anticipos), NO son errores.
+- "Bloque nuevo" 375-941 = **560 filas 100% vacías (padding de la hoja)** + **7 movimientos reales
+  (375-381)**, que netean +9,113.36 = exactamente 15,989.29 − 6,875.93. Capturados: 375 Akambarhu
+  −15,000 Anticipo→PRJ-001 (dispuesto 25k→40k) · 376 JEAMS +15,000 Financiamiento externo (back-to-back
+  6.2%) · 377 P&M +10,000 Cliente (a carga 1491/P-079 consignación, **SIN aplicar**) · 378 Samuel
+  −415.37 Viáticos · 379 Costatropical −300 Fletes · 380 ClickUp −65.94 Otros gastos · 381 Seed Aruba
+  −105.33 Anticipo→PRJ-005 (8,350→8,455.33).
+- **Hallazgo de proceso:** un `Anticipo a productor` como movimiento suelto FUGA el Cuadre (el activo
+  se reconoce por `proyecto_amortizaciones`, no por el movimiento). El ENSAYO lo detectó (−15,105.33)
+  ANTES de escribir. Corregido ligando las disposiciones vía `fn_registrar_amortizacion` (375→PRJ-001,
+  381→PRJ-005). Regla incorporada a CLAUDE.md (Trampas de API).
+- Fase 2 cerrada de facto: ningún tipo nuevo ni DDL (Type "Prestamo" mapea a Financiamiento externo /
+  Anticipo a productor). Diagnóstico Fase 3-Cargas: **0 cargas nuevas reales** (V8 1495 = ERP P-076,
+  mismo embarque 960 cajas/8-jul → evitado un doble de ~15k).
+
+### D-62 (E72). Reconciliación V8, Fase 3 (montos carga-por-carga) — CERRADA
+- Cruce por P.O. de 82 cargas vivas ERP vs 85 filas V8: **81 casan, 4 solo-V8 (sin dinero),
+  1 solo-ERP.** Confirma D-61: **0 cargas nuevas reales.**
+- **Única corrección de monto real: P-076** (folio ERP, PO 1490 = V8 PO 1495, mismo embarque 960
+  cajas/8-jul, Las Brisas). venta 15,000→15,254.73 (`fn_editar_carga`, COALESCE) + Comisión id 331
+  462.99→358.85 (`fn_editar_costo`, COALESCE). Julio ABIERTO → sin reabrir. ENSAYO que revierte
+  confirmó Cuadre 0.00 antes del write real. Efecto: **CxC +254.73, CxP −104.14, utilidad +358.87.**
+- Deltas restantes = **NO accionables** (verificados contra la utilidad del V8): P-077 (NGM247514)
+  "Otro" 160 y P-089 (1003) Aduanas 50 **reconcilian la utilidad del V8** → ERP correcto; P-05 (101)
+  venta Δ −0.03 inmaterial; P-034 (7568 Rechazo) V8 asienta venta=MP=9,540 neto 0 vs ERP en Rechazo
+  sin nada (igual neto) → no inflar CxC/CxP con un rechazo.
+- Solo-V8 (4): 1495=P-076 (ya cubierto); AX002/AX005 rechazos $0; CUC-0526 consig. $0. Ninguna se carga.
+- Diff de estados: Alpine AX007-012 (ERP Cerrada vs V8 Entregada) → ERP MÁS adelante, dejar. Las
+  entregas P-079/P-083/P-084 que el V8 marca "Entregada" tienen **fecha de entrega estimada futura**
+  (5/15/20-ago = embarque+21d; hoy 31-jul) → aún en tránsito, NO entregar hasta fecha real. P-035
+  (7569 Candy Fresh): V8 Rechazo con ingreso 7,808.69 y pérdida −1,201.31 vs ERP Entregada → conflicto.
+- **DECISIÓN DE PROCESO (Miguel, E72): la reconciliación V8 se CIERRA aquí.** De aquí en adelante
+  Miguel captura las actualizaciones directo en el ERP y verifica Cuadre=0; casos especiales (anticipos
+  vía `fn_registrar_amortizacion`, liquidaciones de consignación) puntuales. NO se reconcilia más por
+  sesión. Captura directa / puntual (operación normal, NO parkeados en plan): entregas reales
+  P-079/P-083/P-084; liquidación P-079 + mov 377 (P&M 10,000; arrastra trueque D-42); Kabocha
+  P-073/P-075 (Akambarhu/D-59); conflicto P-035 Candy Fresh; flete mov 379 → P-077. Pestañas
+  Ingresos/Egresos/Traspasos/Nómina: diff no abierto (grueso ya en Fase 1); si se necesita, chat dedicado.
+
+**ANCLAS E72:** CxC 588,061.82 · CxP 507,241.00 · Cuadre 0.00 · JPM 15,989.29 · JEAMS −52,872.00 ·
+movs_jpm 275 · folio_max_jpm 381 · fecha_max_jpm 2026-07-31 · aplicaciones 189 · cargas 82 vivas
+(89 tot) · flags 1 · revenue_models 4 · sales_orders 74 · sales_order_cargas 73 · seg 0/0/0 ·
+anticipos 48,455.33 · finext 45,000 · PRJ-001 dispuesto 40,000 · PRJ-005 dispuesto 8,455.33.
+
+### D-63 (E72). Rumbo de C.2 redefinido: el LOTE es el eje de compra, no la OC ni la Carga (build pendiente)
+- **Descubrimiento con socios (Miguel, E72), leyendo ERP_1 + capturas del ERP en vivo:** el ancla del
+  lado-compra NO puede ser la OC/PO del proveedor (a veces NO llega PO) ni la Carga actual (tiene un
+  solo `cliente_id`/`producto_id` → no representa "1 carga física repartida a varias ventas"). El ancla
+  estable es el **Lote**, que ya se autogenera como `LOTE-2026-####` (`lote_serie` + `cargas.lote`,
+  visible en prod).
+- **Caso que lo obliga (Miguel):** mismo producto, una sola carga física (ej. 20 palets en un camión),
+  **dos ventas** — 10 palets a un cliente y 10 a otro. El split es **por cantidad**, no por producto.
+  La carga "1 cliente/1 producto" de hoy no lo modela.
+- **Decisión (aprobada):** promover el **Lote a entidad de compra propia = nuestra OC** (una sola
+  entidad): auto-ID `LOTE-####`, `proveedor_id`, cajas/palets recibidos, **PO del proveedor OPCIONAL**
+  (dato, no ancla), soporte de **varias líneas de producto** (caso base 1). Los **costos cuelgan del
+  Lote** (no del cliente). El enlace comercial es **`lote_ventas` = Lote ↔ sales_orders con
+  cajas/palets asignados** (m:n) — ahí viven los 10+10. La utilidad por venta sale del reparto ×
+  Revenue Model del SO.
+- **Es el Modelo de Dos Ejes ya aprobado (D-45):** "el Lote manda el costeo, la Orden de Venta manda
+  lo comercial". No es cambio de rumbo — es separar lo que la Carga hoy tiene aplastado.
+- **Construcción ESCALONADA (acordado):** paso 1 = Lote + `lote_ventas` **conviviendo** con el modelo
+  actual (la carga conserva su `cliente_id`/`venta` por ahora); la migración fina del lado-venta fuera
+  de la carga viene DESPUÉS, con el modelo nuevo ya probado. Cuadre 0.00 intacto en cada paso.
+- **Primera decisión del build:** tabla `lotes` nueva (recomendado — reusa `lote_serie` y migra los
+  `cargas.lote` existentes) vs reusar `ordenes_compra` (carga semántica de documento-a-enviar que no
+  calza con "lote físico recibido"). Lean: tabla `lotes` nueva; `ordenes_compra` queda como el PDF-PO
+  opcional al proveedor.
+- **Reemplaza el diseño previo de C.2 "SO↔OC vía carga" y el "puente directo SO↔OC"** — ambos anclaban
+  mal. C.1/C.1b intactos.
+
+
+### D-64 (E73). Fase C.2 construida: entidad LOTE (eje de compra) + reparto Lote↔OV + rentabilidad por lote
+
+Rumbo D-63 construido de punta a punta (backend + datos + frontend). Dinero intacto (anclas = E72).
+
+BACKEND (4 DDL + 2 DML, cada una con ENSAYO que revierte + verificación no-circular; seg 0/0/0 y
+Cuadre 0.00 tras cada paso):
+- Tablas `lotes` / `lote_items` (multi-producto) / `lote_ventas` (reparto m:n). Nacen cerradas
+  (RLS + REVOKE, patrón `sales_order_cargas`).
+- Contador compartido: `fn_siguiente_lote()` (owner-only) extraído de `tg_asignar_lote`; el trigger
+  ahora DELEGA en él → un solo mecanismo carga+lote (`LOTE-YYYY-####` por año, mismo advisory lock).
+- RPCs (gate capturar/editar, EXECUTE solo `authenticated`): `fn_crear_lote`, `fn_agregar_item_lote`
+  (guard Σ items ≤ cajas), `fn_asignar_venta_lote` (guard Σ cajas ≤ cajas del lote, probado en vivo),
+  `fn_desasignar_venta_lote`, `fn_anular_lote` (rechaza si hay repartos).
+- Vistas: `v_lotes`, `v_lote_items`, `v_lote_ventas`.
+
+PUENTE TRANSITORIO `lotes.carga_folio` (COMMENT en la columna): sólo para derivar costo del lote desde
+`carga_costos` mientras conviven modelos (A1). Se ELIMINA en la re-ancla (`carga_costos.lote_id`). No
+construir lógica estructural permanente sobre él.
+
+MIGRACIÓN (89 lotes espejo 1:1 de las cargas): proveedor/cajas/pallets/fecha/carga_folio desde la
+carga + 89 `lote_items` base. Las 7 anuladas migradas con `anulado=true` (decisión deliberada: 1:1
+completo, sin folios huérfanos). `lote_serie` intacto (86/2026), reusó los strings existentes.
+
+B2 — backfill de `lote_ventas` (73 filas): espejo 1:1 de `sales_order_cargas` (cajas_asignadas fieles).
+73 lotes vivos con venta / 9 sin (FRONTERA+P-089+P-034, sin SO). Cross-check: `carga_cliente_id` vs
+`so_cliente_id` = 0 discrepancias (el eje-venta concuerda 100% con el cliente legacy de la carga).
+
+`v_lote_cadena`: Lote→reparto→OV→RevenueModel en una fila (grano = reparto; lotes sin venta via LEFT
+JOIN). 89 filas.
+
+`v_lote_rentabilidad`: rentabilidad por lote REUSANDO el reconocimiento ya vetado de `v_carga_detalle`
+(consignación sin liquidar => utilidad "—"; comisión => costo 0/margen 100; margen_fijo => real).
+Cross-check: util vivos 54,653.94 (com 12,259.24 / con 5,562.37 / mf 36,832.33), costo 1,210,817.31 —
+idénticos a `v_carga_detalle`. Grano = lote (NO profit por-SO; el precio vive en la SO → fase pricing).
+
+FRONTEND (Claude Code, 2026-07-31, SOLO frontend): `modulo-lotes.js` (ruta lotes, "Lotes"),
+`index.html` + `estilos.css` (chip `.lote-estado`), sección "Lote" espejo en `modulo-cargas.js`/
+`modulo-expediente.js` (`ERP.montarLoteCarga`). Consume las 5 vistas + 5 RPCs. Verificado node --check +
+arnés navegador. NO desplegado (Miguel corre `npx vercel --prod`). `REPORTE-FRONTEND.md` actualizado.
+
+COMPARACIÓN SILO (validación externa): la columna vertebral (PO=OC, Lot=lote, Lot Sales=reparto,
+Lot Expenses=costos, PAS=consignación) coincide con Silo. Silo va adelante en: costos pegados al lote
+(= nuestra re-ancla), estados de inventario por lote (ATS/sold/waste/on-hand/RTS), profit por-SO con
+precio (= fase pricing). No son correcciones de rumbo, son los siguientes pasos del mismo rumbo.
+
+PARQUEADO (próximas sesiones, arquitectura):
+ 1. Re-ancla de costos: `carga_costos.lote_id` + quitar puente `carga_folio` + índice UNIQUE parcial
+    `lotes.carga_folio WHERE carga_folio IS NOT NULL` (evita doble-lote por el picker de puente).
+ 2. Fase pricing: precio en `lote_ventas` → `v_lote_rentabilidad` por-SO real (estilo Silo lot_sales);
+    decidir dónde vive el P&L (lote vs item) para multi-producto.
+ 3. Estados de inventario por lote (estilo Silo Reconcile).
+
+ANCLAS AL CIERRE E73 (= E72 en dinero): CxC 588,061.82 · CxP 507,241.00 · Cuadre 0.00 · JPM 15,989.29 ·
+JEAMS -52,872.00 · seg 0/0/0. NUEVO C.2: lotes 89 (82 viv/7 anul) · lote_items 89 · lote_ventas 73 ·
+lote_serie 2026=86.
+
+
+---
+## E74 — 2026-08-01 · Re-ancla de costos + Pricing (A1+B+C)
+
+### D-65 (E74). Re-ancla de costos: el costo del lote sale de `carga_costos.lote_folio`, no del puente
+
+**Qué se decidió.** Se agregó **`carga_costos.lote_folio`** (text FK→`lotes.folio`) y se hizo **backfill 1:1** de las **257** líneas de costo (biyección estricta cargas↔lotes: `cc_sin_lote=0`, 89 `carga_folio` distintos, 0 duplicados). Las **3 vistas** `v_lotes` / `v_lote_cadena` / `v_lote_rentabilidad` computan `costo_total` por `lote_folio` en lugar del puente `lotes.carga_folio`.
+
+**Alcance = SOLO costo.** El puente hace dos trabajos en las vistas: (1) fuente de costo — **reanclado**; (2) atributos comerciales de la carga (`carga_po`, `modalidad`, `cliente`) y el P&L de venta (`ingreso/cobrado/saldo/pagado`) — **intactos**, siguen por `l.carga_folio` hasta la fase pricing. El puente `lotes.carga_folio` **sobrevive como columna** (con su índice UNIQUE parcial), ya no como fuente de costo.
+
+**Número-preservador.** `Σ carga_costos.monto = 1,215,630.81` (idéntico tres formas: total / vía puente / con lote mapeable); **0 discrepancias** costo-por-lote vía `lote_folio` vs vía puente; Cuadre `0.00`; seg `0/0/0`; dinero E73/E72 intacto (CxC 588,061.82 · CxP 507,241.00 · JPM 15,989.29 · JEAMS −52,872.00).
+
+**Objetos.** `carga_costos.lote_folio` + FK + `idx_carga_costos_lote_folio` · trigger `tg_carga_costos_set_lote` (BEFORE INSERT: auto-liga el costo nuevo al lote espejo no anulado; **RPCs contables intactas**; función con `REVOKE ALL FROM PUBLIC/anon`) · `ux_lotes_carga_folio` UNIQUE parcial (`WHERE carga_folio IS NOT NULL`).
+
+**Proceso.** El ENSAYO detectó y corrigió `EXECUTE` a PUBLIC en la función de trigger **antes** del apply (seg 1→0): recordatorio de que toda función nueva nace con EXECUTE a PUBLIC y hay que revocarla.
+
+**Frontera abierta (parqueada).** `tg_cargas_lote`→`tg_asignar_lote` sólo hace `NEW.lote := fn_siguiente_lote(...)` (rellena `cargas.lote`, **NO** inserta en `lotes`): una carga nueva **no** genera lote espejo. El trigger cubre los 89 actuales; a futuro la captura debe ser lote-first (`fn_crear_lote`) o crear el espejo al alta de carga.
+
+### D-66 (E74). Pricing por-SO real: precio a nivel renglón (lote_ventas), P&L a nivel lote
+
+**Qué se decidió (A1+B+C).**
+- **A1 — precio a nivel renglón + multi-tranche.** `lote_ventas.precio_caja` (numeric, nullable) y se **ELIMINÓ el UNIQUE(lote_folio, so_folio)**. Razón: en Silo el **mismo lote se vende en varios renglones a precio distinto** (ej. `4-BEL-2` $19×224 y $12×672). El guard `Σcajas ≤ cajas del lote` sigue vigente. Ripple: `fn_desasignar_venta_lote` pasa a operar por **`id`** de renglón (firma nueva `fn_desasignar_venta_lote(p_id bigint)`; antes por lote+SO); `fn_asignar_venta_lote` gana `p_precio_caja`.
+- **B — backfill número-preservador.** 43/73 renglones (solo **RM-002 margen** y **RM-004 buy_resell** con venta>0): `precio_caja = ingreso_venta / cajas`. **RM-001 comisión** (13) y **RM-003 consignación** (17, 4 sin liquidar) → `precio_caja` **NULL** (su revenue no es precio de venta; se reconoce como hoy). Los 73 renglones tienen **reparto completo** (Σcajas = cajas de la carga) → revenue por lote **idéntico al centavo** vs `v_carga_detalle` (**0 discrepancias**).
+- **C — P&L a nivel LOTE.** Hoy **0 lotes multi-item** → el lote es efectivamente producto-nivel (como Silo). `v_lote_rentabilidad` reescrita con `CASE` por `formula_tipo`: RM-002/004 = `round(Σ(precio_caja×cajas),2) − costo_lote`; RM-001 = comisión (costo 0/margen 100); RM-003 = "—" hasta liquidar. P&L por item **diferido** hasta que exista multi-producto real.
+
+**Objetos.** `lote_ventas.precio_caja` (43 poblados) · UNIQUE(lote,SO) **eliminada** · `v_lote_rentabilidad` reescrita (revenue/utilidad/margen del lote; `ingreso_venta` casteado a `numeric(14,2)`) · `v_lote_ventas` expone `precio_caja` + `importe` · `fn_asignar_venta_lote(...,p_precio_caja,...)` y `fn_desasignar_venta_lote(p_id)` (ambas con `REVOKE PUBLIC/anon` + `GRANT EXECUTE authenticated`).
+
+**Verificación.** Cuadre `0.00` · seg `0/0/0` · 43 renglones con precio · 0 UNIQUE restante · `disc_costo=0` · `disc_ingreso=0` · dinero E73/E72 intacto. Muestra: LOTE-2026-0053 (margen) ingreso 65,280 / costo 61,920 / util 3,360 / 5.15% ; LOTE-2026-0040 (comisión) ingreso 1,063.8 / margen 100% ; LOTE-2026-0016 (consignación liquidada) util 0.
+
+**Ripple de frontend (OBLIGATORIO antes de desplegar `modulo-lotes.js`).** `fn_desasignar_venta_lote` cambió de firma → el frontend debe llamar por `id` (`v_lote_ventas.id`); `fn_asignar_venta_lote` debe mandar `p_precio_caja`. Como `modulo-lotes.js` aún no está desplegado, no hay nada roto en prod.
+
+**Parqueado.** `fn_editar_venta_lote(id, precio/cajas)` (opcional, no hecho) · estados de inventario por lote (estilo Silo Reconcile) · captura futura lote-first (ver D-65).
+
+---
+## E75 — 2026-08-02 · Estados de inventario por lote (C.2, Silo Reconcile) + deploy frontend
+
+### D-67 (E75). Fase C.2 · Estados de inventario por lote — capa física money-neutral
+
+**Qué se decidió (GATE con Miguel: B + money-neutral + frontera parqueada).** Cierra la trilogía del lote (costo → precio → **inventario**), paso 3 parqueado de D-64. Se construyó la capa física de inventario estilo Silo Reconcile (ATS/sold/waste/rts/on-hand), **sin tocar contabilidad**.
+
+**Objetos.**
+- **Tabla `lote_movimientos`** (nace cerrada: RLS on + `REVOKE ALL FROM PUBLIC,anon,authenticated`; patrón `lote_ventas`): `id`, `lote_folio`→`lotes.folio`, `tipo` CHECK `('merma','rts')`, `cajas` CHECK `>0`, `fecha` DEFAULT `fn_hoy()`, `motivo` NOT NULL, `nota`, auditoría (`capturado_por` DEFAULT `fn_actor()` / `capturado_ts`), soft-delete (`anulado` + motivo/por/ts). Índice parcial `idx_lote_movimientos_lote WHERE NOT anulado`.
+- **Vista `v_lote_inventario`** (GRANT authenticated, anon cerrado): `folio, proveedor, po_proveedor, carga_folio, carga_po, productos, total, sold, waste, rts, on_hand, ats, anulado`. `on_hand = total − sold − merma − rts`; `ats = on_hand` (sin "hold" aún). `total/on_hand/ats` **NULL** cuando el lote no tiene cajas capturadas (1 lote) → pintar "—", nunca 0.
+- **Vista `v_lote_movimientos`** (D-67b; GRANT authenticated): passthrough de la tabla para **listar** y **anular por `id`** desde el frontend (la tabla no es legible por authenticated).
+- **RPCs** (SECURITY DEFINER, `SET search_path='public'`, `REVOKE PUBLIC/anon` + `GRANT authenticated`): `fn_registrar_mov_lote(p_lote_folio, p_tipo['merma'|'rts'], p_cajas, p_motivo, p_fecha DEFAULT null, p_nota DEFAULT null)` → gate `capturar`, **guard `Σ(vendido+merma+rts)+p_cajas ≤ cajas del lote`**, devuelve `on_hand`; `fn_anular_mov_lote(p_id, p_motivo)` → gate `editar`, soft-delete.
+
+**Regla de negocio confirmada — MONEY-NEUTRAL.** Merma y RTS son eventos **físicos**: NO tocan CxC/CxP/Cuadre. En margen fijo el costo ya se reconoció al embarque, así que la merma no cambia el P&L. Si alguna vez una devolución al proveedor debe bajar CxP, es contabilidad y se hará aparte con las RPCs contables existentes, en su propio GATE — **no** entró en D-67. (Parqueado.)
+
+**Refinamientos de diseño (avisados a Miguel).** (1) `tipo` SIN `ajuste`: un ajuste positivo rompería la invariante `Σ≤total`; unidades "encontradas" = corrección al conteo del lote, no un movimiento. (2) UNA sola RPC parametrizada por `p_tipo` en vez de dos verbos → la invariante vive en un solo lugar (DRY); el frontend pone dos botones que llaman la misma RPC.
+
+**Verificación (ENSAYO que revierte + post-apply no-circular).** El ENSAYO probó en vivo (y revirtió): crear todo, `fn_registrar_mov_lote` merma+rts, el **guard** de sobre-ajuste (bloqueó 1200 sobre LOTE-2026-0068), la vista (`on_hand 1050`, `waste 100`, `rts 50`), y **anular** (waste volvió a 100). Post-apply: seg **0/0/0** · Cuadre **0.00** · CxC 588,061.82 / CxP 507,241.00 / JPM 15,989.29 / JEAMS −52,872.00 / cargas 82 **idénticos a E74** · `lote_movimientos` 0 filas · `v_lote_inventario` 89 filas (sold 74,810 / waste 0 / rts 0 / on_hand 5,899) · **`disc_vs_vlotes = 0`** (el `on_hand` reproduce exacto el `cajas_disponibles` de `v_lotes` mientras no hay movimientos — número-preservador). Advisor de Supabase: los objetos nuevos caen en el patrón de la casa (`rls_enabled_no_policy` INFO en la tabla; `security_definer_view` en la vista como las 124 vistas; `authenticated_security_definer_function_executable` en las RPCs como las ~95) — **cero categoría nueva**; NO aparecen en `anon_*` ni en `function_search_path_mutable`.
+
+### D-67b (E75). `v_lote_movimientos` + deploy del frontend de lotes
+
+**Vista detalle** (arriba) agregada al detectar el call-site: sin ella el frontend no podía listar movimientos ni obtener el `id` para anular.
+
+**Frontend (Claude Code, SOLO frontend, 2026-08-02).** Dos piezas en `modulo-lotes.js`, verificadas con `node --check` + arnés de navegador, y **DESPLEGADAS a prod** (`npx vercel --prod`, Miguel):
+1. **Sección "Inventario del lote"** en la ficha (después de "Reparto a ventas", sin tocarla): 6 indicadores (Total/Vendido/Merma/Devuelto a proveedor/On-hand/Disponible ATS, "—" en NULL) + formulario merma/RTS (Tipo, Cajas, Fecha **local** —no UTC—, Motivo obligatorio, Nota) gateado a lote vivo + `capturar` + lista de movimientos con chip `.mov-tipo` y "Anular" por fila gateado a `editar`. Lote anulado oculta todo.
+2. **Ripple D-66** en "Reparto a ventas": `fn_asignar_venta_lote` ahora manda `p_precio_caja` (opcional, vacío→null) en el orden correcto; tabla con columnas Precio/caja e Importe; **"Quitar" por `id` de renglón** (`fn_desasignar_venta_lote(p_id)`) — crítico para multi-tranche (mismo SO en varios renglones). **Bug corregido de paso:** "Quitar" estaba gateado por `capturar` pero el gate real de la RPC es `editar` → separado (**Asignar = capturar, Quitar = editar**).
+
+**Anclas al cierre E75 (= E74 en dinero).** CxC 588,061.82 · CxP 507,241.00 · Cuadre 0.00 · JPM 15,989.29 · JEAMS −52,872.00 · seg 0/0/0. **Nuevo C.2:** `lote_movimientos` 0 filas · `v_lote_inventario` · `v_lote_movimientos` · `fn_registrar_mov_lote` · `fn_anular_mov_lote`. Frontend `modulo-lotes.js` DESPLEGADO.
+
+**Parqueado.** Captura lote-first (D-65, es el GATE de la siguiente tarea Fase C documental) · ajuste de CxP por RTS si algún día debe mover dinero (hoy money-neutral) · columnas On-hand/ATS en la LISTA de lotes (fase 2 frontend) · `fn_editar_venta_lote` (opcional).
+
+---
+## E76 — 2026-08-02 · Fase C documental COMPLETA (auto-espejo + factura-desde-SO + liquidación + shipping)
+
+Sesión de cierre de Fase C (backend). Cuatro migraciones, **todas money-neutral y advisor-limpias**
+(cero categoría nueva: los objetos caen en `authenticated_security_definer_function_executable`,
+`security_definer_view`, `rls_enabled_no_policy` — baseline de la casa; ninguno en
+`function_search_path_mutable` ni en listas anon). Anclas de dinero **EXACTAS a E75**.
+
+### D-68 (E76). Auto-espejo de LOTE al alta de carga — cierra la frontera D-65
+**Qué se decidió (GATE con Miguel: Opción A auto-espejo, parqueando lote-first Opción B).**
+Hasta E75, `tg_asignar_lote` (BEFORE INSERT) sólo ponía `cargas.lote` (string) — **NO** insertaba en
+`lotes`. La próxima carga capturada habría nacido huérfana (sin fila en `lotes`, sin `lote_items`, y
+`fn_carga_costos_set_lote` no habría encontrado lote espejo → costo sin anclar). Se agregó trigger
+**AFTER INSERT `tg_cargas_crear_lote_espejo`** (función `fn_cargas_crear_lote_espejo`, SET search_path,
+REVOKE PUBLIC/anon) que crea la fila espejo en `lotes` (folio=NEW.lote, proveedor/cajas/pallets/fecha,
+carga_folio=NEW.folio, provenance=NEW.capturado_por) + `lote_items` base 1 producto. Es el **peldaño 1**
+del end-state Dos Ejes (insumo directo de peldaños 5-6). **Verificación:** ENSAYO probó carga nueva →
+1 lote espejo + 1 item, Cuadre 0.00, seg 0/0/0; post-apply anclas idénticas a E75. **Parqueado:**
+lote-first real (Opción B) para cuando aparezca multi-producto o carga física repartida en captura.
+
+### D-69 (E76). Factura-desde-SO — la factura se ancla a la Orden de Venta
+**Qué se decidió (aditivo end-state; `facturas` tenía 0 filas → sin migración de datos).**
+`facturas.carga_folio` pasó a **nullable**, se agregó **`facturas.so_folio`** (FK `sales_orders`) y CHECK
+`facturas_ancla_chk` (≥1 ancla). RPC **`fn_crear_factura_desde_so(p_so_folio, p_numero)`** arma las líneas
+desde **`lote_ventas.precio_caja`** (fuente canónica de precio, D-66; `sales_order_cargas.precio_caja`
+está 100% NULL) vía lote→carga→producto. **Guards:** exige SO `Confirmada`/`Cerrada`; **bloquea** `pct_venta`
+(consignación → se factura al liquidar) y `comision_por_caja` (comisión → Plein factura su comisión). La
+ruta legacy `fn_crear_factura(carga)` queda **intacta**. `v_facturas` se reescribió INNER→**LEFT JOIN**
+(para que la factura SO sin carga aparezca) + `po`=COALESCE(carga.po, SO.customer_po) + `so_folio` al final
+(17→18 cols). Documental, **money-neutral** (la factura no mueve CxC; el ingreso vive en cargas/cobros).
+**Verificación:** ENSAYO facturó SO-0001 → factura anclada al SO, carga_folio NULL, línea desde precio real,
+aparece en `v_facturas`, Cuadre 0.00, seg 0/0/0. **Pendiente frontend (Claude Code):** cablear el botón +
+mostrar `so_folio`; y los 74 SO están en Borrador → confirmar antes de facturar.
+
+### D-70 (E76). Liquidación al productor auto-poblada desde la venta real
+**Qué se decidió (GATE con Miguel — modelo de negocio confirmado, se trabaja con los números tal como salieron).**
+El módulo PACA ya existía y ya encodeaba las reglas correctas (comisión 10% default; excluye `Comisión`
+—Plein/Hanna— y `Materia prima` de deducciones; materia prima → `anticipos`; auto-carga deducciones desde
+`carga_costos`). Lo único manual era el gross. Se agregó **`fn_crear_liquidacion_auto(p_productor_id,
+p_cargas[], p_comision_pct?, p_nota?)`** que: (1) computa **bruto = Σ `cargas.ingreso_venta`** (la venta de
+consignación vive ahí, NO en `lote_ventas` que es NULL en consignación por D-66); (2) reusa
+`fn_crear_liquidacion` (toda la lógica de comisión/deducciones/anticipos, DRY); (3) auto-pobla
+`liquidacion_ventas` (1 línea/carga: producto, lote, unidades=cajas, precio_unit=ingreso/cajas,
+monto=ingreso); (4) `fn_recalc`. **Guard:** consignación + ya liquidada (`ingreso_venta>0`) + del productor.
+**Money-neutral** (account-of-sales, no toca CxC/CxP/Cuadre). **Ejemplo Cornejos {P-019,P-021,P-043,P-047}:**
+bruto 125,195.70 / comisión 12,519.57 (10%) / deducciones 15,709.04 / neto 96,967.09 / anticipos 83,492.99.
+**Aviso operativo:** al liquidar de verdad, P-019 (historial LQ-0001) y P-043/P-047 (Akambarhu D-59) traen
+banderas — revisar antes de emitir.
+
+### D-71 (E76). Shipping / Embarque físico (Load) — cierra Fase C
+**Qué se decidió (GATE con Miguel + investigación de industria produce MX→USA).**
+Hallazgo del V8: Plein **no captura NINGÚN dato de logística hoy** (la hoja de Cargas es 100%
+comercial/financiera). La industria de produce modela el **"Load"** (camión/contenedor que cruza,
+consolida 1+ órdenes/lotes) con Carta Porte/CCP, cadena de frío y cruces (Nogales/Otay/Laredo). Decisión:
+entidad nueva **Embarque físico / Load** (NO campos sueltos en la carga; y `envios` ya está ocupado por la
+bitácora de correo). Tablas `loads` (folio `LD-YYYY-####`, campos logísticos **TODOS opcionales**:
+transportista, contenedor/placas, booking, cruce, fecha_cruce, temperatura_c, recorder, BOL/Carta Porte,
+pallets, estado `en_origen→en_cruce→en_transito→entregado`), `load_cargas` (m:n load↔carga,
+consolidación-ready) y `load_serie` (numeración) — **nacen cerradas** (RLS + REVOKE). RPCs `fn_crear_load`
+(+p_cargas[])/`fn_asignar_carga_load`/`fn_desasignar_carga_load`/`fn_editar_load` (COALESCE)/`fn_anular_load`.
+Vistas `v_loads` (n_cargas, cajas_total, cargas) / `v_load_cargas`. **Documentos:** entidad extendida a
+`load` (BOL/packing list/fitosanitario/FDA vía el módulo existente). **Money-neutral** (el flete sigue como
+costo en `carga_costos`; el load es registro logístico, no financiero). **Verificación:** ENSAYO consolidó
+2 cargas (P-021+P-076 → cajas_total 2403) en LD-2026-0001, editar/desasignar/anular OK, doc `load` OK,
+Cuadre 0.00, seg 0/0/0. **Opcional parqueado:** Packing List / BOL imprimible (plantilla frontend).
+
+**Anclas al cierre E76 (= E75 en dinero).** CxC 588,061.82 · CxP 507,241.00 · Cuadre 0.00 · JPM 15,989.29 ·
+JEAMS −52,872.00 · aplicaciones 189 · cargas 82 · flags 1 · RM 4 · SO 74 (Borrador) · SO_cargas 73 ·
+seg 0/0/0 · lotes 89 (82v) · lote_ventas 73 (precio 43) · carga_costos 257 (Σ 1,215,630.81) ·
+lote_movimientos 0 · **facturas 0 · liquidaciones 1 (anulada) · loads 0** (nuevos). Advisor: search_path_mutable
+10 (sin cambio) · authenticated_secdef 102 · security_definer_view 127 · rls_enabled_no_policy 64 · anon 1.
+
+**FASE C DOCUMENTAL = COMPLETA (backend).** Flujo SO→OC→Lote→Envío(Load)→Factura→Liquidación→Profit entero.
+Siguiente hito (fuera de C): peldaño 3 (costo nativo al lote) → re-anclaje de la venta al SO (money-mover).
+
+
+### D-72 (E77): Costo nativo al lote - carga_costos.lote_folio NOT NULL
+- El lote es el padre OBLIGATORIO del costo: `lote_folio SET NOT NULL` (257/257 poblado; toda carga viva
+  tiene lote espejo vivo; fn_crear_carga inserta carga->lote espejo [D-68] antes de los costos).
+- `fn_carga_costos_set_lote` endurecido (+SET search_path='public', RAISE COSTO_SIN_LOTE si no resuelve).
+- `v_cxp_proveedor_atribuido` re-anclado VIA LOTE (filtro anulado + grano por lote_folio->lotes);
+  identico al centavo (1,170,414.05 = 1,170,414.05; 0 desalineado). Contrato 8 cols intacto.
+- `v_cxp_lote` nueva (CxP por lote x proveedor).
+- P3.2 (soltar carga_folio NOT NULL) POSPUESTO a peldano 6 (captura lote-first + barrido de lectores).
+- Money-neutral (Cuadre 0.00, dinero = E76). Advisor: search_path 10->9, secdef_view 127->128.
+
+### D-73 (E78): Detector venta por ejes (peldano 4a)
+- `v_venta_ejes` (por carga: ingreso eje-carga vs eje-SO/lote + delta + estado_reancla) + `v_venta_ejes_resumen`.
+- estado_reancla: CONCILIADO (SO con precio) / ESPEJO (comision/consignacion, sin precio de lote) /
+  SIN_SO / DIVERGE (alarma abs(delta)>0.005).
+- Hallazgo: delta 0 POR-CARGA en las 82 - el eje-SO es espejo exacto del eje-carga. El flip 4b (CxC al
+  eje-SO) espera captura lote-first + SO confirmadas. Money-neutral. Advisor secdef_view 128->130.
+
+### D-74 (E79): Clasificador determinista de Revenue Model - RESUELVE D-50 SIN SOCIOS
+- Regla: comision->RM-001 . consignacion->RM-003 . margen solo-producto->RM-002 . margen con costo extra
+  (logistica o comision pagada)->RM-004. Vista `v_rm_sugerido_carga`.
+- Hallazgo clave: los 73 SO existentes YA cumplen la regla (A_CORREGIR=0). Ratifica todo y asigna los 9 SIN_SO.
+- RM-002<->RM-004 = mismo P&L en v_lote_rentabilidad -> clasificar es money-neutral y reversible (etiqueta, no dinero).
+- FRONTERA (7, producto+comision) -> RM-004: la comision pagada es costo aterrizado, no modelo hibrido.
+
+### D-75 (E79): Backfill 7 SO FRONTERA
+- P-059/066/074/078/082/083/084 (Crystal Valley, esparrago, programa 9, $36/caja exacto).
+  fn_crear_so (RM-004) + fn_asignar_carga_so + fn_asignar_venta_lote -> SO-0075..0081 (Borrador).
+- Detector: SIN_SO 9->2, CONCILIADO 43->50, delta 0. Money-neutral.
+- Excepciones fuera del backfill: P-034 (wash, D-58) y P-089 (flag abierto) - con motivo.
+
+### D-76 (E79): Reconocimiento de ingreso por modelo (spec del flip 4b) + rename de RM
+- Tres mecanicas de ingreso: (1) Margen/Buy&Resell = precio(lote) x cajas al embarcar; (2) Fixed Fee (Alpine)
+  = cuota FIJA por embarque (NO per-caja), a la venta; (3) Consignacion (CRI) = Plein es el FRENTE, cobra el
+  GROSS COMPLETO del reporte del cliente AL LIQUIDAR (timing), costos por acuerdo con el productor via
+  contraparte_id por linea, el 10% es utilidad OBJETIVO no formula.
+- Confirmado por Miguel: en CRI el ingreso registrado ES el gross completo de Plein (margen ~15-20%, varia
+  por acuerdo y FX). `ingreso_venta` actual = CORRECTO. Money-neutral, nada que corregir en dinero.
+- Rename (formula_tipo INTACTO): RM-001 -> 'Fixed Fee per Shipment'; RM-003 -> 'Margin (Consignment Timing)'.
+  descripcion de ambos actualizada con la spec. Money-neutral (ingreso eje-lote 1,224,484.40 sin cambio).
+- Pendiente socios (solo taxonomia, no dinero): validar estos dos nombres.
+
+### D-77 (E80): Higiene de seguridad — REVOKE EXECUTE en 5 funciones de trigger (cierra anon_security_definer)
+- get_advisors destapo anon_security_definer_function_executable=1: `tg_asignar_lote()` (SECURITY DEFINER)
+  ejecutable por anon via /rest/v1/rpc/. Al barrer, 5 funciones de trigger tenian EXECUTE a PUBLIC heredado
+  del default (nunca se les hizo REVOKE al crearlas): tg_asignar_lote (definer), tg_evento_carga_inmutable,
+  tg_evento_valida, tg_liq_hijas_inmutables, tg_liquidacion_inmutable (las 4 invoker).
+- Fix: REVOKE EXECUTE ... FROM PUBLIC, anon, authenticated en las 5. Las funciones de trigger se disparan por
+  la maquinaria del trigger, NO por el EXECUTE del llamador -> los triggers siguen funcionando identicos.
+- Money-neutral (REVOKE puro). ENSAYO revertido: anon_exec f/f/f/f/f, Cuadre 0.00, seg 0/0/0.
+- Advisor: anon_secdef 1->0; authenticated_secdef 102->101; search_path 9 y secdef_view 131 SIN cambio.
+- No era de E80 (frontend); venia de E73/E66/P-B. Baseline E79 no rastreaba esta categoria.
+
+### D-78 (E80): A-12 resuelto — etiqueta [VENTA=COSTO CONFIRMADO] en P-019 + excepcion de gate para nota_revision
+- Diagnostico: P-019 (consignacion, RODRIGUEZ PRODUCE, marzo, Cerrada) tiene venta = costo = 21,948.00
+  exactos -> margen 0 REAL. La nota [E26] "margen 672" quedo STALE: en E60 se atribuyeron Aduanas Suarez
+  530.73 + In&Out Agricooling 141.27 = 672 exactos, que consumieron ese margen. Costos banco-atribuidos:
+  MP Cornejos 11,141.27 + Comision Luis Alvarez 5,334.73 + Fletes BBA 4,800 + Aduanas 530.73 + In&Out 141.27.
+- CORRECCION de premisa: A-12 NO destrababa julio. fn_cerrar_periodo lee SOLO el renglon del mes; P-019
+  cuenta en MARZO (su embarque). Julio placeholders=0 (bloqueado por 5 consig sin liquidar + 5 cargas sin
+  cerrar + 4 movs). A-12 limpia el UNICO placeholder del sistema y deja marzo cerrable=true.
+- Mecanismo: marzo cerrado congelaba nota_revision. Se DESCARTO reabrir/recerrar (fn_cerrar_periodo reescribe
+  el snapshot con v_anclas de HOY -> corromperia el historico de marzo). Se anadio excepcion acotada al gate:
+  quitar el congelado de nota_revision en la rama `cargas` (texto, nunca contable) -> habilita las etiquetas
+  de confirmacion D-39 en meses cerrados. Patron E44/E59.
+- ENSAYO revertido: nota_revision pasa; un cambio de ingreso_venta en mes cerrado SIGUE bloqueado; Cuadre
+  0.00; seg 0/0/0.
+- Resultado: v_placeholders 1->0; marzo cerrable=true; dinero EXACTO (CxC 588,061.82 / CxP 507,241.00 /
+  Cuadre 0.00). Money-neutral. Advisor sin cambio (gate sigue SECURITY DEFINER con search_path=public, anon
+  sin EXECUTE) -> baseline 9 / 131 / anon_secdef 0.
+- PARQUEADO (fuera de A-12, para criterio de Miguel): la comision Luis Alvarez de 5,334.73 (24% del bruto) es
+  lo que deja a Plein en margen 0 en esta consignacion. Si algun dia se revisa esa clasificacion, es reabrir
+  marzo + mover dinero -> decision aparte.
+
+### D-79 (E80): Confirmados 57/80 SO + SO-0074 cancelado; 23 (RM-001/RM-002) parqueados por params
+- fn_confirmar_so solo checa >=1 carga, PERO el trigger tg_valida_so_params exige params del modelo al pasar
+  a Confirmada: RM-001->comision_por_caja . RM-002->precio_compra+venta_caja . RM-003->pct_comision . RM-004->nada.
+  (El ENSAYO lo destapo antes de tocar nada.)
+- Backfill E70 dejo pct_comision=10 a los 17 RM-003, pero NUNCA cargo comision/precios a RM-001(13)/RM-002(10).
+- Confirmados 57 (RM-003 17 + RM-004 40). SO-0074 (RM-001, Northgate, sin carga, capturado por PP02-JM el
+  31-jul = prueba de Juan) cancelado con fn_cancelar_so (soft, serie intacta). Money-neutral (SO no tocan
+  contabilidad, D-60): CxC 588,061.82 / CxP 507,241.00 / Cuadre 0.00 EXACTOS, seg 0/0/0.
+- PARQUEADO (sub-paso 3b): poblar params de los 23 y confirmarlos. RM-002: precio_compra=costo/cajas,
+  precio_venta=venta/cajas (derivable). RM-001: OJO D-76 lo reetiqueto "Fixed Fee per Shipment" (cuota FIJA
+  por embarque, NO por caja) pero el param sigue siendo comision_por_caja (per box) + formula_tipo
+  'comision_por_caja' -> tension de diseno a resolver ANTES de poblar. Requiere criterio + GATE.
+
+
+---
+
+### D-80 (E81) — RM-001 modelado como "Fixed Fee per Shipment" (cuota_fija_embarque)
+
+**Hallazgo (con datos):** la comisión de Alpine es una **cuota FIJA por embarque**, no por caja
+(misma cuota $1,095.20 en 712 y en 1,700 cajas; $764.52 en 1,912 y 1,356). El param `comision_por_caja`
+(por-caja) tenía la forma equivocada. Confirma la tensión de diseño anotada en D-76.
+
+**Decisión (Opción A1, GATE aprobado):**
+- Nueva columna `sales_orders.cuota_fija_embarque numeric`.
+- `tg_valida_so_params`: RM-001 (formula `comision_por_caja`) ahora **exige `cuota_fija_embarque`** al confirmar
+  (ya no `comision_por_caja`); nuevo cross-guard: `cuota_fija_embarque` solo aplica a RM-001.
+- `fn_crear_so`: +param final `p_cuota_fija_embarque` (DROP+CREATE, 14 args; REVOKE PUBLIC/anon + GRANT authenticated/service_role).
+- `v_sales_orders`: +columna `cuota_fija_embarque` al final.
+- **`formula_tipo` intacto** ('comision_por_caja' = etiqueta-máquina legacy; nombre humano ya es "Fixed Fee per
+  Shipment"). NO se tocó `chk_rm_formula` ni el bloqueo de facturación de `fn_crear_factura_desde_so`.
+  Blast radius = 4 objetos. `comision_por_caja` = deprecado-pero-legal para RM-001. Rename completo → A2 diferido.
+
+**Poblado + confirmado:** 13 RM-001 (`cuota_fija_embarque` = `ingreso_venta` de la carga) + 10 RM-002
+(`precio_compra_caja` = costo/cajas, `precio_venta_caja` = `lote_ventas.precio_caja` canónico D-66);
+confirmados los 23 vía `fn_confirmar_so` → **80/80 SO Confirmada, 0 Borrador**.
+
+**Verificación:** money-neutral (CxC 588,061.82 · CxP 507,241.00 · JPM 15,989.29 · Cuadre 0.00 exactos a E80);
+seg 0/0/0; advisor baseline sin cambio. ENSAYO-que-revierte pasó los 2 tests negativos (confirmar RM-001 sin
+cuota → rechazado; cuota en RM-002 → rechazado).
+
+**P-035/Candy Fresh:** confirmado (sin duda abierta: sin flag, `nota_revision` NULL, fuera de FRONTERA/wash).
+Muestra pérdida real (costo 9,010 > venta 7,808.69) — embarque de mal margen, no error.
+
+**Ripple frontend** (pintarParams RM-001) → PENDIENTES-BACKEND.md para Claude Code.
+
+---
+
+### D-81 (E81) — Paso 4 Dos Ejes: captura lote-first (soltar carga_costos.carga_folio NOT NULL)
+
+**Invariantes verificadas (datos):** `carga_costos.carga_folio` 100% redundante con `lotes.carga_folio`
+(0 inconsistentes / 257) y siempre derivable (89 lotes, 0 con carga NULL). Soltar el NOT NULL no pierde info.
+
+**Diseño (Opción B, mínimo blast radius):** en vez de dropear la columna (habría reescrito ~31 lectores),
+se mantiene `carga_folio` como **espejo denormalizado auto-mantenido**:
+- `ALTER TABLE carga_costos ALTER COLUMN carga_folio DROP NOT NULL`.
+- Se **extiende** el trigger existente `fn_carga_costos_set_lote()` (BEFORE INSERT, D-72) a derivación
+  **simétrica**: carga→lote (conservado) + **lote→carga (nuevo)** + guard de consistencia (si vienen ambos
+  y no coinciden con el lote → RECHAZA) + guard "carga resolvable" (si el lote no tiene carga → RECHAZA,
+  para que los lectores keyed-on-carga sigan correctos).
+
+**Alcance (Opción A elegida):** solo peldaño 5 (habilitación esquema+trigger). La RPC/UX lote-first
+(`fn_agregar_costo_lote` + pantalla) = peldaño 6, follow-on cuando el frontend la necesite. `fn_agregar_costo`
+sigue carga-first sin cambios; las demás RPCs (fn_desglosar_carga, fn_crear_liquidacion, etc.) siguen carga-first
+y pasan el guard.
+
+**Verificación:** ENSAYO-que-revierte OK — insert solo-lote deriva carga (P-084) · insert carga inconsistente
+RECHAZADO · insert solo-carga deriva lote (D-72 intacto) · hash y por_carga_hash idénticos · los 31 lectores
+sin cambio. Post-apply: carga_folio nullable ✓, CxC 588,061.82 · CxP 507,241.00 · JPM 15,989.29 · Cuadre 0.00,
+seg 0/0/0. Money-neutral, cero cambio de datos. Advisor baseline sin cambio.
+
+---
+
+### D-82 (E82) — Paso 5 Dos Ejes: FLIP venta→eje-SO (CxC + P&L reconocidos en el SO)
+
+**Contexto.** Hasta E81 la CxC y el P&L nacían en `cargas.ingreso_venta` (eje-carga). Spec D-76 pide reconocer
+la venta en el eje-SO. Peldaños 1/3/4a/5 ya hechos; este es el último (4b), el money-MOVER.
+
+**Prueba de neutralidad (no-circular, desde tablas base).** Por carga, eje-carga ≡ eje-SO al centavo:
+RM-001 12,259.24 · RM-002 245,226.03 · RM-003 157,849.20 · RM-004 809,149.93 = **1,224,484.40**. 0 divergencias
+en 80/80 cargas con SO; las 2 SIN_SO (P-034 wash, P-089 flag) en 0 por ambos ejes.
+
+**Diseño (Scope A, GATE aprobado).** Vista nueva `v_ingreso_reconocido` (ingreso eje-SO por `formula_tipo`,
+fallback BLINDADO a `ingreso_venta`): RM-002/004 → `Σ lote_ventas.precio_caja×cajas`; RM-001 → `cuota_fija_embarque`;
+RM-003 (pct_venta, reconoce al liquidar) + SIN_SO → `ingreso_venta`. Re-apuntadas SOLO `v_cxc` (ingreso + filtro
+`<>0`) y la rama no-consignación de `v_estado_resultados`; la rama consignación (cobros) INTACTA. Ambas con
+`COALESCE(vir, ingreso_venta)` → money-neutral por construcción. NO se tocó ni un dato; `cargas.ingreso_venta`
+queda como espejo operativo. Blast radius = 1 vista nueva + 2 reescritas (columnas idénticas → los 6 dependientes
+de v_cxc y el frontend intactos). Objeto nuevo: REVOKE ALL PUBLIC/anon + GRANT SELECT authenticated.
+
+**Verificación.** ENSAYO: vir_rows=82 · CxC 588,061.82 (=old) · ER ingresos 1,220,160.40 (=old) · ER utilidad
+bruta 60,938.78 (=old) · diverg_carga 0 · diverg_mes 0. Post-apply idéntico; RM-001 13/13 leyendo cuota_fija.
+v_anclas CxC 588,061.82 / CxP 507,241.00 / JPM 15,989.29 / JEAMS −52,872.00 / flags 1; Cuadre 0.00; seg 0/0/0.
+Advisor: secdef_view 131→132 (vista nueva, mitigada: anon sin acceso, anon_secdef 0); search_path 9 /
+rls_no_policy 64 / auth_secdef 101 sin cambio.
+
+**Resultado.** DOS EJES COMPLETOS — venta y CxC en el eje-SO, costo en el lote (D-81). Reversible (restaurar
+defs previas de v_cxc/v_estado_resultados, guardadas en el chat E82). Migración `e82_flip_venta_eje_so_4b`.
+Parqueado: end-state Scope B (`ingreso_venta` espejo derivado por trigger + re-apuntar las ~24 lectoras vía
+`v_carga_detalle`).
+
+### D-82b (E82) — Detector v_venta_ejes lee el eje-SO canónico
+
+Cierra cabo de D-82: `v_venta_ejes` ahora compara contra `v_ingreso_reconocido` (antes leía
+`v_lote_rentabilidad`, que para RM-001 caía a `ingreso_venta` y nunca probaba la cuota fija). Ahora RM-001 se
+prueba contra `cuota_fija_embarque`. DIVERGE=0 hoy; flageará si algún eje se separa a futuro. CREATE OR REPLACE
+(sin objeto nuevo). Cuadre 0.00, seg 0/0. Migración `e82b_detector_venta_ejes_lee_ingreso_reconocido`.
+
+### D-83 (E83) — Relación programa ↔ cliente ↔ productor (read-only)
+
+Hallazgo: `programas_comerciales` YA tiene `proveedor_id` estructurado, poblado en 11/13 y consistente con las
+cargas → el "Escalón 2" (productor estructurado) ya existía; solo faltaba surtirlo. 2 vistas nuevas read-only:
+- `v_programa_relacion(codigo, etiqueta, estado, producto, modalidad, via, cliente, proveedor_declarado,
+  proveedor_via_cargas, n_cargas, cajas_total, ultimo_embarque, consistencia)`. `consistencia='diverge'` caza
+  cuando el proveedor declarado ≠ el embarcado.
+- `v_contraparte_programas(contraparte, rol[Compra/Abastece], codigo, etiqueta, producto, estado, n_cargas)`,
+  llaveada por `nombre_canonico` (para la ficha del directorio).
+Ambas REVOKE ALL + GRANT authenticated. secdef_view 132→134, anon_secdef 0, Cuadre 0.00.
+
+**FLAG DE DATO — PC-013 (Alpine · Coles de Bruselas):** declara AGRÍCOLA PAUMAR pero embarcó AGRÍCOLA OMEGA.
+Resuelto por **D-27 (vigente): el proveedor de Alpine coles es Agrícola Omega, NO Paumar** → el `proveedor_id`
+del programa está mal; corregir a Omega desde "Editar programa" en la UI (Miguel, sin backend). Migración
+`e83_vistas_programa_relacion`.
+
+### D-83b (E83) — Recencia por contraparte (read-only)
+
+`v_contraparte_recencia(contraparte, ultima_operacion, dias_desde, n_ops)`: `max(f_embarque)` de las cargas
+donde la contraparte es cliente o proveedor. Alimenta la línea "última operación" del directorio (ámbar si
+`es_cliente` y `dias_desde>30` = "cuenta enfriándose"). REVOKE ALL + GRANT authenticated. secdef_view 134→135,
+anon_secdef 0, Cuadre 0.00. Migración `e83b_vista_contraparte_recencia`.
+
+
+---
+
+# SESIÓN E84 (2026-08-04) — HARDENING DE AUDITORÍA + LIMPIEZA CON REAPERTURA
+
+> Todas las escrituras con GATE + ENSAYO-que-revierte + verificación no-circular.
+> Anclas de dinero al cierre EXACTAS vs. arranque: CxC 588,061.82 · CxP 507,241.00 · Cuadre 0.00 · JPM 15,989.29 · JEAMS −52,872.00 · seg 0/0/0.
+> Única ancla que cambió (por diseño): carga_costos 257→**255** / Σ 1,215,630.81→**1,210,817.31** (−4,813.50, A-09).
+
+### D-84 (E84) — A-05: sello de captura en `aplicaciones`
+Se agregaron `aplicaciones.capturado_por text` y `capturado_ts timestamptz`, ambas **NULLABLE sin default** (forward-only: las 189 aplicaciones históricas quedan NULL = pre-instrumentación, no se inventa autor/fecha). El sellado lo hace el trigger BEFORE `trg_aplicacion_sella_captura` → `fn_aplicaciones_sella_captura()` (INVOKER, search_path='public', REVOKE ALL de PUBLIC/anon/authenticated) con `COALESCE(NEW.x, fn_actor()/now())`. Se eligió trigger para no tocar `fn_aplicar_fifo` (regla dura). Convive con chk_aplicacion y el gate de periodo.
+
+### D-85 (E84) — A-06 + A-06b: gate de mes cerrado invertido a WHITELIST
+`fn_chk_periodo_cerrado` (SECURITY DEFINER, trigger IUD) pasó de **lista negra** (toda columna nueva se colaba) a **whitelist dinámica** (compara `to_jsonb(NEW)` vs `OLD`; permite editar mes cerrado solo si TODA clave cambiada ∈ whitelist). Whitelists:
+- **cargas** (22 cols operativas): nota_revision, cajas, cajas_origen, cajas_pu_carton, cajas_nota, pallets, f_entrega, f_entrega_real, entrega_nota, entrega_por, entrega_ts, origen_operativo, id_v7, responsable, proyecto_id, contrato_id, programa_id, lote, lote_productor, f_cosecha, variedad_id, presentacion_id. **`venta_esperada` SALE de la whitelist (Opción A de Miguel) → inmutable en mes cerrado.**
+- **movimientos**: {descripcion, nota}.
+- **carga_costos**: {contraparte_id, nota, lote_folio} (`id` pasa a protegido).
+Efecto: comportamiento preservado + **toda columna futura nace protegida** por default.
+
+### D-86 (E84) — A-15 + A-15b: `fn_editar_factura` no cambia estado ni numero
+La edición ya NO cambia `estado` (guarda que rechaza p_estado distinto del actual) ni `numero` (guarda que rechaza p_numero distinto). Emitir/cancelar/numero-oficial viven solo en fn_emitir_factura/fn_cancelar_factura. Firma idéntica (sin overload); authenticated conserva EXECUTE. 0 facturas en tabla (hueco nunca explotado).
+
+### D-87 (E84) — A-11: `fn_editar_movimiento` deja de borrar texto en silencio
+`descripcion`/`nota` ahora usan `COALESCE(param, actual)`: **NULL = "no tocar", '' = limpiar**. Antes un NULL las BORRABA. La bitácora se ajustó para no registrar borrados fantasma (compara el valor COALESCE'd). La lógica de montos/signos/tipo/aplicaciones queda IGUAL.
+**Cambio de contrato (anotar en CLAUDE.md):** para esos 2 textos, NULL ya NO limpia; usar '' para limpiar.
+
+### D-88 (E84) — A-10: concepto fuera de catálogo normalizado (reapertura marzo)
+`carga_costos.id=282` (P-022, carga viva), concepto "Otros gastos" → **"Otro"** (mismo monto 3,701.00; conserva la nota/decisión Miguel 13-jul). Como P-022 está en 2026-03 (cerrado) y `concepto` no está en la whitelist de carga_costos, se **reabrió marzo** (fn_reabrir_periodo con motivo), se renombró, y se **re-cerró** (fn_cerrar_periodo). Money-neutral.
+
+### D-89 (E84) — A-09: basura de staging FRX borrada (reapertura junio)
+`carga_costos.id=42` (P-046, 2,293.50) y `id=46` (P-054, 2,520.00), concepto "Costo total (staging FRX)", ambas en **cargas ANULADAS**, mes 2026-06, $0 en vistas → **DELETE** (total 4,813.50). Sin FKs hacia carga_costos (borrado seguro). Se **reabrió junio**, se borraron, se **re-cerró**. Cuadre/CxC/CxP EXACTOS; baja el ancla carga_costos 257→255 / Σ −4,813.50 (correcto por diseño).
+
+### D-90 (E84) — A-09/A-10 prevención: FK concepto→catálogo
+`ALTER TABLE carga_costos ADD CONSTRAINT fk_carga_costos_concepto_catalogo FOREIGN KEY (concepto) REFERENCES conceptos_costo(nombre)`. `nombre` es UNIQUE (por eso el FK es válido). ON DELETE/UPDATE RESTRICT (protege el catálogo). Se aplicó DESPUÉS de limpiar las 3 filas legadas (fuera_catalogo=0), así validó limpio. Blindaje: ningún costo puede volver a nacer con concepto fuera de los 7 (Materia prima · Comision · Aduanas · In & Out QC · Fletes · Carton · Otro).
+
+### D-91 (E84) — A-03 cola: contraparte 67 (Las Brisas) retirada
+El tráfico ya estaba consolidado en AGROFEPAC (id 4): 0 cargas / 0 movs en 67. `contrapartes` no tiene columna `activo`, así que se retiró de selectores con **es_proveedor=false, es_cliente=false** + nota "FUSIONADA en AGROFEPAC (id 4). No usar." Money-neutral.
+
+### D-92 (E84) — corrección de ancla: security_definer_view = 140 (no 135)
+El ancla NORTE decía 135; el valor real es **140**. No lo causó ninguna escritura: las 5 vistas read-only de E82–E83b (v_ingreso_reconocido, v_venta_ejes, v_programa_relacion, v_contraparte_programas, v_contraparte_recencia) son security-definer **por diseño** (135+5=140). Se corrige el ancla; los demás advisors sin cambio.
+
+
+---
+
+## CIERRE E85 (2026-08-04)
+
+### D-93 · E85 · A-07 guarda: declarar venta de consignación exige nota fuente
+Se cerraron ambas puertas de escritura que permitían declarar ingreso de consignación sin fuente documentada.
+- `fn_editar_carga`: guard tras el check de anulado — si `p_ingreso_venta>0` y modalidad (nueva o actual) = 'consignacion' y no hay nota (ni `p_nota_revision` ni `nota_revision` existente) → RAISE. Manda `p_nota_revision` con la fuente o usa `fn_liquidar_consignacion`.
+- `fn_crear_carga`: guard antes del advisory lock — si modalidad='consignacion' e `ingreso_venta>0` → RAISE (una consignación se crea sin liquidar).
+- `fn_liquidar_consignacion` y `fn_desglosar_carga` ya blindadas (exigen `p_resolucion`).
+Técnica: `pg_get_functiondef` + `replace(src, ancla, guard)` con tags de dollar-quote distintos. Migración `e85_d93_guarda_a07_editar_crear_carga`. Money-neutral (anclas = E84). Pendiente: dato de Samuel para notas de P-071 y P-075.
+
+### D-94 · E85 · PC-013 proveedor Paumar → Omega
+`fn_editar_programa(p_codigo=>'PC-013', p_proveedor_id=>7, ...)`: AGRICOLA PAUMAR (id 2, `es_proveedor=false`) → Agricola Omega (id 7). Money-neutral. Resultado: 0 programas en diverge. Cosmético pendiente: etiqueta/nota aún dicen "Paumar".
+
+### D-95 · E85 · A-14 ligar PC-006 al producto Bell Pepper (modelo producto+variedad)
+El modelo es producto + variedades. "Bell Pepper Rojo" = producto Bell Pepper (id 4, `codigo_item ID-06`) + variedad Rojo. `variedades` NO lleva codigo_item; el FRX vive a nivel producto. `programas.producto_ids` referencia `productos.id`. Acciones: Miguel agregó por UI la variedad Rojo (`variedades.id=22`); `fn_editar_programa(PC-006, producto_ids=>ARRAY[4])`. Resultado: PC-006.producto_ids=[4], 0 sin producto, 0 en diverge, money-neutral.
+
+### D-96 · E85 · P-035 rechazo Candy Fresh (PO 7569) — corregido en la capa lote_ventas
+Rechazo puro (sin venta). Candy Fresh (cp 11) recibió 9,010 y devuelve por partes; reembolsos 6,505, deuda viva 2,505. La carga arrastraba "venta fantasma" 7,808.69 + estado Entregada → v_cxc reportaba 1,303.69 en vez de 2,505.
+HALLAZGO CLAVE: editar `cargas.ingreso_venta` NO corrige el saldo. Para RM-002 (margen), `v_ingreso_reconocido` toma `venta_lote = Σ(lote_ventas.precio_caja × cajas)`. La venta fantasma vivía en `lote_ventas` id 95 (SO-0028, LOTE-2026-0032, espejo 1:1 del backfill C.2/E73), precio 7.0988×1100=7,808.69.
+Decisión (Opción A): (1) `lote_ventas` 95 precio_caja → 9010/1100 = 8.19090909 (venta_lote=9,010, margen 0); (2) `SO-0028.precio_venta_caja` alineado; (3) `cargas.ingreso_venta` → 9,010, estado → Rechazo, nota `[VENTA=COSTO CONFIRMADO]` (2 llamadas a fn_editar_carga + p_forzar); (4) mayo reabierto → corregido → re-cerrado limpio.
+Persistente: saldo_cxc P-035=2,505.00, estado Rechazo, Cuadre 0.00, seg 0/0/0, **CxC 588,061.82 → 589,263.13 (+1,201.31)**, CxP 507,241 sin cambio. Money-neutral en Cuadre. Abrió el hallazgo de espejos backfill (auditar de un jalón) → auditado y cerrado en E86 como **A-16** (D-97).
+
+
+---
+
+## CIERRE E86 (2026-08-04)
+
+### D-97 · E86 · A-16 auditoría espejos lote_ventas — CERRADA, 0 mismatches
+Barrido 100% lectura (sin GATE) sobre TODAS las cargas margen/buy_resell con lote_ventas:
+comparado round(venta_lote,2) vs round(cargas.ingreso_venta,2) reusando la lógica exacta de
+v_ingreso_reconocido (vlote = Σ lote_ventas.precio_caja×cajas_asignadas de lotes no anulados;
+formula_tipo del revenue_model de la SO). Universo auditado = 50 cargas margen/buy_resell (de
+80 con lote_ventas; las otras 30 son consignación/comisión donde venta_lote NO es la fuente de
+reconocimiento → fuera de alcance por diseño). Resultado: 50/50 cuadran exacto, 0 mismatches.
+P-035 (D-96) confirmado como caso único; los espejos del backfill C.2/E73 están internamente
+sanos. Money-neutral (anclas E86 = E85). Cierra el candidato A-16 (NOTA: en borradores E85/E86 se le llamó A-15 por error; el A-15 real es fn_editar_factura, resuelto E84/D-86). NO se abrió lote de
+correcciones. BASE declarada CERRADA / lista para uso real (Cuadre 0.00, seg 0/0/0,
+placeholders 0, sin ventas fantasma, periodos correctos dic25–jun26 cerrados + julio abierto,
+CxC/CxP confiables).
+
+### D-98 · E86 · Primera liquidación PACA real emitida (LQ-2026-0002) + fix frontend fmt0
+Prueba de uso real del módulo de liquidaciones (Miguel capturando en UI, no backend).
+- Liquidación automática CORNEJOS HORTICOLA (proveedor 17), embarques P-019+P-021 (consignación,
+  ingreso reconocido). Bruto 103,624.50 · comisión 10% = 10,362.45 (del programa; corregido vs
+  LQ-0001) · deducciones 10,944.00 (Fletes 9,600 / Aduanas 788.73 / In&Out QC 555.27, precargadas
+  de los costos; SIN Hanna) · neto 82,318.05 · anticipos 68,854.03 (= Materia prima) · saldo a
+  pagar 13,464.02 · descuadre 0.00. Emitida → LQ-2026-0002 (id 10), inmutable, PDF account-of-sales
+  con membrete de la familia.
+- BUG FRONTEND encontrado en la prueba (arnés con fixtures no lo cachó): modulo-liquidaciones.js
+  línea 17 no destructuraba `fmt0` de ERP (helper de comun.js, número 0-decimales) → ReferenceError
+  al pintar líneas Gross Sales (usado en líneas 559/753) → ficha colgada en "Cargando…". Fix vía
+  Claude Code: agregar fmt0 a la destructuración. node --check limpio, verificado en navegador,
+  desplegado por Miguel (npx vercel --prod). Solo modulo-liquidaciones.js.
+- Verificación post-emisión (money-mover): Cuadre 0.00 · seg 0/0/0 · CxC 589,263.13 y CxP
+  507,241.00 SIN CAMBIO vs E85 → emitir liquidación de consignación es money-neutral (resume
+  hechos ya en el mayor, no crea asientos). placeholders 0.
+
+### D-99 · E86 · Regla de agenda "liquidar_productor" (aviso de liquidación PACA pendiente)
+Nueva rama en v_agenda_operativa: dispara por carga de consignación con ingreso_venta>0 (cliente
+ya pagó) que NO está en ninguna liquidación viva (liquidacion_cargas → liquidaciones
+estado<>'anulada'). Severidad ámbar; rojo si >15 días desde COALESCE(f_entrega_real,f_entrega,
+f_embarque). Money-neutral (solo lectura). Técnica: pg_get_viewdef + replace en ancla única
+'WHERE p.ultima IS NULL' (preserva cuerpo byte-por-byte) → CREATE OR REPLACE VIEW; reloptions
+vacías preservadas (seguridad intacta). ENSAYO-que-revierte OK (11 alertas, cuadre 0.00,
+seg 0/0/0); aplicado con aserciones-red. Verificación fresca: cuadre 0.00, seg 0/0/0, CxC
+589,263.13 / CxP 507,241.00 sin cambio. Auto-limpieza al crear borrador/emitir (P-019/P-021 ya
+no aparecen tras LQ-2026-0002). Migración e86_d99_agenda_regla_liquidar_productor.
+Backlog al cierre: Carrifoods 6 (ojo modalidad), Akambarhu 2, Agrofepac P-071 1, Cornejos
+P-043/P-047 2. Todas en rojo (>15 días).
+
+### D-100 · E86 · Akambarhu — cierre definitivo del "loophole" del préstamo
+Modelo confirmado por Miguel (dueño del negocio): los préstamos/financiamiento a Akambarhu viven
+en el módulo PROYECTOS (financiamiento al productor: siembra esperando cosecha), NO se ligan a
+ninguna carga. Aparte, Akambarhu es proveedor normal → cargas de consignación como cualquier otra.
+Verificación (carga_costos de P-073/P-075/P-043/P-047): solo costos normales (materia prima,
+comisión, aduanas, fletes, QC, cartón), CERO préstamo. Las notas de P-073/P-075 ya traían el
+cierre desde E63: "enredo resuelto = consignacion normal, no prestamo". El item seguía como
+"pendiente Samuel" solo por arrastre de docs/memoria. Cerrado y removido de parqueados.
+Consecuencia: las 4 cargas son liquidables normal (aparecen en agenda 'liquidar_productor').
+NOTA DE CONTINUIDAD: "Anticipo a productor" = disposición de proyecto (mismo esquema back-to-back,
+tipo Akambarhu). Ver D-101 y pendiente de feature Anticipo/Proyecto.
+
+### D-101 · E86 · Vista v_liquidaciones_pendientes (agrupada por productor)
+Vista nueva para surfacear la señal de "listo para liquidar" en varias superficies del frontend.
+Misma lógica que la regla de agenda D-99: consignación + ingreso_venta>0 + NO en liquidación viva
+(estado<>'anulada') + no anulada, agrupada por productor. Columnas: productor_id, productor,
+n_cargas, bruto_total, folios, dias_max, severidad (rojo>15d). Money-neutral. REVOKE ALL +
+GRANT SELECT a authenticated (anon sin acceso, verificado). ENSAYO-que-revierte OK (4 prod / 11
+cargas / bruto 54,224.70 / cuadre 0.00 / seg 0/0/0); aplicado, verificación fresca idéntica.
+Migración e86_d101_vista_liquidaciones_pendientes.
+FRONTEND (Claude Code, desplegado por Miguel): señal en 4 superficies —
+(1) agenda 'liquidar_productor' (D-99); (2) panel "Listas para liquidar" arriba del módulo
+Liquidaciones (cards por productor, botón "Liquidación automática" que reusa nuevaLiquidacionAuto()
+con preselección de productor+folios); (3) badge en el menú lateral (patrón badgeFlags, suma
+n_cargas); (4) chip "Lista para liquidar al productor" en la ficha de carga (modulo-cargas.js y
+modulo-expediente.js, lee v_agenda_operativa por folio). Archivos: modulo-liquidaciones.js,
+index.html, app.js, modulo-cargas.js, modulo-expediente.js. node --check limpio.
+
+### Nota E86 · Regla real de comisión/deducciones en fn_crear_liquidacion (para no confundir)
+Leído en E86 (no es decisión nueva, es documentación de cómo funciona):
+- COMISIÓN: si p_comision_pct es NULL, toma el % del PROGRAMA de la 1ª carga (programas_comerciales
+  con ingreso_base='pct_venta', usa ingreso_valor); si no hay, fallback 10%. v_com = bruto × %.
+- DEDUCCIONES: Σ carga_costos WHERE concepto NOT IN ('Materia prima','Comision').
+- ANTICIPOS: Σ carga_costos WHERE concepto = 'Materia prima'.
+- "Comision" (concepto de costo) se EXCLUYE por completo (ni deduce ni usa). Ojo: la "Comision"
+  de P-043 (cp 84 = LUIS ALVAREZ, tercero) hoy se ignora. Con proveedores viejos (consignación de
+  resultado variable, sin esquema real de 10%) hay discrepancias ESPERADAS con el modelo — no
+  forzar; Miguel revisa cada borrador antes de emitir. Regla de negocio de Miguel: "todos los
+  costos del producto se le pasan al productor al final" (se le adelantan por servicio/liquidez y
+  se descuentan en la liquidación) — puede requerir agregar deducciones a mano o afinar la regla
+  de exclusión de "Comision" a futuro.
+
+
+---
+
+## E87 (2026-08-05)
+
+### D-102 — Feature "Anticipo a productor / disposición de proyecto" (backend + frontend)
+Hallazgo: la línea de un proyecto la descuenta `proyecto_amortizaciones` (tipo='disposicion'),
+NO `movimientos.proyecto_id` (ese es solo enlace de reporte para v_proyecto_movimientos).
+`anticipos` en v_balance = Σ v_proyectos.saldo_vivo. El tipo 'Anticipo a productor' es
+grupo='financiamiento' → el movimiento pega solo en `banco`; la disposición crea el activo
+compensatorio → el PAR es Cuadre-neutro, cada mitad sola rompe Cuadre ⇒ debe ser atómico.
+Creado **fn_anticipo_productor(p_proyecto,p_productor,p_monto,p_cuenta='JPM',p_fecha,p_descripcion,
+p_nota)** RETURNS (folio_asignado,proyecto,saldo_vivo,linea_disponible,advertencia): en 1 tx encadena
+fn_capturar_mov → fn_registrar_amortizacion('disposicion', guarda de límite adentro) →
+fn_ligar_movimiento_proyecto. SECURITY DEFINER, REVOKE anon/public + GRANT authenticated.
+ENSAYO OK (PRJ-005 +100: saldo 8,455.33→8,555.33, Cuadre 0.00, guarda de exceso rechaza).
+Backfill money-neutral del proyecto_id de 4 anticipos viejos (movs 366/375/373/381) vía
+fn_ligar_movimiento_proyecto (derivando el proyecto desde proyecto_amortizaciones). Front (Claude
+Code): puerta "Anticipo a productor" en Tesorería y en la ficha de Proyecto (captura-rapida.js →
+ERP.capturarAnticipoProductor, SIN FIFO, selector v_proyectos activos con línea, cuenta JPM/JEAMS/
+SAMUEL). Nota: paso 3 (fn_ligar) exige permiso 'editar'; usuarios 'operacion' lo tienen.
++ Fix zona horaria hoyISO() (usaba toISOString()/UTC, adelantaba el día de noche en Sonora UTC-7):
+corregido a fecha LOCAL en 6 archivos (captura-rapida, modulo-tesoreria, modulo-cargas,
+modulo-proyectos, modulo-ordenes, modulo-expediente — este último además arreglaba la validación
+"no puede ser fecha futura").
+
+### D-103 — Permisos de usuarios + panel self-service (backend + frontend)
+Modelo (leído): usuarios_erp(socio_codigo PK, nombre, email UNIQUE, rol FK→roles_erp, activo);
+roles_erp(rol PK, puede_ver/capturar/editar/administrar, descripcion). fn_actor() resuelve por JWT
+email; SIN JWT cae a 'PP04-MA' (contexto MCP). fn_actor_puede(cap) lee las banderas del rol.
+Diagnóstico: solo 'admin' tiene editar (por eso solo Miguel editaba); crear_carga/fn_capturar_mov
+exigen 'capturar' (no 'editar') → si el front gateaba por 'editar' era el bloqueo de Samuel.
+Decisión: rol nuevo **'operacion'** = ver+capturar+editar, sin administrar. Reasignados
+PP01-SI/PP02-JM/PP03-JA → operacion; ALTA **PP05-FP Fer Palacios** (accounting@pleinproduce.com)
+operacion (su cuenta de Supabase Auth ya existía desde 28-jul; solo faltaba la fila en usuarios_erp).
+3 RPCs admin (gate 'administrar', SECURITY DEFINER, REVOKE anon/public + GRANT authenticated):
+fn_admin_listar_usuarios(), fn_admin_listar_roles(), fn_admin_guardar_usuario(socio_codigo,nombre,
+email,rol,activo) — con ANTI-LOCKOUT (no auto-degradarse admin, no dejar el sistema sin admin
+activo). ENSAYO OK (alta/edición/guardas rebotan). Front (Claude Code): modulo-usuarios.js
+(ruta usuarios, VISIBLE solo admin), tabla con chips de capacidad, alta/edición, errores del
+backend tal cual. Money-neutral (Cuadre 0.00, seg 0/0/0). NOTA E88: Miguel quiere permisos
+GRANULARES (matriz por-usuario de capacidades + módulos visibles) y rediseño visual — el diseño
+actual no le gusta.
+
+### D-104 — Diagnóstico CxP: dos modelos + vista de detalle atribuido (backend + frontend)
+CxP se calcula de DOS formas: **DIRECTO** (v_cxp / v_cxp_proveedor / v_cxp_detalle_proveedor:
+amontona todos los costos de una carga sobre carga.proveedor_id; es lo ASENTADO y lo que alimenta
+v_anclas.cxp_total y el Cuadre) vs **ATRIBUIDO** (v_cxp_proveedor_atribuido: reparte cada línea
+carga_costos por su contraparte_id y prorratea pagos; ESTIMADO; lo usa la pantalla CxP desde
+28-jul con tooltip). NO hay dinero perdido: los costos de servicio (flete/aduana/QC) SÍ están en
+libros, bajo el productor de fruta. Integridad: única carga margen sin costo = P-034 (Rechazo, venta
+0, correcto); consignación 100% costeada; comisión correctamente en 0. Inconsistencia UI: lista
+usaba atribuido, cajón usaba directo → proveedores de servicio (BBA/Las Brisas/AGRICOOLING/LAM/
+SUAREZ) salían vacíos al picar. AGROFEPAC 235k en directo y 0 en atribuido = sus líneas de
+consignación traen contraparte_id NULL (excluidas del atribuido) — PARKED: decidir si esos costos
+son CxP normal o van por liquidación. Creada **v_cxp_detalle_proveedor_atribuido** (mismo prorrateo,
+por carga+contraparte; REVOKE anon/public + GRANT authenticated; reconcilia con el agregado ±4¢).
+Front (Claude Code): modulo-pagos.js verProveedor() → cajón lee el atribuido, filtra por
+contraparte_id, mismo tooltip; el directo intacto en el resto. Money-neutral.
+El ancla CxP bajó 506,941.00→496,368.03 durante la sesión = 5 pagos a proveedor de Miguel en la UI
+(movs 382/384, Σ 10,572.97), Cuadre 0.00. JPM cerró en −9,584.71 (arrancó 15,989.29) por esos pagos
+→ CONFIRMAR vs estado de cuenta (banco manda).
+
+---
+## E88 — Permisos granulares + Conciliación V8↔ERP (Paso 1 Banco)
+
+### D-105 — Permisos GRANULARES (backend + frontend). Money-neutral.
+Modelo de 2 capas: rol = default, usuario = override tri-estado (hereda/sí/no), para capacidades Y módulos.
+Backend: tablas `modulos_erp` (catálogo 25 = claves data-modulo del menú), `rol_modulos` (default por rol; sembrado
+seguro: todos ven lo que hoy ven, 'usuarios' solo admin), `usuario_capacidades` y `usuario_modulos` (overrides, vacías).
+Las 4 con RLS on + sin grant a authenticated (solo definer/owner). `fn_usuario_puede(socio,cap)`=COALESCE(override,
+rol,false); `fn_actor_puede` delega. Invariante probada: 0 cambios de permiso para los 5 usuarios sin overrides.
+`v_mi_perfil` v2: banderas efectivas + array `modulos` (retrocompatible). 5 RPCs admin (`fn_admin_listar_modulos`,
+`fn_admin_capacidades_usuario`, `fn_admin_modulos_usuario`, `fn_admin_set_capacidad`, `fn_admin_set_modulo`) con gate
+'administrar' + anti-lockout reforzado (≥1 admin efectivo; no auto-quitarse admin ni auto-ocultarse 'usuarios'), probado
+que muerde. Frontend (Claude Code, desplegado por Miguel): menú dinámico por perfil.modulos (comun.js/app.js); matriz por
+usuario en modulo-usuarios.js (botón "Permisos", selects tri-estado, autoguardado por celda, reversión en error, mensajes
+del backend verbatim). Advisors: solo patrón conocido, nada nuevo. **REGLA NUEVA DURA: toda tabla nueva → ENABLE RLS.**
+
+### D-106 — Conciliación Banco: anulado mov JPM f383 (duplicado). Money-mover (−15,000 fuera).
+f383 (−15,000 "segundo pago financiamiento" Akambarhu, PRJ-001, capturado en web) = DUPLICADO confirmado por Miguel; el
+V8/drive trae solo un pago a Akambarhu (f375 "Semilla Bell Pepper", ya en ERP). Anulado (v_saldo_banco filtra NOT anulado)
++ borrada disposición PRJ-001 (proyecto_amortizaciones id 23). Cuadre 0.00. Saldo JPM → 5,415.29. ENSAYO-que-revierte OK.
+
+### D-107 — Conciliación Banco: capturados 3 movimientos que el V8 tenía y el ERP no. Money-movers.
+Vía fn_capturar_mov (auto-folio = max+1; sin aplicar quedan en "partidas por aplicar" → Cuadre-neutro): f385 viáticos San
+Antonio Samuel −400 (Otros gastos); f386-erp cobro Crystal Valley +9,600 (V8 f387; aplicación a P-083/P-082 PARKEADA);
+f387-erp reempaque Costatropical −1,000 (V8 f388; NGM248545 no es carga → PARKEADA). Saldo JPM → 13,615.29. Cuadre 0.00.
+
+### D-108 — Conciliación Banco: capturado reembolso Samuel + PASO 1 CERRADO. Money-mover.
+f388-erp (V8 f386): reembolso a Samuel −6,318, tipo 'Pasivo a socio' (NO P&L). Cubre 2 préstamos de bolsa de Samuel:
+Akambarhu 4,400 (ya en cta SAMUEL mov 9009) + Costatropical 1,918 (=6,318−4,400). Liquidación contra cta virtual SAMUEL
+PARKEADA (falta registrar 1,918 como deuda a Samuel; revisar FX 32,950 MXN).
+**PASO 1 BANCO CERRADO:** saldo JPM 7,297.29 = neto Chase V8 al centavo; 281 movs activos = 281 del V8; Cuadre 0.00; seg
+0/0/0. Notas: v_anclas.movs_jpm ahora 282 (281 activos + 1 anulado). Folios ERP 385/386/387/388 = V8 385/387/388/386
+(cotejar por concepto/monto, NUNCA por folio). Diagnóstico previo: la brecha −9,584.71 vs +7,297.29 (16,882) se explicó al
+100% = 15,000 (duplicado) + 1,882 (neto de los 4 faltantes). El bloque de folios 363–368 era corrimiento de numeración
+documentado, 0 diferencia de dinero.
+
+
+### D-109 · E88 · Paso 2 CARGAS — cubeta "sin acción" documentada (0 escrituras)
+9 cargas cuya diferencia vs V8 NO es error, sino el modelo correcto del ERP: 6 consignación
+(P-073/075/079/080/081/088 — ERP reconoce al COBRO, V8 al embarque); 2 rechazo (P-034 wash;
+P-035 Candy Fresh saldo_cxc 2,505 correcto, V8 desactualizado); 1 cosmético (P-058 venta ERP 65,280
+vs V8 65,640, Δ360, ambas saldadas). Documentadas, sin tocar.
+
+### D-110 · E88 · Paso 2 CARGAS — CxC re-repartida (money-mover, Cuadre-neutro)
+Hallazgo: Crystal Valley paga por DEPÓSITO ESPECÍFICO por P.O. (~27.8% por carga, etiquetado por PX en
+V8), NO abono-a-cuenta; el ERP los había repartido FIFO a cargas viejas. Desaplicadas ids 87/210/273/
+276/277/278 y re-aplicadas por depósito según V8 (f314→P-058 26,400+P-059 4,800; f335→P-066 7,200;
+f346→P-074 12,000; f364→P-058 38,880+P-078 4,800) + cobros parqueados (f386 Crystal 9,600→P-082 6,000
++P-083 3,600; f377 P&M 10,000→P-011). ENSAYO limpio, aplicado, verificado. **CxC 589,263.13→570,023.13
+(−19,240)**, Cuadre 0.00, seg 0/0/0. Saldos finales = V8 exacto. Residuo: crédito Crystal 360 sin
+aplicar (= brecha cosmética venta P-058, parqueado).
+
+### D-111 · E88 · Paso 2 CARGAS — CxP conciliada: ERP ya correcto (0 escrituras)
+Vista por proveedor (ERP CxP vs V8, mismas 82 cargas): match EXACTO en PAMPAS/CARRIFOODS/ROGUGO/EF/
+Omega/Candy/Tierra. Diferencias (total +1,976.07) sólo en 4, todas DELIBERADAS y documentadas en las
+notas de los propios movimientos: CORNEJOS +4,182 (P-013 aduana Suárez 475 = LICENCIA ANUAL admin no
+carga, E18; P-043/P-047 cartón 1,853.52 c/u = Celulosa a granel sin amarrar, E9/E37); AKAMBARHU −3,250
+(flete BBA, ver D-112); AGROFEPAC +1,344 (los 2 reembolsos de 672, movs 123/125, E38, atribuidos
+distinto); P&M −300 (P-077). La "comisión a P&M" grande del V8 = agrupación de flete+aduana+in&out+
+cartón+comisión en una línea; el ERP los itemiza por proveedor real (MISMO costo total). El hueco
+grande vs V8 = las 3 cargas faltantes (66,861). Decisión: NO forzar el match (reabriría 6 meses
+cerrados para reintroducir imprecisiones ya corregidas; viola "no forzar el modelo bueno"). El ERP es
+MÁS correcto que el V8 en estos puntos.
+
+### D-112 · E88 · Flete BBA (f367 3,250) → P-073. Money-neutral.
+Instrucción de Miguel: el flete BBA parqueado va a la 1era Kabocha de Akambarhu (P-073/1001), como dice
+la descripción del mov. Todo en julio (abierto). Desaplicada id 301 (mov 370 Akambarhu 3,250 que cubría
+el flete) → aplicado f367 (BBA 3,250) a P-073. P-073 cxp 0 (sin cambio); mov 370 queda 10,000 completo
+= anticipo Akambarhu puro (Proyectos); f367 deja de flotar. Cierra el −3,250 de Akambarhu. Anclas sin
+cambio (CxC 570,023.13 · CxP 496,368.03 · Cuadre 0.00 · seg 0/0/0).
+
+### D-113 · E88 · Corrección masiva de id_v7 (relación V8↔ERP). Money-neutral (metadata).
+La captura de Miguel mostró el campo V7 (id_v7) mal relacionado en muchas cargas. Diff contra el ID
+real del V8 (hoja Cargas, ID↔P.O., únicos): 35 cargas vivas + 2 anuladas con id_v7 cruzado
+(ej. P-077 era P-075→correcto P-078; P-073 era P-067→P-064). Fix: NULL a todas y reasignar el ID del V8
+por P.O. a las 85 con match (2 pasos por el UNIQUE; las anuladas también bloqueaban); 4 anuladas sin
+P.O. en V8 (1124/1125/161/162) quedan NULL. Resultado: 82 vivas con id_v7 correcto, 85 únicos. El join
+de conciliación siempre fue por P.O., así que esto no altera nada financiero (Cuadre/seg sin cambio);
+sólo corrige la referencia cruzada ERP↔V8.
+
+### D-114 · E88 · Barrido de clasificación no-carga (Egresos/Ingresos/Traspasos/Nómina). 0 escrituras.
+Cotejo hoja por hoja del V8 contra movimientos ERP (por folio + total):
+- Egresos no-carga: 46/46 presentes y clasificados. El aparente descuadre f365 (V8 Akambarhu 20,600 vs
+  ERP AGROFEPAC 10,000) = desfase de numeración de folio del ~362+ (V8 f365 = ERP f366, Akambarhu 20,600
+  Anticipo a productor). No es dinero.
+- Ingresos no-carga: 8/8 al centavo (incl. ajuste Cornejos 4,638.96 y devolución Familia Productora
+  8,827.89).
+- Nómina: 35,000 exacto (Samuel 17,500, Juan 17,500). ERP con más movimientos (pagos parciales); total
+  por persona y global coincide.
+- Traspasos: aportaciones y retiro (21,000) cuadran; único suelto = aportación "programa operativo"
+  424.67 (E49) = entrada gross del V8 (aportación+compra netean a cero); ERP la lleva neto. NO se agrega
+  (rompería JPM=Chase). Explicado, deja de ser pendiente.
+Conclusión: todo el Drive fuera de cargas está capturado y bien clasificado. **Conciliación Drive↔ERP
+COMPLETA salvo las 3 cargas En Camino.** Anclas sin cambio: CxC 570,023.13 · CxP 496,368.03 · Cuadre
+0.00 · seg 0/0/0.
+
+---
+**CIERRE E88 — CONCILIACIÓN DRIVE↔ERP COMPLETA.** El ERP es la fuente de verdad; el Drive se jubila en
+cuanto se capturen las 3 cargas En Camino (NGM248545, PX-72306, PX-72715 — dato de Samuel). Siguiente
+fase: FRONTEND (rediseño visual profesional + flujos operativos). Ver NORTE.md (Actualización E88 FINAL).
+
+## Sesión E101 (2026-08-08) — CxP espejo del Drive + fixes de captura + auditorías
+- D-115 — CxP REAL por proveedor (piloto Las Brisas). Capa aditiva `cxp_pago_linea`(carga_folio, contraparte_id, pagado) poblada del V8; `v_cxp_proveedor_atribuido` y `v_cxp_detalle_proveedor_atribuido` reescritas con fallback pago-real→prorrateo. Las Brisas 96,013.94→13,965.16 (P-051 5,478.53 + P-076 8,486.63). Cuadre 0.00, seg 0/0/0, directo intacto, sin reabrir meses.
+- D-116 — Lam Produce →0 (capa aditiva).
+- D-117 — Modo ESPEJO del Drive: columna `cxp_pago_linea.costo` (override); vistas atribuido reescritas con UNION de pares (ERP ∪ capa) y COALESCE(costo_drive, costo_erp)/COALESCE(pago_drive, prorrateo). Poblados 9 proveedores desde hoja Egresos del V8. 7 exactos vs Drive; 4 parciales (Papayas/Pampa/Succar/Costa) faltan por las 3 cargas En Camino sin capturar. Cuadre-neutral.
+- D-118 — `v_carga_costos_det` expone `id` + `contraparte_id` → frontend conectó `fn_editar_costo`/`fn_eliminar_costo` (editar/eliminar línea de costo sin anular la carga). Vista de lectura, seg 0/0/0.
+- D-119 — `fn_anular_movimiento(p_folio, p_motivo)`: anula movimiento de banco, desaplica sus aplicaciones, Cuadre-neutral, respeta el guard de periodo cerrado (rechaza meses cerrados con instrucciones). REVOKE anon + GRANT authenticated. seg 0/0/0.
+- FIFO auditado — `fn_aplicar_fifo` es SECUENCIAL (más viejo primero, LEAST por carga) y ON-DEMAND (0 triggers, 0 funciones lo llaman). El "reparto" percibido era el prorrateo de pantalla, ya corregido. No requiere fix. Manual ya lo tiene: `fn_aplicar_a_carga` + `fn_desaplicar`.
+- Flujo SO diagnosticado — contabilidad OK: `v_ingreso_reconocido` (por carga_folio: ingreso_reconocido) da los importes reales (SO-0075/0078 = 17,280; SO-0083 = 12,690). Los "ceros" eran de pantalla (calculaba cajas×precio de sales_order_cargas, NULL). Deuda estructural: doble liga sales_order_cargas/lote_ventas.
+- ANCLAS al cierre E101: Cuadre 0.00 · seg 0/0/0 · CxP directo 496,368.03 · CxC directo 570,023.13 · JPM ~79,261 (con cobro Crystal mov 389 +70k). CxP atribuido (pantalla) espeja el Drive por proveedor.

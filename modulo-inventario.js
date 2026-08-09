@@ -135,13 +135,13 @@
     try {
       rows = await q('v_inventario', '&order=f_embarque.asc');
     } catch (e) {
-      cont.innerHTML = `<div class="errbox">No se pudo leer el inventario: ${esc(e.message)}</div>`;
+      cont.innerHTML = `<div class="pantalla-inventario"><div class="errbox">No se pudo leer el inventario: ${esc(e.message)}</div></div>`;
       return;
     }
     inventario = rows;
     filtro = '';
 
-    cont.innerHTML = `
+    cont.innerHTML = `<div class="pantalla-inventario">
       ${pintarSemaforos(inventario)}
       <div class="filtros">
         <input class="busca" id="invBusca" type="text" placeholder="Buscar por lote, producto, proveedor o cliente…">
@@ -150,7 +150,8 @@
       <div id="invSecciones"></div>
       <div class="leyenda">Solo lectura: una fila por carga viva que aún no se cierra. El <b>bucket</b>
       lo calcula el backend. "En piso" hoy sale vacío a propósito (Plein no tiene bodega todavía).
-      Los semáforos de arriba reflejan TODO el inventario, no lo filtrado.</div>`;
+      Los semáforos de arriba reflejan TODO el inventario, no lo filtrado.</div>
+    </div>`;
 
     document.getElementById('invConteo').textContent = `${inventario.length} carga${inventario.length === 1 ? '' : 's'} viva${inventario.length === 1 ? '' : 's'}`;
 

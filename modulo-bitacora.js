@@ -83,7 +83,7 @@
     filas = await q('v_bitacora_ediciones', '&order=editado_ts.desc&limit=500');
     fTabla = ''; fTexto = '';
 
-    cont.innerHTML = `
+    cont.innerHTML = `<div class="pantalla-bitacora">
       ${ERP.botonesExportar ? ERP.botonesExportar('Bitacora', 'Bitácora de ediciones', '#tblBitacora') : ''}
       <div class="filtros">
         <select class="busca" id="bitFTabla" style="max-width:220px">
@@ -95,7 +95,8 @@
       </div>
       <div class="card" style="padding:14px"><div id="bitTabla"></div></div>
       <div class="leyenda">Registro de auditoría de ediciones (más reciente arriba). Solo lectura para todos los roles.
-        Toca <b>Cambios</b> en una fila para ver el antes → después campo por campo.</div>`;
+        Toca <b>Cambios</b> en una fila para ver el antes → después campo por campo.</div>
+    </div>`;
 
     document.getElementById('bitFTabla').addEventListener('change', e => { fTabla = e.target.value; pintarTabla(); });
     let tempo;

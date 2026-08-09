@@ -1,10 +1,15 @@
 /* Módulo Cargas — el centro de operación.
    Lista filtrable + ficha de carga con captura en contexto (Fase 2).
-   Expone ERP.verCarga(folio) para que Cobranza, Pagos, Finanzas y Flags abran la misma ficha. */
+   Expone ERP.verCarga(folio) para que Cobranza, Pagos, Finanzas y Flags abran la misma ficha.
+   Sección "Eventos" (C.1b, E66/E76, ver montarEventosCarga): v_eventos_carga (ya trae tipo/
+   tipo_codigo/contraparte/cliente/producto resueltos, no hace falta cruzar con v_evento_tipos para
+   la lista) + v_evento_tipos (catálogo, banderas exige_cajas/monto/contraparte/so_destino) ·
+   fn_registrar_evento_carga (capturar) / fn_anular_evento_carga (editar). Expuesta también como
+   ERP.montarEventosCarga para que modulo-expediente.js monte la misma sección. */
 
 (function () {
   'use strict';
-  const { q, rpc, esc, usd, num, norm, fmt, fmt0, pct, semaforo } = ERP;
+  const { q, rpc, esc, usd, num, norm, fmt, fmt0, pct } = ERP;
 
   const CERRADA = /(entregad|cerrad|liquidad|cancelad|finalizad)/i;
 
@@ -30,7 +35,12 @@
   ];
   const indiceEtapa = estado => ETAPAS.findIndex(e => norm(e) === norm(estado));
 
-  const hoyISO = () => new Date().toISOString().slice(0, 10);
+  // Fecha LOCAL, no toISOString() (UTC): en Sonora (UTC-7) toISOString ya muestra el día
+  // siguiente después de las 17:00, prellenando mal los <input type="date">.
+  const hoyISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
 
   /* Catálogos. fn_agregar_costo valida p_concepto contra `conceptos_costo`: texto libre
      = rechazo del backend. Ya no viven como constante en el código: se piden a sus vistas
@@ -375,16 +385,19 @@
   async function verFichaClasica(folio) {
     ERP.abrirPanel(esc(folio), 'Cargando detalle…', '<div class="skel">Cargando carga…</div>');
     try {
-      const [det, apls, costos] = await Promise.all([
+      const [det, apls, costos, agendaLiquidar] = await Promise.all([
         q('v_carga_detalle', `&folio=${ERP.eq(folio)}`),
         q('v_carga_aplicaciones', `&carga_folio=${ERP.eq(folio)}&order=fecha.asc`),
-        q('v_carga_costos_det', `&carga_folio=${ERP.eq(folio)}`)
+        q('v_carga_costos_det', `&carga_folio=${ERP.eq(folio)}`),
+        // Señal "lista para liquidar al productor" (v_agenda_operativa, categoria dedicada) — solo
+        // enriquece el encabezado; si falla, la ficha se ve igual sin el chip.
+        q('v_agenda_operativa', `&folio=${ERP.eq(folio)}&categoria=eq.liquidar_productor`).catch(() => [])
       ]);
       if (!det.length) {
         ERP.abrirPanel(esc(folio), '', '<p style="font-size:13px">No existe esa carga. Revisa el folio (ej. P-043).</p>');
         return;
       }
-      pintarFicha(det[0], apls, costos);
+      pintarFicha(det[0], apls, costos, agendaLiquidar.length > 0);
     } catch (e) {
       ERP.abrirPanel(esc(folio), '', `<div class="errbox">Error al cargar: ${esc(e.message)}</div>`);
     }
@@ -415,7 +428,7 @@
     }).join('')}</div>`;
   }
 
-  function pintarFicha(d, apls, costos) {
+  function pintarFicha(d, apls, costos, listaParaLiquidar) {
     const claseTxt = c => c === 'cobro' ? 'Cobro' : c === 'devolucion' ? 'Devolución' : 'Pago';
     const puedeCapturar = ERP.puede('capturar');
     const puedeEditar = ERP.puede('editar');
@@ -429,12 +442,18 @@
           <td class="num">${usd(a.monto)}</td></tr>`).join('')
       : '<tr><td colspan="5" style="color:var(--gris)">Sin cobros ni pagos aplicados aún.</td></tr>';
 
+    // Editar/eliminar una línea de costo (D-118): solo con permiso 'editar' y carga NO anulada.
+    // La vista v_carga_costos_det ahora expone `id` por línea; sin él no se puede identificar.
+    const puedeEditarCostos = puedeEditar && d.anulado !== true;
     const filasCosto = costos.length
       ? costos.map(c => `<tr>
           <td>${esc(c.concepto)}</td>
           <td style="color:var(--gris)">${esc(c.nota || '')}</td>
-          <td class="num">${usd(c.monto)}</td></tr>`).join('')
-      : '<tr><td colspan="3" style="color:var(--gris)">Sin costos registrados (posible flag de Sourcing).</td></tr>';
+          <td class="num">${usd(c.monto)}</td>
+          ${puedeEditarCostos ? `<td class="num" style="white-space:nowrap">
+            <button class="btn-mini gris" data-editar-costo="${esc(c.id)}">Editar</button>
+            <button class="btn-mini gris" data-eliminar-costo="${esc(c.id)}">Eliminar</button></td>` : ''}</tr>`).join('')
+      : `<tr><td colspan="${puedeEditarCostos ? 4 : 3}" style="color:var(--gris)">Sin costos registrados (posible flag de Sourcing).</td></tr>`;
 
     const margen = num(d.ingreso_venta) - num(d.costo_total);
     const margenPct = num(d.ingreso_venta) > 0.009 ? (margen / num(d.ingreso_venta) * 100) : null;
@@ -509,7 +528,8 @@
 
     ERP.abrirPanel(
       `${esc(d.folio)}${d.po ? ` <span style="font-weight:400;color:var(--gris)">· ${esc(d.po)}</span>` : ''}`,
-      `${esc(d.modalidad || '—')} · capturó ${esc(d.capturado_por || '—')}${d.capturado_ts ? ' · ' + esc(ERP.fecha(d.capturado_ts)) : ''}`,
+      `${esc(d.modalidad || '—')} · capturó ${esc(d.capturado_por || '—')}${d.capturado_ts ? ' · ' + esc(ERP.fecha(d.capturado_ts)) : ''}` +
+        (listaParaLiquidar ? ' <span class="pill verde">Lista para liquidar al productor</span>' : ''),
       `<div class="${anulada ? 'ficha-anulada' : ''}">
       ${bannerAnulada}
       ${pintarPipeline(d.estado)}
@@ -540,11 +560,12 @@
 
       <div class="seccion-head"><h4>Costos</h4>${botonCosto}</div>
       <div id="formCosto"></div>
+      <div id="formEditarCosto"></div>
       <div class="tabla-wrap"><table>
-        <thead><tr><th>Concepto</th><th>Nota</th><th class="num">Monto</th></tr></thead>
+        <thead><tr><th>Concepto</th><th>Nota</th><th class="num">Monto</th>${puedeEditarCostos ? '<th></th>' : ''}</tr></thead>
         <tbody>${filasCosto}</tbody>
         ${costos.length ? `<tfoot><tr class="total"><td colspan="2">Total costos</td>
-          <td class="num">${usd(costos.reduce((s, c) => s + num(c.monto), 0))}</td></tr></tfoot>` : ''}
+          <td class="num">${usd(costos.reduce((s, c) => s + num(c.monto), 0))}</td>${puedeEditarCostos ? '<td></td>' : ''}</tr></tfoot>` : ''}
       </table></div>
 
       <div class="seccion-head"><h4>Cobros y pagos aplicados</h4>${botonMov}</div>
@@ -556,8 +577,10 @@
 
       <div id="facturasCarga" style="margin-top:22px"></div>
       <div id="ventasCarga" style="margin-top:22px"></div>
+      <div id="loteCarga" style="margin-top:22px"></div>
       <div id="ordenesCarga" style="margin-top:22px"></div>
       <div id="tareasCarga" style="margin-top:22px"></div>
+      <div id="eventosCarga" style="margin-top:22px"></div>
 
       <h4 style="margin-top:22px">Documentos</h4>
       <div id="docsCarga"></div>
@@ -582,11 +605,17 @@
     if (ERP.montarVentasCarga) {
       ERP.montarVentasCarga(document.getElementById('ventasCarga'), d.folio);
     }
+    if (ERP.montarLoteCarga) {
+      ERP.montarLoteCarga(document.getElementById('loteCarga'), d.folio);
+    }
     if (ERP.montarOrdenesCarga) {
       ERP.montarOrdenesCarga(document.getElementById('ordenesCarga'), d.folio, !anulada);
     }
     if (ERP.montarTareasCarga) {
       ERP.montarTareasCarga(document.getElementById('tareasCarga'), d.folio, !anulada);
+    }
+    if (ERP.montarEventosCarga) {
+      ERP.montarEventosCarga(document.getElementById('eventosCarga'), d.folio, !anulada);
     }
 
     ERP.cablearInfoNota();   // ⓘ de utilidad estimada en la ficha clásica
@@ -605,6 +634,15 @@
 
     const btnCosto = document.getElementById('btnFormCosto');
     if (btnCosto) btnCosto.addEventListener('click', () => abrirFormCosto(d));
+
+    // Editar / eliminar una línea de costo existente (D-118). Solo con permiso 'editar' y carga
+    // viva (los botones ni siquiera se pintan en otro caso). El id viene de v_carga_costos_det.
+    if (puedeEditar && !anulada) {
+      document.querySelectorAll('[data-editar-costo]').forEach(b =>
+        b.addEventListener('click', () => abrirFormEditarCosto(d, costos.find(c => String(c.id) === b.dataset.editarCosto))));
+      document.querySelectorAll('[data-eliminar-costo]').forEach(b =>
+        b.addEventListener('click', () => confirmarEliminarCosto(d, costos.find(c => String(c.id) === b.dataset.eliminarCosto))));
+    }
 
     const btnMov = document.getElementById('btnFormMov');
     if (btnMov) btnMov.addEventListener('click', () => abrirFormMov(d));
@@ -696,6 +734,144 @@
       // El backend es la autoridad (SECURITY DEFINER): si rechaza, dilo tal cual.
       aviso('cAviso', 'err', `El ERP rechazó el costo: ${esc(e.message)}`);
       btn.disabled = false;
+    }
+  }
+
+  /* ================= Escritura: editar / eliminar una línea de costo (D-118) =================
+     v_carga_costos_det ahora expone `id` por línea. Dos RPCs nuevas:
+       fn_editar_costo(p_id, p_motivo, p_concepto=NULL, p_monto=NULL, p_nota=NULL)
+         → lo que va NULL NO se toca; se manda SOLO lo que el usuario cambió. Devuelve advertencia.
+       fn_eliminar_costo(p_id, p_motivo) → devuelve resultado.
+     Ambas exigen motivo. Se ofrecen solo a quien puede 'editar' y en carga viva (ver pintarFicha).
+     Tras escribir se recarga con verFichaClasica (NO despachar) → recalcula el total y mantiene el
+     drawer abierto, respetando el guard de captura activa (Fix 1). */
+
+  async function abrirFormEditarCosto(d, c) {
+    if (!c) return;
+    const cont = document.getElementById('formEditarCosto');
+    if (!cont) return;
+    // Toggle: si ya estaba abierto para ESTA misma línea, ciérralo; si es otra, reábrelo.
+    if (cont.dataset.costoId === String(c.id)) { cont.innerHTML = ''; cont.dataset.costoId = ''; return; }
+    // No dejar dos formularios abiertos a la vez: cierra el de "agregar" si estaba desplegado.
+    const formAgregar = document.getElementById('formCosto');
+    if (formAgregar) formAgregar.innerHTML = '';
+
+    cont.dataset.costoId = String(c.id);
+    cont.innerHTML = '<div class="form-erp"><div class="skel">Cargando catálogo de conceptos…</div></div>';
+    try {
+      conceptosCosto = (await catalogo('v_catalogo_conceptos_costo')).map(x => x.nombre);
+      if (!conceptosCosto.length) throw new Error('el catálogo vino vacío');
+    } catch (e) {
+      cont.innerHTML = `<div class="form-erp"><div class="aviso visible err">
+        No se pudo leer el catálogo de conceptos: ${esc(e.message)}.<br>
+        Sin él no se puede editar el concepto — el ERP solo acepta conceptos del catálogo.</div></div>`;
+      return;
+    }
+    // El concepto actual puede ser uno viejo, ya fuera del catálogo activo: garantízalo como opción
+    // para no perderlo ni forzar un cambio de concepto que el usuario no pidió.
+    const opciones = conceptosCosto.includes(c.concepto) ? conceptosCosto : [c.concepto, ...conceptosCosto];
+
+    cont.innerHTML = `<div class="form-erp">
+      <div style="font-size:12px;color:var(--gris);margin-bottom:8px">Editando <b>${esc(c.concepto)}</b> · ${usd(c.monto)} — solo se guarda lo que cambies; el motivo es obligatorio.</div>
+      <div class="campos">
+        <div class="campo">
+          <label>Concepto <span class="req">*</span></label>
+          <select id="ceCon">${opciones.map(x => `<option value="${esc(x)}"${x === c.concepto ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select>
+        </div>
+        <div class="campo">
+          <label>Monto USD <span class="req">*</span></label>
+          <input id="ceMonto" class="mono" type="number" step="0.01" min="0.01" value="${esc(c.monto)}">
+        </div>
+        <div class="campo ancho">
+          <label>Nota</label>
+          <input id="ceNota" type="text" maxlength="200" value="${esc(c.nota || '')}" placeholder="Opcional — referencia, factura… (vacío la borra)">
+        </div>
+        <div class="campo ancho">
+          <label>Motivo del cambio <span class="req">*</span></label>
+          <input id="ceMotivo" type="text" maxlength="200" placeholder="Queda en bitácora">
+        </div>
+      </div>
+      <div class="acciones">
+        <button class="btn-mini" id="ceGuardar">Guardar cambios</button>
+        <button class="btn-mini gris" id="ceCancelar">Cancelar</button>
+      </div>
+      <div class="aviso" id="ceAviso"></div>
+    </div>`;
+
+    document.getElementById('ceCancelar').addEventListener('click', () => { cont.innerHTML = ''; cont.dataset.costoId = ''; });
+    document.getElementById('ceGuardar').addEventListener('click', () => guardarEditarCosto(d, c));
+    document.getElementById('ceMotivo').focus();
+  }
+
+  async function guardarEditarCosto(d, c) {
+    const concepto = document.getElementById('ceCon').value.trim();
+    const montoRaw = document.getElementById('ceMonto').value;
+    const nota = document.getElementById('ceNota').value.trim();
+    const motivo = document.getElementById('ceMotivo').value.trim();
+    const btn = document.getElementById('ceGuardar');
+    limpiarAviso('ceAviso');
+
+    if (!motivo) { aviso('ceAviso', 'err', 'El motivo es obligatorio: toda edición queda justificada.'); return; }
+    // El concepto solo se valida contra el catálogo si el usuario lo CAMBIÓ (uno viejo puede quedarse).
+    if (concepto !== c.concepto && !conceptosCosto.includes(concepto)) {
+      aviso('ceAviso', 'err', 'Elige un concepto del catálogo.'); return;
+    }
+    const monto = Number(montoRaw);
+    if (montoRaw === '' || Number.isNaN(monto) || !(monto > 0)) {
+      aviso('ceAviso', 'err', 'El monto debe ser mayor a cero.'); return;
+    }
+
+    // Manda SOLO lo que cambió; lo igual va como null → el backend no lo toca. Vaciar la nota
+    // (de un texto a '') SÍ es un cambio: se manda '' para borrarla.
+    const conceptoCambio = concepto !== c.concepto;
+    const montoCambio = Number(monto) !== Number(c.monto);
+    const notaCambio = (nota || '') !== (c.nota || '');
+    if (!conceptoCambio && !montoCambio && !notaCambio) {
+      aviso('ceAviso', 'warn', 'No cambiaste ningún valor.'); return;
+    }
+
+    btn.disabled = true;
+    try {
+      const data = await rpc('fn_editar_costo', {
+        p_id: c.id,
+        p_motivo: motivo,
+        p_concepto: conceptoCambio ? concepto : null,
+        p_monto: montoCambio ? monto : null,
+        p_nota: notaCambio ? nota : null
+      });
+      const r = (data && data[0]) || {};
+      ERP.marcarDatosSucios();
+      await verFichaClasica(d.folio);   // recarga costos + total; mantiene el drawer abierto (Fix 1)
+      if (r.advertencia) ERP.toast('warn', `Costo actualizado, pero: ${esc(r.advertencia)}`);
+      else ERP.toast('ok', `Costo <b>${esc(r.concepto || concepto)}</b> actualizado${r.cambios ? ' · ' + esc(r.cambios) : ''}.`);
+    } catch (e) {
+      if (ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
+      aviso('ceAviso', 'err', `El ERP rechazó el cambio: ${esc(e.message)}`);
+      btn.disabled = false;
+    }
+  }
+
+  function confirmarEliminarCosto(d, c) {
+    if (!c) return;
+    const ok = window.confirm(`¿Eliminar el costo "${c.concepto}" por ${ERP.usd(c.monto)}?\n\nSe recalcula el costo total de la carga. Queda en bitácora y no hay deshacer en la UI.`);
+    if (!ok) return;
+    const motivo = window.prompt('Motivo para eliminar este costo (obligatorio):');
+    if (motivo === null) return;   // canceló el prompt
+    const m = motivo.trim();
+    if (!m) { ERP.toast('err', 'El motivo es obligatorio: no se eliminó.'); return; }
+    eliminarCosto(d, c, m);
+  }
+
+  async function eliminarCosto(d, c, motivo) {
+    try {
+      const data = await rpc('fn_eliminar_costo', { p_id: c.id, p_motivo: motivo });
+      const r = (data && data[0]) || {};
+      ERP.marcarDatosSucios();
+      await verFichaClasica(d.folio);   // recarga costos + total; mantiene el drawer abierto (Fix 1)
+      ERP.toast('ok', r.resultado ? esc(r.resultado) : `Costo <b>${esc(c.concepto)}</b> eliminado.`);
+    } catch (e) {
+      if (ERP.avisarSiPermiso(e)) return;
+      ERP.toast('err', `No se pudo eliminar: ${esc(e.message)}`);
     }
   }
 
@@ -1398,8 +1574,10 @@
   let tempoBusca;         // debounce del buscador (compartido entre repintados de la barra de filtros)
   let cxcMap = new Map();   // folio → fila de v_cxc (para el chip de estatus de cobro)
   let programaMap = new Map();   // folio → {codigo, etiqueta} (E47/E47-C, para el chip "PC-0XX")
+  let programaInfoMap = new Map();   // codigo → {etiqueta, proveedor} (E99, join frontend a v_programas_comerciales — proveedor no viaja en v_cargas_programa)
   let cxcOk = false;        // false si el fetch de v_cxc falló → la lista funciona sin chips
   let agendaColapsada = false;   // colapso de la franja "Agenda de la semana", recordado en sesión (NO localStorage)
+  let gruposColapsados = new Set();   // E99: códigos de programa colapsados por el usuario (recordado en sesión, no localStorage)
   let _sociosCache = null;       // v_socios_asignables cacheado (selector de responsable)
 
 
@@ -1478,23 +1656,199 @@
     });
   }
 
-  /* Badge compacto de MODALIDAD consignación — chico, apilado bajo el badge de ESTADO (mismo
-     patrón visual que el chip PC-### bajo el folio en CARGA: inline-block que envuelve a su
-     propia línea en una celda angosta, sin <br> ni bloque forzado). Paleta propia (ámbar/gris)
-     para que se lea como modalidad, no como estado logístico ni como el semáforo de cobro.
-     NUNCA fijo: ingreso_venta=0 en consignación no es un dato faltante — se reconoce al
-     LIQUIDAR, no al embarcar (D-04) — por eso "esperando liquidación" SOLO cuando ni venta ni
-     cobro existen todavía; si ya hay venta declarada (P-071/P-073/P-075) o liquidada (P-019),
-     el pill queda neutro. Nunca en cargas anuladas ni en otras modalidades. */
-  function badgeConsignacion(c) {
-    if (c.anulado || c.modalidad !== 'consignacion') return '';
-    if (num(c.ingreso_venta) === 0 && num(c.cobrado) === 0) {
-      return ' <span class="pill ambar" title="Esperando liquidación — el ingreso se reconoce al liquidar, no al embarcar (D-04)">Consignación</span>';
-    }
-    if (num(c.ingreso_venta) > 0) {
-      return ' <span class="pill gris" title="Venta ya declarada">Consignación</span>';
+  /* Pastilla de MODALIDAD (E90 — gramática "Operador estilo Silo"), apilada bajo el badge de
+     ESTADO en la misma celda angosta. Los 3 valores legítimos de cargas.modalidad (ver
+     MODALIDAD_EDIT arriba): margen_fijo → verde "Margen", consignacion → verde "Consignación"
+     (con el mismo detalle de sub-estado que traía badgeConsignacion, ahora en el title),
+     comision → ámbar "Comisión". Comisión pura con costo 0/margen 100% es CORRECTO por diseño
+     de negocio — el ámbar aquí es la paleta de modalidad, no una señal de error (nunca rojo).
+     Nunca en cargas anuladas. */
+  function pillModalidad(c) {
+    if (c.anulado) return '';
+    if (c.modalidad === 'margen_fijo') return ' <span class="pill m">Margen</span>';
+    if (c.modalidad === 'comision') return ' <span class="pill c" title="Comisión pura: costo 0 y margen 100% son correctos, Plein no compra la fruta">Comisión</span>';
+    if (c.modalidad === 'consignacion') {
+      // NUNCA fijo: ingreso_venta=0 en consignación no es un dato faltante — se reconoce al
+      // LIQUIDAR, no al embarcar (D-04) — por eso "esperando liquidación" SOLO cuando ni venta
+      // ni cobro existen todavía; si ya hay venta declarada (P-071/P-073/P-075) o liquidada
+      // (P-019), el title cambia a "venta ya declarada".
+      const titulo = (num(c.ingreso_venta) === 0 && num(c.cobrado) === 0)
+        ? 'Consignación — esperando liquidación: el ingreso se reconoce al liquidar, no al embarcar (D-04)'
+        : (num(c.ingreso_venta) > 0 ? 'Consignación — venta ya declarada' : 'Consignación');
+      return ` <span class="pill g" title="${esc(titulo)}">Consignación</span>`;
     }
     return '';
+  }
+
+
+  /* Tira de KPIs (E90). Reusa los mismos totales que ya calculaba el <tfoot> — ninguna
+     consulta nueva, solo un resumen a la vista antes de la tabla. "Gastos" del diseño
+     aprobado NO se instaló: v_carga_detalle no trae esa columna por separado del costo total
+     (verificado en vivo, 42703) — armar una cifra de "gastos" aparte habría sido inventar un
+     dato que el backend no expone. */
+  function pintarKpis(vigentes, tv, tc, tu, hayUtil) {
+    const cont = document.getElementById('kpiStrip');
+    if (!cont) return;
+    const mp = tv > 0.009 ? (tv - tc) / tv * 100 : null;
+    const tile = (etiqueta, valor, clase) => `<div class="kpi"><div class="k">${esc(etiqueta)}</div><div class="v${clase ? ' ' + clase : ''}">${valor}</div></div>`;
+    cont.innerHTML =
+      tile('Embarques', fmt0(vigentes.length), 'ink') +
+      tile('Venta', usd(tv)) +
+      tile('Costo', usd(tc), 'ink') +
+      tile('Margen', mp == null ? '—' : pct(mp), mp == null ? 'ink' : (mp < 0 ? 'neg' : '')) +
+      tile('Utilidad', hayUtil ? usd(tu) : '—', !hayUtil ? 'ink' : (tu < 0 ? 'neg' : ''));
+  }
+
+  /* ================= E99: agrupado por programa (reconstrucción estructural) =================
+     Reemplaza la tabla plana por tarjetas .group (una por programa comercial), con tabla de
+     lotes anidada. Fuente de agrupación: programaMap (folio→codigo, de v_cargas_programa).
+     El proveedor del grupo NO viaja en v_cargas_programa — se resuelve con un join en frontend
+     contra v_programas_comerciales (programaInfoMap, codigo→{etiqueta,proveedor}), mismo patrón
+     que ya usa modulo-programas.js para pintar su columna "Proveedor". Si ese fetch falla o el
+     programa no tiene proveedor_id capturado, se muestra "proveedor sin asignar" — nunca se
+     inventa un nombre. Cargas sin programa (folio ausente en programaMap) caen en el grupo
+     especial "Sin programa asignado", que se pinta SIEMPRE al final, para no perder ninguna
+     carga por no tener programa ligado. */
+  function agruparPorPrograma(filas) {
+    const grupos = new Map();   // codigo (o '__sin_programa__') → {codigo, etiqueta, proveedor, cargas:[]}
+    filas.forEach(c => {
+      const prog = programaMap.get(String(c.folio));
+      const key = prog ? prog.codigo : '__sin_programa__';
+      if (!grupos.has(key)) {
+        const info = prog ? programaInfoMap.get(String(prog.codigo)) : null;
+        grupos.set(key, {
+          codigo: prog ? prog.codigo : null,
+          etiqueta: prog ? ((info && info.etiqueta) || prog.etiqueta || prog.codigo) : 'Sin programa asignado',
+          proveedor: prog ? ((info && info.proveedor) || null) : null,
+          cargas: []
+        });
+      }
+      grupos.get(key).cargas.push(c);
+    });
+
+    const lista = Array.from(grupos.values()).map(g => {
+      const vigentes = g.cargas.filter(c => !c.anulado);
+      const cajasG = vigentes.reduce((s, c) => s + (c.cajas == null ? 0 : num(c.cajas)), 0);
+      const ventaG = vigentes.reduce((s, c) => s + num(c.ingreso_venta), 0);
+      const costoG = vigentes.reduce((s, c) => s + num(c.costo_total), 0);
+      const hayUtilG = vigentes.some(c => c.utilidad != null);
+      const utilidadG = vigentes.reduce((s, c) => s + (c.utilidad == null ? 0 : num(c.utilidad)), 0);
+      const margenG = ventaG > 0.009 ? (ventaG - costoG) / ventaG * 100 : null;
+      // Si TODAS las cargas vigentes del grupo son modalidad='comision', el ingreso registrado
+      // ES la comisión (D-10, BITACORA-DECISIONES.md) — se rotula "Comisión" en vez de "Venta",
+      // mismo campo ingreso_venta, sin transformar el número.
+      const esComisionPura = vigentes.length > 0 && vigentes.every(c => c.modalidad === 'comision');
+      return Object.assign({}, g, {
+        cajas: cajasG, venta: ventaG, costo: costoG, utilidad: utilidadG, hayUtil: hayUtilG,
+        margen: margenG, esComisionPura, nCargas: g.cargas.length
+      });
+    });
+
+    // Orden: por venta desc; "Sin programa asignado" (codigo null) siempre al final.
+    lista.sort((a, b) => {
+      if (a.codigo === null && b.codigo !== null) return 1;
+      if (a.codigo !== null && b.codigo === null) return -1;
+      return b.venta - a.venta;
+    });
+    return lista;
+  }
+
+  /** Celda kv compacta para el encabezado de grupo (.ghead) — mismo contrato visual que el
+      tile() de la tira de KPIs superior, pero pensada para vivir inline junto al .gtag. */
+  function kv(etiqueta, valor, clase) {
+    return `<div class="kv"><div class="k">${esc(etiqueta)}</div><div class="v${clase ? ' ' + clase : ''}">${valor}</div></div>`;
+  }
+
+  /* Fila de un lote dentro de la tabla anidada de un grupo. Columnas del mockup (Lote/Producto/
+     Modalidad/Cajas/Vendidas/$-Caja/Venta(o Comisión)/Costo-Caja/B-E/Utilidad/Margen/[Ver]) más
+     P.O. y V7 (E99-fix): la tabla plana que esta reemplazó traía "Carga"(folio)/P.O./V7/Lote
+     como CUATRO identificadores separados — Miguel los necesita para cotejar cada renglón
+     contra el banco/V7 (regla de oro: llave de cotejo = P.O., ver CLAUDE.md). "Lote" aquí
+     sigue mostrando el folio (p.ej. P-084), como ya se acordó; P.O. y V7 son columnas nuevas
+     compactas. `c.lote`/`c.lote_productor` (el lote físico del productor, distinto de folio e
+     id_v7) también existen en v_carga_detalle pero NO se agregaron aquí por espacio — si
+     Miguel los necesita visibles en esta tabla, es un ajuste rápido de seguimiento.
+     No existe un campo "Orden de Venta" en v_carga_detalle (verificado: ni so_folio ni
+     orden_venta se leen de esta vista en ningún punto del módulo) — no se agrega, no se inventa.
+     Tres columnas son DERIVADAS en frontend, no campos nuevos del backend:
+       - $-Caja = ingreso_venta / cajas, Costo-Caja = costo_total / cajas (aritmética simple).
+       - B-E (break-even) = ¿ingreso_venta cubre costo_total? Se muestra como indicador ✓/— en
+         vez de una cifra en dinero, porque un tercer número igual a Costo-Caja habría sido
+         redundante — el break-even como cifra de $/caja YA ES Costo-Caja.
+       - Vendidas = mismo valor que Cajas (title lo aclara): esta ERP no rastrea venta parcial
+         por lote — cada embarque es una venta completa (D-04/D-10) — así que un campo separado
+         de "cajas vendidas" no existe en el backend y NO se inventa un número distinto; se
+         muestra el dato real (cajas) bajo la columna que pide el mockup, con la aclaración. */
+  function htmlFilaLote(c) {
+    const anulada = c.anulado === true;
+    const cajasN = c.cajas == null ? null : num(c.cajas);
+    const precioCaja = cajasN && cajasN > 0.009 ? num(c.ingreso_venta) / cajasN : null;
+    const costoCaja = cajasN && cajasN > 0.009 ? num(c.costo_total) / cajasN : null;
+    const cubreCosto = num(c.costo_total) > 0.009 && num(c.ingreso_venta) >= num(c.costo_total);
+    const m = num(c.ingreso_venta) - num(c.costo_total);
+    const mp = num(c.ingreso_venta) > 0.009 ? (m / num(c.ingreso_venta) * 100) : null;
+    return `<tr class="clic ${anulada ? 'anulada' : ''}" data-folio="${esc(c.folio)}"
+                ${anulada ? `title="Anulada: ${esc(c.anulado_motivo || 'sin motivo')}"` : ''}>
+      <td class="mono"><span class="enlace ltag">${esc(c.folio)}</span>${c.revision_pendiente && !anulada ? ' <i class="ti ti-flag-filled" style="color:var(--amb)" title="Revisión pendiente"></i>' : ''}${anulada ? ' <i class="ti ti-ban" style="color:var(--i3)" title="Anulada"></i>' : ''}</td>
+      <td class="mono id-corta">${c.po ? esc(c.po) : '—'}</td>
+      <td class="mono id-corta">${c.id_v7 == null ? '—' : esc(c.id_v7)}</td>
+      <td class="prod">${esc(c.producto || '—')}</td>
+      <td>${pillModalidad(c) || '<span style="color:var(--i3)">—</span>'}</td>
+      <td class="num">${cajasN == null ? '—' : fmt0(cajasN)}</td>
+      <td class="num" title="Vendidas = Cajas: esta ERP no rastrea venta parcial por lote, cada embarque es una venta completa">${cajasN == null ? '—' : fmt0(cajasN)}</td>
+      <td class="num">${precioCaja == null ? '—' : usd(precioCaja)}</td>
+      <td class="num">${usd(c.ingreso_venta)}</td>
+      <td class="num">${costoCaja == null ? '—' : usd(costoCaja)}</td>
+      <td class="num" title="${cubreCosto ? 'Ya cubrió su costo' : 'Aún no cubre su costo'}">${anulada ? '—' : (cubreCosto ? '<i class="ti ti-check" style="color:var(--money)"></i>' : '<i class="ti ti-minus" style="color:var(--i3)"></i>')}</td>
+      <td class="num"${anulada ? '' : ` style="color:${ERP.utilidadColor(c.utilidad)}"`}>${ERP.utilidadTexto(c.utilidad, c.utilidad_es_estimada, c.utilidad_nota)}</td>
+      <td class="num ${m < 0 && !anulada ? 'neg' : ''}">${mp == null ? '—' : pct(mp)}</td>
+      <td><button class="mini ver-lote" data-folio="${esc(c.folio)}" title="Ver ficha del embarque"><i class="ti ti-eye"></i></button></td>
+    </tr>`;
+  }
+
+  /* Tarjeta de grupo (.group): encabezado .ghead (pestaña verde --tabG vía CSS) con ícono,
+     nombre del programa, subtítulo "Programa PC-XXX · proveedor · N embarques", KPIs del
+     grupo (.kv) y acciones (Programa/Editar/colapsar) — debajo, tabla de lotes anidada. El
+     grupo "Sin programa asignado" (codigo null) no ofrece Programa/Editar/colapsar: no hay
+     programa al que navegar ni colapsar tiene sentido para el cajón de excepciones. */
+  function htmlGrupoPrograma(g) {
+    const colapsado = g.codigo && gruposColapsados.has(g.codigo);
+    const labelVenta = g.esComisionPura ? 'Comisión' : 'Venta';
+    const sub = g.codigo
+      ? `Programa ${esc(g.codigo)} · ${g.proveedor ? esc(g.proveedor) : 'proveedor sin asignar'} · ${g.nCargas} embarque${g.nCargas === 1 ? '' : 's'}`
+      : `${g.nCargas} embarque${g.nCargas === 1 ? '' : 's'} sin programa asignado`;
+    return `<div class="group${colapsado ? ' colapsado' : ''}${g.codigo ? '' : ' sin-programa'}">
+      <div class="ghead">
+        <i class="ti ti-folder gicon"></i>
+        <div class="gtxt">
+          <div class="gtag">${esc(g.etiqueta)}</div>
+          <div class="gsub">${sub}</div>
+        </div>
+        <div class="kv-row">
+          ${kv('Cajas', fmt0(g.cajas))}
+          ${kv(labelVenta, usd(g.venta))}
+          ${kv('Costo', usd(g.costo), 'ink')}
+          ${kv('Utilidad', g.hayUtil ? usd(g.utilidad) : '—', !g.hayUtil ? 'ink' : (g.utilidad < 0 ? 'neg' : ''))}
+          ${kv('Margen', g.margen == null ? '—' : pct(g.margen), g.margen == null ? 'ink' : (g.margen < 0 ? 'neg' : ''))}
+        </div>
+        <div class="actions">
+          ${g.codigo ? `<button class="mini gbtn" data-ver-programa="${esc(g.codigo)}">Programa</button>` : ''}
+          ${g.codigo ? `<button class="mini gbtn" data-editar-programa="${esc(g.codigo)}">Editar</button>` : ''}
+          ${g.codigo ? `<button class="mini group-toggle" data-toggle-grupo="${esc(g.codigo)}" title="${colapsado ? 'Expandir grupo' : 'Colapsar grupo'}"><i class="ti ti-chevron-${colapsado ? 'down' : 'up'}"></i></button>` : ''}
+        </div>
+      </div>
+      <div class="glotes">
+        <div class="tabla-wrap"><table>
+          <thead><tr>
+            <th>Lote</th><th title="P.O. — llave de cotejo con el banco">P.O.</th><th title="Referencia V7 (id_v7)">V7</th><th>Producto</th><th>Modalidad</th>
+            <th class="num">Cajas</th><th class="num">Vendidas</th><th class="num">$/Caja</th>
+            <th class="num">${esc(labelVenta)}</th><th class="num">Costo/Caja</th>
+            <th class="num">B-E</th><th class="num">Utilidad</th><th class="num">Margen</th><th></th>
+          </tr></thead>
+          <tbody>${g.cargas.map(htmlFilaLote).join('')}</tbody>
+        </table></div>
+      </div>
+    </div>`;
   }
 
   function pintarTabla() {
@@ -1516,89 +1870,70 @@
     const cuerpo = document.getElementById('cargasTabla');
     document.getElementById('cargasConteo').textContent = `${filas.length} de ${cargas.length} cargas`;
 
+    /* Los totales suman solo cargas vigentes: una anulada no cuenta para nada,
+       y sumarla a la tira de KPIs inflaría la venta y el costo del periodo.
+       Se calculan ANTES del early-return de "sin filas" para que la tira de KPIs siempre
+       quede en 0 en vez de congelada con el filtro anterior. */
+    const vigentes = filas.filter(c => !c.anulado);
+    const nAnuladas = filas.length - vigentes.length;
+    const tv = vigentes.reduce((s, c) => s + num(c.ingreso_venta), 0);
+    const tc = vigentes.reduce((s, c) => s + num(c.costo_total), 0);
+    const tu = vigentes.reduce((s, c) => s + (c.utilidad == null ? 0 : num(c.utilidad)), 0);
+    const hayUtil = vigentes.some(c => c.utilidad != null);
+    pintarKpis(vigentes, tv, tc, tu, hayUtil);
+
     if (!filas.length) {
       cuerpo.innerHTML = '<div class="vacio">Ninguna carga coincide con el filtro.</div>';
       return;
     }
 
-    /* Los totales suman solo cargas vigentes: una anulada no cuenta para nada,
-       y sumarla al pie inflaría la venta y el costo del periodo. */
-    const vigentes = filas.filter(c => !c.anulado);
-    const nAnuladas = filas.length - vigentes.length;
-    const tv = vigentes.reduce((s, c) => s + num(c.ingreso_venta), 0);
-    const tc = vigentes.reduce((s, c) => s + num(c.costo_total), 0);
-    const tcajas = vigentes.reduce((s, c) => s + (c.cajas == null ? 0 : num(c.cajas)), 0);
-    const hayCajas = vigentes.some(c => c.cajas != null);
-    const tu = vigentes.reduce((s, c) => s + (c.utilidad == null ? 0 : num(c.utilidad)), 0);
-    const hayUtil = vigentes.some(c => c.utilidad != null);
+    // E99: reconstrucción estructural — de tabla plana a tarjetas .group por programa.
+    // Ver agruparPorPrograma() para las reglas de agrupación/orden/proveedor.
+    const grupos = agruparPorPrograma(filas);
 
-    cuerpo.innerHTML = `<div class="tabla-wrap"><table>
-      <thead><tr>
-        <th></th><th>Carga</th><th>P.O.</th>
-        <th id="thFecha" style="cursor:pointer;user-select:none;white-space:nowrap" title="Clic para ordenar por fecha de embarque">Embarque ${sortFecha === 'desc' ? '▼' : sortFecha === 'asc' ? '▲' : '⇅'}</th>
-        <th>V7</th><th>Lote</th><th>Estado</th><th>Cobro</th><th>Producto</th><th>Cliente</th>
-        <th class="num">Cajas</th>
-        <th class="num">Venta</th>
-        <th class="num" id="thUtil" style="cursor:pointer;user-select:none" title="Clic para ordenar por utilidad">Utilidad ${sortUtil === 'desc' ? '▼' : sortUtil === 'asc' ? '▲' : '⇅'}</th>
-        <th class="num">Costo</th><th class="num">Margen %</th>
-        <th class="num">CxC</th><th class="num">CxP</th><th>Resp.</th>
-      </tr></thead>
-      <tbody>
-      ${filas.map(c => {
-        const m = num(c.ingreso_venta) - num(c.costo_total);
-        const mp = num(c.ingreso_venta) > 0.009 ? (m / num(c.ingreso_venta) * 100) : null;
-        const anulada = c.anulado === true;
-        const prog = programaMap.get(String(c.folio));
-        return `<tr class="clic ${anulada ? 'anulada' : ''}" data-folio="${esc(c.folio)}"
-                    ${anulada ? `title="Anulada: ${esc(c.anulado_motivo || 'sin motivo')}"` : ''}>
-          <td>${anulada ? '⊘' : semaforo(mp)}</td>
-          <td class="mono"><span class="enlace">${esc(c.folio)}</span>${c.revision_pendiente && !anulada ? ' ⚑' : ''}${prog ? ` <span class="pill verde ir-programa" data-ir-programa="1" data-programa="${esc(prog.codigo)}" title="Ver programa: ${esc(prog.etiqueta || prog.codigo)}">${esc(prog.codigo)}</span>` : ''}</td>
-          <td class="mono" style="white-space:nowrap">${c.po ? esc(c.po) : '—'}</td>
-          <td class="mono" style="white-space:nowrap">${c.f_embarque ? esc(ERP.fecha(c.f_embarque)) : '—'}</td>
-          <td class="mono">${c.id_v7 == null ? '—' : esc(c.id_v7)}</td>
-          <td class="mono" style="white-space:nowrap">${esc(c.lote || '—')}</td>
-          <td>${anulada
-            ? '<span class="pill rojo">ANULADA</span>'
-            : ERP.badgeEstado(c.estado)}${badgeConsignacion(c)}</td>
-          <td>${anulada || !cxcOk ? '' : ERP.chipCobroHTML(cxcMap.get(String(c.folio)))}</td>
-          <td>${esc(c.producto || '—')}</td>
-          <td>${esc((c.cliente || '—').split(' ').slice(0, 2).join(' '))}</td>
-          <td class="num">${c.cajas == null ? '—' : fmt0(c.cajas)}</td>
-          <td class="num">${usd(c.ingreso_venta)}</td>
-          <td class="num"${anulada ? '' : ` style="color:${ERP.utilidadColor(c.utilidad)}"`}>${ERP.utilidadTexto(c.utilidad, c.utilidad_es_estimada, c.utilidad_nota)}</td>
-          <td class="num">${usd(c.costo_total)}</td>
-          <td class="num ${m < 0 && !anulada ? 'neg' : ''}">${mp == null ? '—' : pct(mp)}</td>
-          <td class="num">${num(c.saldo_cxc) > 0.009 ? usd(c.saldo_cxc) : '—'}</td>
-          <td class="num ${num(c.saldo_cxp) > 0.009 && !anulada ? 'neg' : ''}">${num(c.saldo_cxp) > 0.009 ? usd(c.saldo_cxp) : '—'}</td>
-          <td style="white-space:nowrap">${c.responsable_nombre ? esc(String(c.responsable_nombre).split(' ')[0]) : '—'}</td>
-        </tr>`;
-      }).join('')}
-      </tbody>
-      <tfoot><tr class="total">
-        <td colspan="10">Total vigente (${vigentes.length})${nAnuladas ? ` · ${nAnuladas} anulada${nAnuladas === 1 ? '' : 's'} sin contar` : ''}</td>
-        <td class="num">${hayCajas ? fmt0(tcajas) : '—'}</td>
-        <td class="num">${usd(tv)}</td>
-        <td class="num"${hayUtil ? ` style="color:${ERP.utilidadColor(tu)}"` : ''}>${hayUtil ? usd(tu) : '—'}</td>
-        <td class="num">${usd(tc)}</td>
-        <td class="num">${tv > 0 ? pct((tv - tc) / tv * 100) : '—'}</td>
-        <td class="num">${usd(vigentes.reduce((s, c) => s + num(c.saldo_cxc), 0))}</td>
-        <td class="num">${usd(vigentes.reduce((s, c) => s + num(c.saldo_cxp), 0))}</td>
-        <td></td>
-      </tr></tfoot>
-    </table></div>`;
+    cuerpo.innerHTML = `
+      <div class="tabla-controles">
+        <span class="conteo-grupos">${grupos.length} programa${grupos.length === 1 ? '' : 's'}${nAnuladas ? ` · ${nAnuladas} anulada${nAnuladas === 1 ? '' : 's'} sin contar` : ''}</span>
+        <span class="orden-ctl">
+          <button class="mini gbtn" id="ordFecha" title="Ordenar lotes por fecha de embarque">Fecha ${sortFecha === 'desc' ? '▼' : sortFecha === 'asc' ? '▲' : '⇅'}</button>
+          <button class="mini gbtn" id="ordUtil" title="Ordenar lotes por utilidad">Utilidad ${sortUtil === 'desc' ? '▼' : sortUtil === 'asc' ? '▲' : '⇅'}</button>
+        </span>
+      </div>
+      ${grupos.map(htmlGrupoPrograma).join('')}
+    `;
 
-    cuerpo.querySelectorAll('tr.clic').forEach(tr =>
+    // Clic en cualquier fila de lote (dentro de un grupo) abre la ficha, igual que antes.
+    cuerpo.querySelectorAll('tr.clic[data-folio]').forEach(tr =>
       tr.addEventListener('click', () => verCarga(tr.dataset.folio)));
-    // Chip de programa (E47): navega a Programas sin abrir la ficha de la carga.
-    cuerpo.querySelectorAll('[data-ir-programa]').forEach(chip => chip.addEventListener('click', e => {
+    cuerpo.querySelectorAll('.ver-lote').forEach(btn => btn.addEventListener('click', e => {
       e.stopPropagation();
-      ERP.irModulo('programas', chip.dataset.programa);
+      verCarga(btn.dataset.folio);
+    }));
+    // Botón "Programa" del encabezado de grupo: navega al módulo Programas filtrado (mismo
+    // patrón que el chip de programa que ya existía en la fila plana antes de E99).
+    cuerpo.querySelectorAll('[data-ver-programa]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      ERP.irModulo('programas', btn.dataset.verPrograma);
+    }));
+    // Botón "Editar" del encabezado de grupo: abre la ficha del programa en el mismo panel
+    // que usa modulo-programas.js, sin salir de Embarques.
+    cuerpo.querySelectorAll('[data-editar-programa]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (ERP.verPrograma) ERP.verPrograma(btn.dataset.editarPrograma);
+    }));
+    // Colapsar/expandir un grupo individual — estado recordado en sesión (gruposColapsados),
+    // no en localStorage: es transitorio a la vista, no una preferencia persistente.
+    cuerpo.querySelectorAll('[data-toggle-grupo]').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const codigo = btn.dataset.toggleGrupo;
+      if (gruposColapsados.has(codigo)) gruposColapsados.delete(codigo); else gruposColapsados.add(codigo);
+      pintarTabla();
     }));
 
-    const thUtil = document.getElementById('thUtil');
-    if (thUtil) thUtil.addEventListener('click', () => { sortFecha = null; sortUtil = sortUtil === 'desc' ? 'asc' : 'desc'; pintarTabla(); });
-    const thFecha = document.getElementById('thFecha');
-    if (thFecha) thFecha.addEventListener('click', () => { sortUtil = null; sortFecha = sortFecha === 'desc' ? 'asc' : 'desc'; pintarTabla(); });
+    const ordUtil = document.getElementById('ordUtil');
+    if (ordUtil) ordUtil.addEventListener('click', () => { sortFecha = null; sortUtil = sortUtil === 'desc' ? 'asc' : 'desc'; pintarTabla(); });
+    const ordFecha = document.getElementById('ordFecha');
+    if (ordFecha) ordFecha.addEventListener('click', () => { sortUtil = null; sortFecha = sortFecha === 'desc' ? 'asc' : 'desc'; pintarTabla(); });
     ERP.cablearInfoNota(cuerpo);   // ⓘ de utilidad estimada (tap no abre la ficha: stopPropagation)
   }
 
@@ -1656,11 +1991,11 @@
         ${estadosNoCuenta.map(i => `<button class="chip chip-porconfirmar${activo(i.estado)}" data-estado="${esc(i.estado)}" style="margin-right:12px" title="No cuenta como embarque hasta confirmarla">${esc(i.etiqueta)} <span class="chip-n">${nEstado(i.estado)}</span></button>`).join('')}
         <button class="chip${activo('todas')}" data-estado="todas">Todas <span class="chip-n">${nVivas}</span></button>
         <button class="chip${activo('activas')}" data-estado="activas">Activas <span class="chip-n">${nActivas}</span></button>
-        <button class="chip${activo('flag')}" data-estado="flag">Con flag ⚑ <span class="chip-n">${nFlag}</span></button>
+        <button class="chip${activo('flag')}" data-estado="flag">Con flag <i class="ti ti-flag-filled"></i> <span class="chip-n">${nFlag}</span></button>
         ${estadosOp.map(i => `<button class="chip${activo(i.estado)}" data-estado="${esc(i.estado)}">${esc(i.etiqueta)} <span class="chip-n">${nEstado(i.estado)}</span></button>`).join('')}
         ${cxcOk ? COBRO_CHIPS.map(([k, l], i) => `<button class="chip${activo('cobro:' + k)}" data-estado="cobro:${k}"${i === 0 ? ' style="margin-left:10px" title="Filtrar por estatus de cobro"' : ''}>${l} <span class="chip-n">${nCobro(k)}</span></button>`).join('') : ''}
         <button class="chip${activo('modalidad:consignacion')}" data-estado="modalidad:consignacion" style="margin-left:12px" title="Todas las cargas en modalidad consignación (liquidadas y sin liquidar) — conjunto distinto de 'Sin liquidar'">En consignación <span class="chip-n">${nConsignacion}</span></button>
-        ${nAnul ? `<button class="chip chip-anuladas${activo('anuladas')}" data-estado="anuladas" style="margin-left:10px">Anuladas ⊘ <span class="chip-n">${nAnul}</span></button>` : ''}
+        ${nAnul ? `<button class="chip chip-anuladas${activo('anuladas')}" data-estado="anuladas" style="margin-left:10px">Anuladas <i class="ti ti-ban"></i> <span class="chip-n">${nAnul}</span></button>` : ''}
         ${ERP.puede('capturar') ? '<button class="btn-mini" id="btnNuevaCarga">+ Nuevo embarque</button>' : ''}
         <span class="conteo" id="cargasConteo"></span>
       </div>`;
@@ -1707,12 +2042,13 @@
   async function render(cont, parametro) {
     // Un solo fetch de v_cxc al montar; se indexa por folio y se cruza con la lista ya traída.
     // NO se consulta por carga. Si v_cxc falla, la lista sigue funcionando sin chips de cobro.
-    const [cargasData, cxc, , agenda, cargasPrograma] = await Promise.all([
+    const [cargasData, cxc, , agenda, cargasPrograma, programasComerciales] = await Promise.all([
       q('v_carga_detalle'),
       q('v_cxc').catch(() => null),
       ERP.cargarEstados(),   // catálogo de estados/transiciones; sin catch: si truena, se ve el errbox
       q('v_agenda_operativa').catch(() => []),   // enriquecimiento: si falla, la franja se oculta
-      q('v_cargas_programa').catch(() => [])   // E47: mapa folio→programa, un solo fetch para toda la lista
+      q('v_cargas_programa').catch(() => []),   // E47: mapa folio→programa, un solo fetch para toda la lista
+      q('v_programas_comerciales', '&order=codigo.asc').catch(() => [])   // E99: join frontend — v_cargas_programa no trae proveedor, v_programas_comerciales sí (mismo patrón que modulo-programas.js)
     ]);
     cargas = cargasData;
     cxcOk = Array.isArray(cxc);
@@ -1720,6 +2056,10 @@
     if (cxcOk) cxc.forEach(r => cxcMap.set(String(r.folio), r));
     programaMap = new Map();
     cargasPrograma.forEach(r => { if (r.programa_codigo) programaMap.set(String(r.folio), { codigo: r.programa_codigo, etiqueta: r.programa_etiqueta || null }); });
+    // E99: proveedor por programa. Si v_programas_comerciales falló (catch → []), el grupo
+    // simplemente muestra "proveedor sin asignar" — nunca se inventa un nombre ni se rompe el render.
+    programaInfoMap = new Map();
+    programasComerciales.forEach(p => { if (p.codigo) programaInfoMap.set(String(p.codigo), { etiqueta: p.etiqueta || null, proveedor: p.proveedor || null }); });
     // Orden base: fecha de embarque más reciente primero (folio como desempate). Las cargas sin
     // f_embarque (ej. "Por Confirmar") quedan al final, como corresponde a un orden por fecha.
     cargas.sort((a, b) => String(b.f_embarque || '').localeCompare(String(a.f_embarque || ''))
@@ -1733,15 +2073,21 @@
     filtroTexto = parametro && parametro.startsWith('q:') ? parametro.slice(2) : '';
 
     cont.innerHTML = `
+      <div class="pantalla-embarques">
       ${htmlAgenda(agenda)}
+      <div id="kpiStrip" class="kpistrip"></div>
       <div id="filtrosCont"></div>
       ${ERP.botonesExportar ? ERP.botonesExportar('Embarques', 'Reporte de Embarques', '#cargasTabla table') : ''}
       <div class="card" style="padding:14px"><div id="cargasTabla"></div></div>
       <div class="leyenda">
-        Semáforo por margen: 🟢 &gt;10% · 🟡 3–10% · 🔴 &lt;3% · ⚑ flag activa · ⊘ anulada.
-        La vista base son solo cargas vivas; las anuladas quedan <b>fuera de los estados operativos</b> y viven aparte en el chip <b>Anuladas ⊘</b>.
+        Agrupado por <b>programa comercial</b> — cada tarjeta es un programa (PC-XXX), con sus lotes debajo.
+        <b>B-E</b> = ¿el lote ya cubrió su costo? <i class="ti ti-check" style="color:var(--money)"></i> sí ·
+        <i class="ti ti-minus" style="color:var(--i3)"></i> aún no. <b>Vendidas</b> = Cajas (no se rastrea venta parcial por lote).
+        <i class="ti ti-flag-filled" style="color:var(--amb)"></i> flag activa · <i class="ti ti-ban" style="color:var(--i3)"></i> anulada.
+        La vista base son solo cargas vivas; las anuladas quedan <b>fuera de los estados operativos</b> y viven aparte en el chip <b>Anuladas</b>.
         Las consignaciones abiertas pueden mostrar margen bajo temporal: el costo entra antes que el ingreso.
-        Toca una fila para abrir la ficha de la carga.
+        Toca un lote para abrir su ficha; toca <b>Programa</b> para ver el programa completo, <b>Editar</b> para su ficha.
+      </div>
       </div>`;
 
     pintarFiltros(cont);   // pinta chips/rango y cablea sus propios listeners (incluido "+ Nuevo embarque")
@@ -1795,7 +2141,7 @@
     }).join('');
     return `<section class="agenda">
       <div class="agenda-head">
-        <button class="agenda-toggle" id="agendaToggle"><span id="agendaArrow">${agendaColapsada ? '▸' : '▾'}</span> Agenda de la semana <span class="chip-n">${filas.length}${nR ? ` · ${nR} 🔴` : ''}</span></button>
+        <button class="agenda-toggle" id="agendaToggle"><span id="agendaArrow">${agendaColapsada ? '▸' : '▾'}</span> Agenda de la semana <span class="chip-n">${filas.length}${nR ? ` · ${nR} <i class="ti ti-alert-triangle-filled" style="color:var(--red)"></i>` : ''}</span></button>
       </div>
       <div class="hoy-cards" id="agendaCards"${agendaColapsada ? ' style="display:none"' : ''}>${cards}</div>
     </section>`;
@@ -1808,6 +2154,220 @@
     try { _sociosCache = await q('v_socios_asignables', '&order=socio_codigo.asc'); }
     catch (_) { _sociosCache = []; }
     return _sociosCache;
+  }
+
+  /* ================= Eventos de carga (C.1b, E66/E76) =================
+     v_eventos_carga ya trae tipo (nombre legible), tipo_codigo, contraparte, cliente, producto —
+     no hace falta cruzar con v_evento_tipos para pintar la lista, solo para el formulario (banderas
+     exige_*). RPC gate 'capturar' para registrar, 'editar' para anular (regla de la casa). */
+
+  async function montarEventosCarga(contenedor, folio, permitir = true) {
+    if (!contenedor) return;
+    const puedeCap = permitir && ERP.puede('capturar');
+    const puedeEd = permitir && ERP.puede('editar');
+    contenedor.innerHTML = `<div class="seccion-head"><h4>Eventos</h4>${puedeCap ? '<button class="btn-mini gris" id="evRegistrar">Registrar evento</button>' : ''}</div>
+      <div id="evForm"></div>
+      <div id="evLista"><div class="skel">Cargando…</div></div>`;
+
+    const btnReg = document.getElementById('evRegistrar');
+    if (btnReg) btnReg.addEventListener('click', abrirRegistrarEvento);
+
+    const lista = document.getElementById('evLista');
+    let eventos;
+    try {
+      eventos = await q('v_eventos_carga', `&carga_folio=${ERP.eq(folio)}&anulado=eq.false&order=fecha.desc,id.desc`);
+    } catch (e) {
+      lista.innerHTML = `<div class="errbox">No se pudieron leer los eventos: ${esc(e.message)}</div>`;
+      return;
+    }
+    pintarLista(eventos || []);
+
+    function pintarLista(evs) {
+      lista.innerHTML = evs.length
+        ? `<div class="tabla-wrap"><table class="fact-lineas">
+            <thead><tr><th>Tipo</th><th>Fecha</th><th class="num">Cajas</th><th class="num">Monto</th>
+              <th>Contraparte</th><th>Nota</th>${puedeEd ? '<th></th>' : ''}</tr></thead>
+            <tbody>${evs.map(e => `<tr>
+              <td><span class="pill gris">${esc(e.tipo || e.tipo_codigo || '—')}</span></td>
+              <td>${esc(ERP.fecha(e.fecha))}</td>
+              <td class="num">${e.cajas == null ? '—' : esc(e.cajas)}</td>
+              <td class="num">${e.monto == null ? '—' : usd(e.monto)}</td>
+              <td>${esc(e.contraparte || '—')}</td>
+              <td>${esc(e.nota || '—')}</td>
+              ${puedeEd ? `<td><button class="btn-cap" data-anular-evento="${esc(e.id)}" title="Anular evento">✕</button></td>` : ''}
+            </tr>`).join('')}</tbody>
+          </table></div>`
+        : '<div class="vacio" style="padding:10px 0">Sin eventos registrados.</div>';
+      if (puedeEd) {
+        lista.querySelectorAll('[data-anular-evento]').forEach(b =>
+          b.addEventListener('click', () => anularEvento(b.dataset.anularEvento)));
+      }
+    }
+
+    async function recargar() {
+      try {
+        const evs = await q('v_eventos_carga', `&carga_folio=${ERP.eq(folio)}&anulado=eq.false&order=fecha.desc,id.desc`);
+        pintarLista(evs || []);
+      } catch (e) {
+        lista.innerHTML = `<div class="errbox">No se pudieron leer los eventos: ${esc(e.message)}</div>`;
+      }
+    }
+
+    async function anularEvento(id) {
+      const motivo = window.prompt('Motivo de la anulación del evento (OBLIGATORIO, queda registrado):');
+      if (motivo === null) return;
+      if (!motivo.trim()) { ERP.toast('err', 'El motivo es obligatorio para anular.'); return; }
+      try {
+        await rpc('fn_anular_evento_carga', { p_id: Number(id), p_motivo: motivo.trim() });
+        ERP.marcarDatosSucios();
+        ERP.toast('ok', 'Evento anulado.');
+        recargar();
+      } catch (e) {
+        if (ERP.avisarSiPermiso(e)) return;
+        ERP.toast('err', `No se pudo anular el evento: ${esc(e.message)}`, 8000);
+      }
+    }
+
+    async function abrirRegistrarEvento() {
+      const cont = document.getElementById('evForm');
+      if (!cont) return;
+      if (cont.dataset.abierto === '1') { cont.dataset.abierto = ''; cont.innerHTML = ''; return; }
+      cont.dataset.abierto = '1';
+      cont.innerHTML = '<div class="skel">Cargando catálogo de eventos…</div>';
+      let tipos, contrapartes, sos;
+      try {
+        [tipos, contrapartes, sos] = await Promise.all([
+          q('v_evento_tipos', '&order=orden.asc'),
+          q('v_catalogo_admin', '&order=nombre.asc'),
+          q('v_sales_orders')
+        ]);
+      } catch (e) {
+        cont.innerHTML = `<div class="errbox">No se pudieron leer los catálogos: ${esc(e.message)}</div>`;
+        return;
+      }
+      const tiposActivos = (tipos || []).filter(t => t.activo !== false);
+
+      cont.innerHTML = `<div class="form-erp" style="margin:8px 0">
+        <div class="campos">
+          <div class="campo ancho"><label>Tipo de evento <span class="req">*</span></label>
+            <select id="evTipo"><option value="">— Elige un tipo —</option>${tiposActivos.map(t =>
+              `<option value="${esc(t.codigo)}">${esc(t.nombre)}</option>`).join('')}</select>
+            <div class="alias-ayuda" id="evTipoDesc"></div></div>
+          <div id="evCamposDinamicos"></div>
+          <div class="campo"><label>Fecha</label><input id="evFecha" type="date"></div>
+          <div class="campo ancho"><label>Nota</label><textarea id="evNota" rows="2"></textarea></div>
+        </div>
+        <div class="acciones">
+          <button class="btn-mini" id="evGuardar">Registrar evento</button>
+          <button class="btn-mini gris" id="evCancelar">Cerrar</button>
+        </div>
+        <div class="aviso" id="evAviso"></div>
+      </div>`;
+
+      let comboContraparteEv = null, comboSODestinoEv = null;
+
+      function pintarCamposDinamicos(tipo) {
+        const dc = document.getElementById('evCamposDinamicos');
+        comboContraparteEv = null; comboSODestinoEv = null;
+        if (!tipo) { dc.innerHTML = ''; return; }
+        let html = '';
+        if (tipo.exige_cajas) html += `<div class="campo"><label>Cajas <span class="req">*</span></label>
+          <input id="evCajas" class="mono" type="number" step="1" min="1" placeholder="0"></div>`;
+        if (tipo.exige_monto) html += `<div class="campo"><label>Monto (USD) <span class="req">*</span></label>
+          <input id="evMonto" class="mono" type="number" step="0.01" placeholder="0.00"></div>`;
+        if (tipo.exige_contraparte) html += `<div class="campo ancho"><label>Contraparte <span class="req">*</span></label>
+          <div id="evContraparte"></div></div>`;
+        if (tipo.exige_so_destino) html += `<div class="campo ancho"><label>Orden de venta destino <span class="req">*</span></label>
+          <div id="evSODestino"></div></div>`;
+        dc.innerHTML = html;
+
+        if (tipo.exige_contraparte) {
+          comboContraparteEv = ERP.crearCombo({
+            contenedor: document.getElementById('evContraparte'),
+            items: (contrapartes || []).map(c => ({ id: c.id, nombre: c.nombre, alias: c.alias || [] })),
+            placeholder: 'Busca contraparte por nombre o alias…', permitirNuevo: false
+          });
+        }
+        if (tipo.exige_so_destino) {
+          comboSODestinoEv = ERP.crearCombo({
+            contenedor: document.getElementById('evSODestino'),
+            items: (sos || []).filter(s => !s.anulado).map(s => ({
+              id: s.folio, nombre: `${s.folio}${s.cliente ? ' · ' + s.cliente : ''}`,
+              alias: [s.cliente, s.folio].filter(Boolean)
+            })),
+            placeholder: 'Folio o cliente…', permitirNuevo: false
+          });
+        }
+      }
+
+      const selTipo = document.getElementById('evTipo');
+      selTipo.addEventListener('change', () => {
+        const t = tiposActivos.find(x => x.codigo === selTipo.value);
+        document.getElementById('evTipoDesc').textContent = t && t.descripcion ? t.descripcion : '';
+        pintarCamposDinamicos(t || null);
+      });
+
+      function avisoEv(tipo, html) {
+        const el = document.getElementById('evAviso');
+        if (el) { el.className = 'aviso visible ' + tipo; el.innerHTML = html; }
+      }
+      const numOrNullEv = v => (v === '' || v === null || v === undefined || isNaN(Number(v))) ? null : Number(v);
+
+      async function registrarEvento() {
+        const tipoCod = selTipo.value;
+        const tipo = tiposActivos.find(x => x.codigo === tipoCod);
+        if (!tipo) { avisoEv('err', 'Elige un tipo de evento.'); return; }
+
+        const args = {
+          p_carga_folio: folio,
+          p_evento_tipo: tipoCod,
+          p_nota: ((document.getElementById('evNota') || {}).value || '').trim() || null,
+          p_fecha: ((document.getElementById('evFecha') || {}).value || '') || null,
+          p_cajas: null, p_monto: null, p_contraparte_id: null,
+          p_so_folio: null, p_sales_order_carga_id: null, p_so_destino_folio: null,
+          p_ref_movimiento_folio: null, p_ref_carga_costo_id: null, p_ref_aplicacion_id: null
+        };
+
+        if (tipo.exige_cajas) {
+          const cajas = numOrNullEv((document.getElementById('evCajas') || {}).value);
+          if (cajas == null || cajas <= 0) { avisoEv('err', 'Este tipo de evento exige capturar las cajas.'); return; }
+          args.p_cajas = cajas;
+        }
+        if (tipo.exige_monto) {
+          const monto = numOrNullEv((document.getElementById('evMonto') || {}).value);
+          if (monto == null) { avisoEv('err', 'Este tipo de evento exige capturar el monto.'); return; }
+          args.p_monto = monto;
+        }
+        if (tipo.exige_contraparte) {
+          const cid = comboContraparteEv && comboContraparteEv.valorId();
+          if (!cid) { avisoEv('err', 'Este tipo de evento exige elegir una contraparte.'); return; }
+          args.p_contraparte_id = cid;
+        }
+        if (tipo.exige_so_destino) {
+          const soDest = comboSODestinoEv && comboSODestinoEv.valorId();
+          if (!soDest) { avisoEv('err', 'Este tipo de evento exige elegir la orden de venta destino.'); return; }
+          args.p_so_destino_folio = soDest;
+        }
+
+        const btn = document.getElementById('evGuardar');
+        btn.disabled = true;
+        avisoEv('warn', 'Registrando evento…');
+        try {
+          await rpc('fn_registrar_evento_carga', args);
+          ERP.marcarDatosSucios();
+          ERP.toast('ok', `Evento "${esc(tipo.nombre)}" registrado.`);
+          cont.dataset.abierto = ''; cont.innerHTML = '';
+          recargar();
+        } catch (e) {
+          if (ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
+          avisoEv('err', `El ERP rechazó el evento: ${esc(e.message)}`);
+          btn.disabled = false;
+        }
+      }
+
+      document.getElementById('evCancelar').addEventListener('click', () => { cont.dataset.abierto = ''; cont.innerHTML = ''; });
+      document.getElementById('evGuardar').addEventListener('click', registrarEvento);
+    }
   }
 
   // Rellena una celda .det con "Responsable": nombre a secas (sin capturar) o selector (con capturar).
@@ -1919,6 +2479,7 @@
   ERP.transicionesDisponibles = transicionesDisponibles;
   ERP.motivoSinTransicion = motivoSinTransicion;
   ERP.montarResponsable = montarResponsable;
+  ERP.montarEventosCarga = montarEventosCarga;
   ERP.verCarga = verCarga;
   ERP.verFichaClasica = verFichaClasica;
   ERP.nuevaCarga = nuevaCarga;

@@ -31,6 +31,7 @@
     $('shell').classList.add('visible');
     const perfil = await ERP.cargarPerfil();
     pintarPerfil(perfil);
+    aplicarMenuDinamico();
     marcarEstado('ok');
     // Precarga el catálogo de estados/transiciones para que los badges pinten bien desde el primer
     // render. Si truena, la app sigue (badges degradan a crudo) y el módulo que lo necesite reintenta
@@ -39,8 +40,84 @@
     ERP.despachar();
     refrescarBadgeFlags();
     refrescarBadgeFaltantes();
+    refrescarBadgeLiquidaciones();
     // Presencia en línea: latido + indicador de socios conectados en el header (módulo aparte).
     if (ERP.iniciarPresencia) ERP.iniciarPresencia();
+  }
+
+  /* ================= MARCO (E97): riel de grupos + barra de módulo + menú agrupado =========
+     La lógica de PERMISOS es la misma de E88/D-105 — un ítem se pinta solo si su clave está en
+     ERP.perfil.modulos. El MARCO solo cambia la PRESENTACIÓN: agrupa los ítems por eyebrow, y
+     además oculta el encabezado del grupo (y su ícono en el riel) cuando el grupo se queda sin
+     ningún ítem visible para ese usuario. Nada de esto toca backend ni el filtro por módulo. */
+
+  // Etiqueta + ícono de cada grupo (para el chip/miga de la barra de módulo). El orden y los
+  // miembros de cada grupo viven en el HTML (nav.lateral .nav-grupo[data-grupo] > a.item), no aquí.
+  const GRUPO_META = {
+    inicio:    { label: 'Inicio',    icono: 'ti-home' },
+    operacion: { label: 'Operación', icono: 'ti-package' },
+    dinero:    { label: 'Dinero',    icono: 'ti-cash' },
+    finanzas:  { label: 'Finanzas',  icono: 'ti-chart-bar' },
+    catalogos: { label: 'Catálogos', icono: 'ti-book-2' },
+    revision:  { label: 'Revisión',  icono: 'ti-checkup-list' },
+    admin:     { label: 'Admin',     icono: 'ti-shield-lock' }
+  };
+
+  // Mapas derivados del DOM (DRY: la fuente de verdad es el markup del menú). modulo→grupo y
+  // modulo→título legible (para la miga de pan). Se construyen una vez al cargar app.js.
+  const moduloAGrupo = new Map();
+  const tituloDeModulo = new Map();
+  document.querySelectorAll('nav.lateral .nav-grupo').forEach(g => {
+    g.querySelectorAll('a.item[data-modulo]').forEach(a => {
+      moduloAGrupo.set(a.dataset.modulo, g.dataset.grupo);
+      // Título = texto del ítem sin el badge (que va como <span class="badge"> al final).
+      const clon = a.cloneNode(true);
+      clon.querySelectorAll('.badge').forEach(b => b.remove());
+      tituloDeModulo.set(a.dataset.modulo, clon.textContent.trim());
+    });
+  });
+
+  /** Filtra los ítems por ERP.perfil.modulos y luego sincroniza grupos vacíos + riel. */
+  function aplicarMenuDinamico() {
+    const modulos = Array.isArray(ERP.perfil.modulos) ? ERP.perfil.modulos : [];
+    document.querySelectorAll('nav.lateral a.item[data-modulo]').forEach(a => {
+      if (a.dataset.modulo === 'faltantes') return;   // lo controla refrescarBadgeFaltantes (permiso + contador)
+      a.style.display = modulos.includes(a.dataset.modulo) ? '' : 'none';
+    });
+    sincronizarGrupos();
+  }
+
+  /** Oculta el encabezado de un grupo (y su ícono de riel) si no le queda ningún ítem visible. */
+  function sincronizarGrupos() {
+    document.querySelectorAll('nav.lateral .nav-grupo').forEach(g => {
+      const hayVisibles = [...g.querySelectorAll('a.item[data-modulo]')].some(a => a.style.display !== 'none');
+      g.style.display = hayVisibles ? '' : 'none';
+      const rail = document.querySelector('.icrail .ic[data-grupo="' + g.dataset.grupo + '"]');
+      if (rail) rail.style.display = hayVisibles ? '' : 'none';
+    });
+  }
+
+  /** Sincroniza el riel (grupo activo) y la barra de módulo (chip de grupo + miga) con el módulo
+      actual. Se dispara por el evento 'erp:navegar' que emite despachar() en comun.js. */
+  function sincronizarMarco(modulo) {
+    const grupo = moduloAGrupo.get(modulo);
+    document.querySelectorAll('.icrail .ic[data-grupo]').forEach(ic =>
+      ic.classList.toggle('on', ic.dataset.grupo === grupo));
+    const meta = GRUPO_META[grupo];
+    const chipIco = $('modChipIco'), chipTxt = $('modChipTxt'), pg = $('modPg');
+    if (meta && chipTxt) chipTxt.textContent = meta.label;
+    if (meta && chipIco) chipIco.className = 'ti ' + meta.icono;
+    if (pg) pg.textContent = tituloDeModulo.get(modulo) || '';
+  }
+
+  /** Clic en un ícono del riel: va al PRIMER módulo visible de ese grupo (respeta permisos).
+      aplicarMenuDinamico/refrescarBadgeFaltantes fijan a.style.display por ítem, así que basta
+      leer esa propiedad (no depende de layout ni de si el cajón móvil está abierto). */
+  function irAGrupo(grupo) {
+    const items = document.querySelectorAll('nav.lateral .nav-grupo[data-grupo="' + grupo + '"] a.item[data-modulo]');
+    for (const a of items) {
+      if (a.style.display !== 'none') { ERP.ir(a.dataset.modulo); return; }
+    }
   }
 
   /** Muestra quién eres y qué puedes hacer, para que nadie se pregunte por qué no ve un botón. */
@@ -71,6 +148,7 @@
       await ERP.despachar();
       await refrescarBadgeFlags();
       await refrescarBadgeFaltantes();
+      await refrescarBadgeLiquidaciones();
       marcarEstado('ok');
     } catch (e) {
       marcarEstado('err');
@@ -90,15 +168,58 @@
   }
 
   async function refrescarBadgeFaltantes() {
+    const item = $('itemFaltantes');
+    // E88: 'faltantes' exige el módulo en ERP.perfil.modulos ADEMÁS del contador>0 — si el
+    // perfil no lo trae, ni se pide el conteo (no tiene caso, el ítem se queda oculto).
+    const modulos = Array.isArray(ERP.perfil.modulos) ? ERP.perfil.modulos : [];
+    if (!modulos.includes('faltantes')) { if (item) item.style.display = 'none'; sincronizarGrupos(); return; }
     try {
       // Contador = filas de v_cargas_datos_faltantes. Si 0, se OCULTA la entrada del menú completa.
       const filas = await q('v_cargas_datos_faltantes');
       const n = Array.isArray(filas) ? filas.length : 0;
-      const item = $('itemFaltantes'), b = $('badgeFaltantes');
+      const b = $('badgeFaltantes');
       if (b) b.textContent = n;
       if (item) item.style.display = n > 0 ? '' : 'none';
     } catch (_) { /* silencioso: el badge no es crítico */ }
+    // E97: 'faltantes' puede aparecer/desaparecer aquí (no en aplicarMenuDinamico); reevalúa si
+    // el grupo REVISIÓN quedó vacío/no-vacío tras cambiar su visibilidad.
+    sincronizarGrupos();
   }
+
+  async function refrescarBadgeLiquidaciones() {
+    try {
+      // Contador del menú = suma de n_cargas de v_liquidaciones_pendientes (productores listos
+      // para liquidar). Si 0, el badge se OCULTA (el item "Liquidaciones al productor" se queda,
+      // a diferencia de "Datos faltantes" — es un módulo permanente, no una lista de pendientes).
+      const filas = await q('v_liquidaciones_pendientes');
+      const n = Array.isArray(filas) ? filas.reduce((s, f) => s + (Number(f.n_cargas) || 0), 0) : 0;
+      const b = $('badgeLiquidaciones');
+      if (b) { b.textContent = n; b.style.display = n > 0 ? 'inline-block' : 'none'; }
+    } catch (_) { /* silencioso: el badge no es crítico */ }
+  }
+
+  /* ================= Tema claro/oscuro (E89 — capa de tokens) =================
+     El script anti-parpadeo en <head> de index.html ya fijó data-theme antes del primer paint
+     (localStorage('plein-theme') o prefers-color-scheme si no hay preferencia guardada). Aquí
+     solo se alterna al hacer clic y se persiste — sin librerías. */
+
+  function temaActual() {
+    return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  }
+
+  function pintarIconoTema() {
+    const ico = $('icoTema');
+    if (ico) ico.className = temaActual() === 'dark' ? 'ti ti-sun' : 'ti ti-moon';
+  }
+
+  function alternarTema() {
+    const nuevo = temaActual() === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', nuevo);
+    try { localStorage.setItem('plein-theme', nuevo); } catch (_) { /* modo privado, etc.: se ve en esta sesión aunque no persista */ }
+    pintarIconoTema();
+  }
+
+  pintarIconoTema();   // el botón vive dentro de #shell (oculto hasta iniciar sesión), pero el ícono ya queda listo
 
   /* ================= Buscador universal ================= */
 
@@ -266,10 +387,19 @@
   $('liEmail').addEventListener('keydown', e => { if (e.key === 'Enter') $('liPass').focus(); });
   $('btnSalir').addEventListener('click', salir);
   $('btnRf').addEventListener('click', actualizar);
+  $('btnTema').addEventListener('click', alternarTema);
   $('btnMenu').addEventListener('click', ERP.alternarMenu);
   $('menuFondo').addEventListener('click', ERP.cerrarMenu);
   $('panelCerrar').addEventListener('click', ERP.cerrarPanel);
   $('panelOv').addEventListener('click', ERP.cerrarPanel);
+
+  // Riel de grupos (E97): cada ícono lleva al primer módulo visible de su grupo.
+  document.querySelectorAll('.icrail .ic[data-grupo]').forEach(ic =>
+    ic.addEventListener('click', () => irAGrupo(ic.dataset.grupo)));
+
+  // El router (despachar en comun.js) emite 'erp:navegar' con el módulo actual: sincroniza el
+  // riel (grupo activo) y la miga de pan de la barra de módulo.
+  window.addEventListener('erp:navegar', e => sincronizarMarco(e.detail && e.detail.modulo));
 
   // Sin sesión no hay nada que consultar: las vistas devuelven 401.
   window.addEventListener('hashchange', () => { if (ERP.token) ERP.despachar(); });
@@ -277,6 +407,7 @@
   // Tras cualquier escritura, los contadores del menú pueden haber cambiado.
   window.addEventListener('erp:escritura', refrescarBadgeFlags);
   window.addEventListener('erp:escritura', refrescarBadgeFaltantes);
+  window.addEventListener('erp:escritura', refrescarBadgeLiquidaciones);
 
   sb.auth.onAuthStateChange((_ev, session) => {
     if (session) ERP.setToken(session.access_token);   // renueva el token automáticamente
@@ -290,6 +421,8 @@
     else $('loginOv').style.display = 'flex';
   })();
 
-  // Auto-refresco cada 5 minutos (solo el módulo visible).
-  setInterval(() => { if (ERP.token) actualizar(); }, 5 * 60 * 1000);
+  // Auto-refresco cada 5 minutos (solo el módulo visible). Si el drawer de captura está
+  // abierto, se salta este ciclo — despachar() lo cerraría y borraría lo que se esté
+  // escribiendo. El siguiente tick (5 min después) vuelve a intentar.
+  setInterval(() => { if (ERP.token && !ERP.panelAbierto()) actualizar(); }, 5 * 60 * 1000);
 })();

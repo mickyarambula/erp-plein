@@ -1,4 +1,15 @@
-/* Módulo Antigüedad de saldos — SOLO LECTURA. Dos pestañas: CxC (cobranza) y CxP (pagos).
+/* E95: vestida con la gramática "Operador estilo Silo" (ver REPORTE-FRONTEND.md, E90-E94).
+   SCOPE = .pantalla-antiguedad, wrapper nuevo alrededor de TODO lo que pinta render() (mismo
+   patrón que las 5 pantallas anteriores). .pestanas/.pestana se comparten con modulo-catalogos.js,
+   modulo-expediente.js y modulo-comercial.js — remapeadas SOLO aquí, sin tocar esa regla global
+   (se mantuvo el componente de pestaña subrayada tal cual, no se cambió a .chip). .aging-hero/
+   .ah-* NO se comparten con nadie más — es, en los hechos, la tira de KPIs de esta pantalla
+   (Saldo total / Cartera vencida / Por vencer), se mantuvo con sus propias clases en vez de
+   introducir un .kpistrip paralelo (mismo criterio que .tarjeta en Inicio, E94). .barra/.fill
+   se comparten con CxC (ya scopeados bajo .pantalla-cxc en E91). verDetalle() abre en el panel/
+   drawer global #panelBody y queda FUERA del wrapper, misma frontera de siempre.
+
+   Módulo Antigüedad de saldos — SOLO LECTURA. Dos pestañas: CxC (cobranza) y CxP (pagos).
    Herramienta de cobranza: lo primero que se ve es la CARTERA VENCIDA real (saldo_vencido),
    calculada por el backend contra la fecha de vencimiento (f_embarque + días de crédito),
    NO contra la fecha de embarque.
@@ -22,8 +33,10 @@
   const { q, esc, usd, usd0, num, fmt, venc } = ERP;
 
   const BUCKETS = ['0-30', '31-60', '61-90', '90+'];
+  // E95: antes 4 tonos hex fijos; el set de tokens solo define 3 semáforos (money/amb/red),
+  // así que 31-60 y 61-90 comparten ámbar — misma simplificación deliberada que en CxC (E91).
   const colorBucket = b =>
-    b === '0-30' ? '#1E5B3A' : b === '31-60' ? '#5F8C3E' : b === '61-90' ? '#C98A2D' : '#B3402E';
+    b === '0-30' ? 'var(--money)' : b === '90+' ? 'var(--red)' : 'var(--amb)';
   const pillBucket = b =>
     `<span class="pill ${b === '90+' ? 'rojo' : b === '61-90' ? 'ambar' : 'gris'}">${esc(b || '—')}</span>`;
 
@@ -93,7 +106,7 @@
       const etq = b === '0-30' ? '0–30 días venc. (incluye por vencer)' : `${b} días vencidos`;
       return `<div class="barra-row">
         <div class="barra-top">
-          <span>${esc(etq)} · ${num(r.cargas)} carga${num(r.cargas) === 1 ? '' : 's'} ${b === '90+' ? '⚠' : ''}</span>
+          <span>${esc(etq)} · ${num(r.cargas)} carga${num(r.cargas) === 1 ? '' : 's'} ${b === '90+' ? '<i class="ti ti-alert-triangle-filled" style="color:var(--red)"></i>' : ''}</span>
           <span class="b">${usd(s)}</span>
         </div>
         <div class="barra">
@@ -133,7 +146,7 @@
       const dvm = r.dias_vencido_max;
       const ent = r[cfg.entidad];
       return `<tr class="clic ${alto ? 'vencido-alto' : ''}" data-ent="${esc(ent)}">
-        <td><span class="enlace">${esc(ent || '—')}</span>${rev ? ' <span class="pill ambar">en revisión</span>' : ''}</td>
+        <td class="ent"><span class="enlace">${esc(ent || '—')}</span>${rev ? ' <span class="pill ambar">en revisión</span>' : ''}</td>
         <td class="num">${num(r.cargas)}</td>
         <td class="num">${dinero(r.saldo_por_vencer)}</td>
         <td class="num ${vencido > 0.009 ? 'neg' : ''}">${dinero(r.saldo_vencido)}</td>
@@ -243,11 +256,13 @@
     if (parametro && TABS[parametro]) tabActual = parametro;
 
     cont.innerHTML = `
+      <div class="pantalla-antiguedad">
       <div class="pestanas">
         ${Object.keys(TABS).map(id => `<button class="pestana ${tabActual === id ? 'activa' : ''}" data-tab="${id}">
           ${esc(TABS[id].label)}</button>`).join('')}
       </div>
-      <div id="agingBody"></div>`;
+      <div id="agingBody"></div>
+      </div>`;
 
     cont.querySelectorAll('.pestana').forEach(p => p.addEventListener('click', () => {
       if (p.dataset.tab === tabActual) return;

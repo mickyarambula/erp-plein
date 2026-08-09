@@ -21,8 +21,9 @@
      fn_confirmar_so(p_folio) · fn_cerrar_so(p_folio) · fn_cancelar_so(p_folio, p_motivo)
    NO hay fn_editar_so: el encabezado NO se edita tras crear (cancelar y recrear). Anotado en PENDIENTES-BACKEND.md.
    Expone ERP.verSO, ERP.nuevaVenta, ERP.montarVentasCarga.
-   NOTA: p_programa_id se manda siempre null — ninguna vista expone el id bigint del programa
-   (v_programas_comerciales solo trae codigo/etiqueta). Solicitud anotada en PENDIENTES-BACKEND.md. */
+   RESUELTO (E79): v_programas_comerciales ahora expone id (bigint) + cliente_id, además de
+   codigo/etiqueta — el modal "Nueva orden de venta" ya ofrece un picker de programa (opcional,
+   filtrado al cliente elegido) y manda p_programa_id como número o null (nunca cadena vacía). */
 
 (function () {
   'use strict';
@@ -113,7 +114,7 @@
     revenueModels = (rms || []).filter(r => r.activo !== false);
     fEstado = ''; fCliente = ''; fTexto = '';
 
-    cont.innerHTML = `
+    cont.innerHTML = `<div class="pantalla-ventas">
       <div class="filtros">
         ${puedeCap ? '<button class="btn-mini" id="soNueva">+ Nueva orden de venta</button>' : ''}
         <select class="busca" id="soFEstado" style="max-width:160px">
@@ -131,7 +132,8 @@
       <div class="card" style="padding:14px"><div id="soTabla"></div></div>
       <div class="leyenda">La Orden de Venta es un documento <b>interno</b> (no se envía al cliente).
         El <b>Revenue Model</b> se elige por orden y no se edita después: para cambiarlo, cancela y recrea.
-        Las cajas se reparten desde embarques ya capturados.</div>`;
+        Las cajas se reparten desde embarques ya capturados.</div>
+    </div>`;
 
     const btnN = document.getElementById('soNueva');
     if (btnN) btnN.addEventListener('click', () => nuevaVenta());
@@ -151,6 +153,17 @@
 
   let comboCliente = null;
   let clientesCat = [];
+  let programasCat = [];   // v_programas_comerciales (E79): id, etiqueta, codigo, cliente_id
+
+  /** Opciones del <select> de programa: si hay cliente elegido, filtra a sus programas; si no hay
+      match (o no hay cliente todavía), muestra todos — nunca deja el picker vacío por error. */
+  function opcionesPrograma(clienteId) {
+    const todas = programasCat.slice().sort((a, b) => String(a.codigo || '').localeCompare(String(b.codigo || '')));
+    const filtradas = clienteId != null ? todas.filter(p => String(p.cliente_id) === String(clienteId)) : [];
+    const lista = filtradas.length ? filtradas : todas;
+    return `<option value="">— sin programa —</option>${lista.map(p =>
+      `<option value="${esc(p.id)}">${esc(p.etiqueta || p.codigo || ('Programa ' + p.id))}</option>`).join('')}`;
+  }
 
   function pintarParams(formulaTipo) {
     const cont = document.getElementById('soParams');
@@ -176,7 +189,10 @@
     try {
       // Los revenue models ya están cargados por render(); si se entró directo, cárgalos aquí.
       if (!revenueModels.length) revenueModels = ((await q('v_revenue_models', '&order=orden.asc')) || []).filter(r => r.activo !== false);
-      clientesCat = await q('v_catalogo_clientes', '&order=nombre.asc');
+      [clientesCat, programasCat] = await Promise.all([
+        q('v_catalogo_clientes', '&order=nombre.asc'),
+        q('v_programas_comerciales')
+      ]);
     } catch (e) {
       ERP.abrirPanel('Nueva orden de venta', '', `<div class="errbox">No se pudieron leer los catálogos: ${esc(e.message)}</div>`);
       return;
@@ -194,6 +210,8 @@
           <div class="campo ancho" id="soParams"><div class="alias-ayuda">Elige un Revenue Model para ver sus parámetros.</div></div>
           <div class="campo"><label>Customer PO</label><input id="soPO" type="text" maxlength="60" placeholder="Opcional"></div>
           <div class="campo"><label>Cotización (folio)</label><input id="soCot" type="text" maxlength="40" placeholder="Ej. COT-0001"></div>
+          <div class="campo ancho"><label>Programa comercial (opcional)</label>
+            <select id="soPrograma">${opcionesPrograma(null)}</select></div>
           <div class="campo"><label>Moneda</label>
             <select id="soMoneda"><option value="USD">USD</option><option value="MXN">MXN</option></select></div>
           <div class="campo"><label>Días de crédito</label><input id="soDias" class="mono" type="number" step="1" min="0" placeholder="—"></div>
@@ -216,6 +234,9 @@
         const cli = sel && clientesCat.find(c => String(c.id) === String(sel.id));
         const inp = document.getElementById('soDias');
         if (cli && inp && !inp.value) inp.value = cli.dias_credito == null ? '' : cli.dias_credito;
+        // Filtra el picker de programa a los del cliente elegido (si no hay match, muestra todos).
+        const selPrograma = document.getElementById('soPrograma');
+        if (selPrograma) selPrograma.innerHTML = opcionesPrograma(sel ? sel.id : null);
       }
     });
 
@@ -249,7 +270,7 @@
       p_revenue_model_id: Number(rm.id),
       p_customer_po: (v('soPO') || '').trim() || null,
       p_cotizacion_folio: (v('soCot') || '').trim() || null,
-      p_programa_id: null,   // ninguna vista expone el id bigint del programa (ver PENDIENTES-BACKEND.md)
+      p_programa_id: (() => { const pv = v('soPrograma'); return pv ? Number(pv) : null; })(),
       p_moneda: v('soMoneda') || 'USD',
       p_dias_credito: numOrNull(v('soDias')),
       p_incoterm: (v('soIncoterm') || '').trim() || null,
@@ -284,11 +305,16 @@
 
   async function verSO(folio) {
     ERP.abrirPanel('Orden de venta', 'Cargando…', '<div class="skel">Cargando orden de venta…</div>');
-    let so, cargas;
+    let so, cargas, ingresos;
     try {
-      [so, cargas] = await Promise.all([
+      [so, cargas, ingresos] = await Promise.all([
         q('v_sales_orders', `&folio=${ERP.eq(folio)}`).then(r => r && r[0]),
-        q('v_sales_order_cargas', `&so_folio=${ERP.eq(folio)}&order=carga_folio.asc`)
+        q('v_sales_order_cargas', `&so_folio=${ERP.eq(folio)}&order=carga_folio.asc`),
+        // Ingreso CANÓNICO por carga (v_ingreso_reconocido.ingreso_reconocido): ya respeta el
+        // modelo de ingreso (comisión fija, margen por caja, %, compra-reventa). Es la fuente del
+        // importe de la SO — NO cajas×precio_caja, que suele venir NULL y pintaba $0. Si esta
+        // lectura falla, se degrada a importe_asignado y la ficha no se rompe.
+        q('v_ingreso_reconocido').catch(() => [])
       ]);
       if (!so) throw new Error('La orden de venta no existe.');
     } catch (e) {
@@ -296,6 +322,8 @@
       return;
     }
     soActual = so;
+    // Mapa carga_folio → ingreso reconocido, para el importe de cada carga y el total de la SO.
+    const ingresoPorCarga = new Map((ingresos || []).map(r => [r.carga_folio, num(r.ingreso_reconocido)]));
     const est = estadoDe(so);
     const puedeCap = ERP.puede('capturar');
     const editable = puedeCap && est === 'Borrador';
@@ -303,7 +331,7 @@
     ERP.abrirPanel(
       `Orden de venta ${esc(so.folio)}`,
       `${esc(so.cliente || '—')} · ${chipEstado(est)}`,
-      cuerpoFicha(so, cargas || [], editable, puedeCap, est)
+      cuerpoFicha(so, cargas || [], editable, puedeCap, est, ingresoPorCarga)
     );
 
     if (editable) {
@@ -328,8 +356,12 @@
       }</div></div>`).join('');
   }
 
-  function tablaAsignadas(cargas, editable) {
-    const total = cargas.reduce((s, c) => s + num(c.importe_asignado), 0);
+  function tablaAsignadas(cargas, editable, ingresoPorCarga) {
+    // Importe = ingreso reconocido de la carga (modelo canónico). Si por alguna razón no hay fila
+    // en v_ingreso_reconocido para esa carga, se degrada a importe_asignado (cajas×precio).
+    const ing = c => ingresoPorCarga && ingresoPorCarga.has(c.carga_folio)
+      ? ingresoPorCarga.get(c.carga_folio) : num(c.importe_asignado);
+    const total = cargas.reduce((s, c) => s + ing(c), 0);
     const cajas = cargas.reduce((s, c) => s + num(c.cajas_asignadas), 0);
     const filas = cargas.length ? cargas.map(c => `<tr>
         <td class="mono">${esc(c.carga_folio || '—')}${c.carga_po ? ` · ${esc(c.carga_po)}` : ''}</td>
@@ -337,7 +369,7 @@
         <td>${esc(c.proveedor || '—')}</td>
         <td class="num">${c.cajas_asignadas == null ? '—' : esc(c.cajas_asignadas)}</td>
         <td class="num">${c.precio_caja == null ? '—' : usd(c.precio_caja)}</td>
-        <td class="num">${c.importe_asignado == null ? '—' : usd(c.importe_asignado)}</td>
+        <td class="num">${usd(ing(c))}</td>
         ${editable ? `<td><button class="btn-cap" data-desasig="${esc(c.carga_folio)}" title="Quitar esta carga">✕</button></td>` : ''}
       </tr>`).join('')
       : `<tr><td colspan="${editable ? 7 : 6}" style="color:var(--gris)">Sin cargas asignadas todavía.</td></tr>`;
@@ -349,10 +381,12 @@
         <tbody>${filas}</tbody>
         <tfoot><tr class="total"><td colspan="3">Total (${cargas.length} carga${cargas.length === 1 ? '' : 's'})</td>
           <td class="num">${cajas || '—'}</td><td></td><td class="num">${usd(total)}</td>${editable ? '<td></td>' : ''}</tr></tfoot>
-      </table></div>`;
+      </table></div>
+      <div class="leyenda">El <b>Importe</b> es el <b>ingreso reconocido</b> de cada carga (respeta su modelo:
+        comisión fija, margen por caja, %, o compra-reventa) — no cajas × precio.</div>`;
   }
 
-  function cuerpoFicha(so, cargas, editable, puedeCap, est) {
+  function cuerpoFicha(so, cargas, editable, puedeCap, est, ingresoPorCarga) {
     const params = filaParamHeader(so);
     const activo = puedeCap && est !== 'Cerrada' && est !== 'Cancelada';
     return `<div class="form-erp oc-editor">
@@ -373,7 +407,7 @@
       <div class="leyenda"><b>El encabezado no se edita</b> (no hay edición de orden de venta). Para cambiar
         cliente o revenue model, cancela esta orden y crea una nueva.</div>
 
-      ${tablaAsignadas(cargas, editable)}
+      ${tablaAsignadas(cargas, editable, ingresoPorCarga)}
 
       <div class="acciones">
         ${est === 'Borrador' && puedeCap ? '<button class="btn-mini" id="soConfirmar">Confirmar</button>' : ''}

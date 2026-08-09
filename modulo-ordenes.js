@@ -24,7 +24,13 @@
     if (isNaN(d)) return String(f);
     return `${String(d.getDate()).padStart(2, '0')}-${MESES[d.getMonth()]}-${d.getFullYear()}`;
   }
-  const hoyISO = () => new Date().toISOString().slice(0, 10);
+  // Fecha LOCAL, no toISOString() (UTC): en Sonora (UTC-7) toISOString ya muestra el día
+  // siguiente después de las 17:00, prellenando mal los <input type="date"> (y corriendo la
+  // comparación "vencido" que usa este hoyISO() para pintar el chip de la lista).
+  const hoyISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
   const numOrNull = v => (v === '' || v === null || v === undefined || isNaN(Number(v))) ? null : Number(v);
 
   const estadoDe = o => o && o.anulado ? 'Cancelada' : ((o && o.estado) || 'Borrador');

@@ -15,39 +15,63 @@
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
 body{
-  background:var(--papel);color:var(--tinta);
+  /* E89: fondo/tinta del body ya vienen de la capa de tokens nueva (tokens.css) — primera
+     superficie retokenizada para probar el toggle claro/oscuro. El resto de la app sigue con
+     --papel/--tinta (viejo :root de arriba) hasta que se retokenice pantalla por pantalla. */
+  background:var(--bg);color:var(--ink);
   font-family:'Inter',system-ui,sans-serif;font-size:14px;line-height:1.45;
   -webkit-font-smoothing:antialiased;
 }
 .mono{font-family:'IBM Plex Mono',monospace}
 a{color:inherit}
 
-/* ---------- Layout ---------- */
-#shell{display:none;min-height:100vh}
-#shell.visible{display:block}
+/* ---------- MARCO "Operador estilo Silo" (E97) ---------------------------------------
+   Todo tokens nuevos (tokens.css). Estructura: #shell = grid [riel 66px | columna].
+   La columna = modbar (52px) + cuerpo (menú agrupado | contenido). Riel y modbar fijos;
+   el menú y el contenido tienen scroll propio e independiente. */
+#shell{display:none}
+#shell.visible{display:grid;grid-template-columns:66px 1fr;height:100vh;min-height:560px}
 
-header.top{
-  position:sticky;top:0;z-index:30;
-  background:var(--verde);color:#fff;
-  display:flex;align-items:center;gap:16px;
-  padding:0 20px;height:60px;
-}
-header.top .marca{font-family:'Archivo',sans-serif;font-weight:800;font-size:16px;letter-spacing:-.01em;white-space:nowrap;display:flex;align-items:center;gap:8px}
-header.top .marca span{color:var(--lima)}
-header.top .marca .marca-icono{height:26px;width:auto;display:block;border-radius:5px}
-.btn-menu{
-  display:none;background:transparent;border:1px solid rgba(255,255,255,.3);color:#fff;
-  border-radius:6px;width:34px;height:34px;font-size:16px;cursor:pointer;flex:none;
-}
-.top-derecha{display:flex;align-items:center;gap:10px;margin-left:auto;flex:none}
+/* Riel de íconos angosto: logo arriba, un ícono por GRUPO, toggle de tema abajo */
+.icrail{background:var(--pan);border-right:1px solid var(--bd);display:flex;flex-direction:column;
+  align-items:center;padding:12px 0;gap:3px;overflow-y:auto}
+.icrail .lg{width:30px;height:30px;margin-bottom:12px;border-radius:6px;flex:none}
+.icrail .ic{width:48px;height:46px;border-radius:9px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;color:var(--i3);cursor:pointer;
+  font-size:9px;text-decoration:none;flex:none}
+.icrail .ic i{font-size:19px}
+.icrail .ic.on{background:color-mix(in srgb,var(--brand) 13%,transparent);color:var(--brand)}
+.icrail .ic:hover:not(.on){background:var(--hair);color:var(--i2)}
+.icrail .themebtn{margin-top:auto;width:40px;height:40px;border-radius:9px;border:1px solid var(--bd);
+  background:var(--pan);color:var(--i2);cursor:pointer;font-size:17px;flex:none;
+  display:flex;align-items:center;justify-content:center}
+.icrail .themebtn:hover{background:var(--hair)}
+
+.col{display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* Barra de módulo (52px) */
+.modbar{display:flex;align-items:center;gap:12px;height:52px;padding:0 20px;
+  background:var(--pan);border-bottom:1px solid var(--bd);flex-shrink:0}
+.modbar .mod{display:flex;align-items:center;gap:8px;min-width:0}
+.modbar .mod .chip{background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand);
+  border-radius:8px;padding:4px 11px;font-size:13px;font-weight:600;
+  display:flex;align-items:center;gap:6px;white-space:nowrap}
+.modbar .mod .sep{color:var(--i3);font-size:14px;display:flex}
+.modbar .mod .pg{font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.modbar .sp{margin-left:auto;display:flex;align-items:center;gap:12px;flex:none}
+.btn-menu{display:none;background:transparent;border:1px solid var(--bd);color:var(--ink);
+  border-radius:7px;width:34px;height:34px;font-size:16px;cursor:pointer;flex:none;
+  align-items:center;justify-content:center}
+
 .estado{
   font-family:'IBM Plex Mono',monospace;font-size:11px;
-  background:rgba(255,255,255,.12);padding:6px 10px;border-radius:4px;
+  background:var(--hair);padding:6px 10px;border-radius:6px;color:var(--i2);
   display:flex;align-items:center;gap:7px;white-space:nowrap;
 }
-.dot{width:8px;height:8px;border-radius:50%;background:var(--lima);flex:none}
-.dot.err{background:#E8756A}
-.dot.load{background:var(--ambar);animation:puls 1s infinite}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--money);flex:none}
+.dot.err{background:var(--red)}
+.dot.load{background:var(--amb);animation:puls 1s infinite}
 @keyframes puls{50%{opacity:.3}}
 
 .btn{
@@ -57,68 +81,66 @@ header.top .marca .marca-icono{height:26px;width:auto;display:block;border-radiu
 .btn.lima{background:var(--lima);color:var(--tinta)}
 .btn.lima:hover{filter:brightness(1.08)}
 .btn.lima:disabled{opacity:.5;cursor:wait}
-.btn.fantasma{background:transparent;border:1px solid rgba(255,255,255,.35);color:#fff;font-weight:600}
-.btn.fantasma:hover{background:rgba(255,255,255,.1)}
+.btn.fantasma{background:transparent;border:1px solid var(--bd);color:var(--ink);font-weight:600}
+.btn.fantasma:hover{background:var(--hair)}
 .btn.verde{background:var(--verde);color:#fff}
 .btn.verde:hover{background:var(--verde-hover)}
 
-/* ---------- Buscador universal ---------- */
-.buscador{position:relative;flex:1;max-width:520px;min-width:0}
+/* ---------- Buscador universal (dentro de la barra de módulo) ---------- */
+.buscador{position:relative;width:260px;min-width:0;flex:none}
 .buscador input{
-  width:100%;height:36px;border:1px solid rgba(255,255,255,.25);border-radius:8px;
-  background:rgba(255,255,255,.12);color:#fff;padding:0 12px 0 34px;font-size:13.5px;
+  width:100%;height:34px;border:1px solid var(--bd);border-radius:8px;
+  background:var(--bg);color:var(--ink);padding:0 12px 0 32px;font-size:12.5px;
   font-family:'Inter',sans-serif;
 }
-.buscador input::placeholder{color:rgba(255,255,255,.6)}
-.buscador input:focus{outline:none;background:rgba(255,255,255,.2);border-color:var(--lima)}
-.buscador .lupa{position:absolute;left:11px;top:50%;transform:translateY(-50%);opacity:.7;font-size:13px;pointer-events:none}
+.buscador input::placeholder{color:var(--i3)}
+.buscador input:focus{outline:none;background:var(--pan);border-color:var(--brand)}
+.buscador .lupa{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--i3);font-size:13px;pointer-events:none;display:flex}
 .resultados{
-  display:none;position:absolute;top:44px;left:0;right:0;
-  background:var(--tarjeta);border:1px solid var(--linea);border-radius:10px;
-  box-shadow:var(--sombra-alta);max-height:60vh;overflow-y:auto;color:var(--tinta);
+  display:none;position:absolute;top:40px;right:0;width:min(420px,80vw);
+  background:var(--pan);border:1px solid var(--bd);border-radius:10px;
+  box-shadow:0 12px 40px rgba(0,0,0,.22);max-height:60vh;overflow-y:auto;color:var(--ink);z-index:60;
 }
 .resultados.abierto{display:block}
-.res-grupo{font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--gris);
-  padding:9px 14px 5px;background:var(--papel);border-bottom:1px solid var(--linea)}
-.res-item{display:flex;gap:10px;align-items:center;padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--linea)}
+.res-grupo{font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--i3);
+  padding:9px 14px 5px;background:var(--hair);border-bottom:1px solid var(--bd)}
+.res-item{display:flex;gap:10px;align-items:center;padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--hair)}
 .res-item:last-child{border-bottom:none}
-.res-item:hover,.res-item.sel{background:var(--verde-claro)}
+.res-item:hover,.res-item.sel{background:var(--gtint)}
 .res-item .ico{font-size:15px;width:20px;text-align:center;flex:none}
 .res-item .txt{min-width:0;flex:1}
 .res-item .t{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.res-item .s{font-size:11.5px;color:var(--gris);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.res-item .folio{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--verde);font-weight:600;flex:none}
-.res-vacio,.res-cargando{padding:16px 14px;font-size:13px;color:var(--gris);text-align:center}
+.res-item .s{font-size:11.5px;color:var(--i2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.res-item .folio{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--brand);font-weight:600;flex:none}
+.res-vacio,.res-cargando{padding:16px 14px;font-size:13px;color:var(--i2);text-align:center}
 
-/* ---------- Menú lateral ---------- */
-.cuerpo{display:flex;align-items:flex-start}
+/* ---------- Menú lateral agrupado (eyebrow por grupo) ---------- */
+.cuerpo{display:flex;flex:1;min-height:0;overflow:hidden}
 nav.lateral{
-  width:var(--menu-ancho);flex:none;
-  position:sticky;top:60px;height:calc(100vh - 60px);
-  background:var(--tarjeta);border-right:1px solid var(--linea);
-  padding:14px 10px;overflow-y:auto;
+  width:228px;flex:none;
+  background:var(--pan);border-right:1px solid var(--bd);
+  padding:12px 10px 24px;overflow-y:auto;
+}
+.nav-grupo{margin-bottom:6px}
+.nav-eyebrow{
+  font-size:9.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--i3);
+  font-weight:700;padding:12px 12px 5px;
 }
 nav.lateral a.item{
   display:flex;align-items:center;gap:10px;
-  padding:9px 12px;border-radius:7px;margin-bottom:2px;
-  font-size:13.5px;font-weight:500;color:var(--tinta);text-decoration:none;cursor:pointer;
+  padding:8px 12px;border-radius:8px;margin-bottom:1px;
+  font-size:13px;font-weight:500;color:var(--i2);text-decoration:none;cursor:pointer;
 }
-nav.lateral a.item:hover{background:var(--papel)}
-nav.lateral a.item.activo{background:var(--verde-claro);color:var(--verde);font-weight:700}
-nav.lateral a.item .ico{width:18px;text-align:center;font-size:14px;flex:none}
+nav.lateral a.item:hover{background:var(--hair);color:var(--ink)}
+nav.lateral a.item.activo{background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand);font-weight:600}
+nav.lateral a.item .ico{width:19px;text-align:center;font-size:17px;flex:none;line-height:1}
 nav.lateral a.item .badge{
   margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;
-  background:var(--ambar-bg);color:var(--ambar);border-radius:9px;padding:1px 7px;
+  background:var(--amb-bg);color:var(--amb);border-radius:9px;padding:1px 7px;
 }
-nav.lateral .sep{
-  font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--gris-claro);
-  font-weight:700;padding:16px 12px 6px;
-}
-nav.lateral a.item.inerte{color:var(--gris-claro);cursor:default}
-nav.lateral a.item.inerte:hover{background:transparent}
 .menu-fondo{display:none}
 
-main#app{flex:1;min-width:0;padding:24px 26px 70px;max-width:1240px}
+main#app{flex:1;min-width:0;overflow-y:auto;padding:24px 26px 70px}
 
 /* ---------- Tipografía de módulo ---------- */
 .mod-head{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:20px}
@@ -258,8 +280,6 @@ tr.fila-margen td:first-child{padding-left:16px}
 .pill.rojo{background:var(--rojo-bg);color:var(--rojo)}
 .pill.gris{background:#EEEDE5;color:var(--gris)}
 .pill.verde{background:var(--verde-claro);color:var(--verde)}
-.pill.ir-programa{cursor:pointer}
-.pill.ir-programa:hover{background:var(--verde);color:#fff}
 tr.clic.activo-fila{background:var(--verde-claro)}
 
 /* ---------- Concentración de riesgo (HHI + Pareto) ---------- */
@@ -419,19 +439,19 @@ tr.vencido-alto .enlace{color:var(--rojo);font-weight:600}
 
 /* ---------- Chip de perfil (header) ---------- */
 .perfil{display:flex;flex-direction:column;line-height:1.25;text-align:right;font-size:11.5px;
-  padding-right:10px;border-right:1px solid rgba(255,255,255,.2);white-space:nowrap}
+  padding-left:10px;border-left:1px solid var(--bd);white-space:nowrap}
 .perfil b{font-weight:600}
 .perfil span{opacity:.7;font-size:10.5px;text-transform:capitalize}
 
 /* ===== Presencia / En línea (modulo-presencia.js): widget de header + modal "¿Quién eres?" ===== */
 .presencia-online{display:flex;align-items:center;gap:10px;font-size:11.5px;white-space:nowrap}
-.pres-persona{display:inline-flex;align-items:center;gap:5px;color:#fff;opacity:.9}
+.pres-persona{display:inline-flex;align-items:center;gap:5px;color:var(--ink);opacity:.9}
 .pres-persona.yo{font-weight:700;opacity:1}
 .pres-dot{width:8px;height:8px;border-radius:50%;background:#37A957;box-shadow:0 0 0 2px rgba(55,169,87,.25);flex:none}
-.pres-vacio{color:rgba(255,255,255,.55);font-style:italic}
-.presencia-soy{font-size:11.5px;color:#fff;white-space:nowrap;padding-right:10px;border-right:1px solid rgba(255,255,255,.2)}
+.pres-vacio{color:var(--i3);font-style:italic}
+.presencia-soy{font-size:11.5px;color:var(--ink);white-space:nowrap;padding-right:10px;border-right:1px solid var(--bd)}
 .presencia-soy b{font-weight:600}
-.pres-cambiar{background:none;border:0;color:var(--verde-claro);font:inherit;cursor:pointer;padding:0;text-decoration:underline;opacity:.9}
+.pres-cambiar{background:none;border:0;color:var(--brand);font:inherit;cursor:pointer;padding:0;text-decoration:underline;opacity:.9}
 .pres-cambiar:hover{opacity:1}
 
 .pres-modal-ov{position:fixed;inset:0;background:rgba(20,38,28,.45);display:flex;align-items:center;
@@ -491,6 +511,19 @@ tr.vencido-alto .enlace{color:var(--rojo);font-weight:600}
 .form-erp .grupo-form{grid-column:1/-1;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;
   color:var(--verde);font-weight:700;margin:8px 0 -2px;padding-top:8px;border-top:1px solid var(--linea)}
 .form-erp .grupo-form:first-child{border-top:none;padding-top:0}
+/* Chooser "¿Qué vas a registrar?" (fase 1 rediseño de captura, Tesorería) — vive en #panelBody,
+   fuera del scope .pantalla-XXX, por eso usa los tokens viejos (--papel/--linea/--verde) igual
+   que .form-erp/.zona-peligro de arriba. */
+.chooser-registro{display:flex;flex-direction:column;gap:8px}
+.chooser-opcion{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  background:var(--papel);border:1px solid var(--linea);border-radius:8px;padding:12px 14px;
+  cursor:pointer;font:inherit;color:var(--tinta)}
+.chooser-opcion:hover{border-color:var(--verde);background:var(--verde-claro)}
+.chooser-opcion i.ti{font-size:20px;color:var(--verde);flex:0 0 auto}
+.chooser-txt{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.chooser-txt b{font-size:13.5px}
+.chooser-txt small{font-size:11.5px;color:var(--gris)}
+.chooser-flecha{font-size:16px!important;color:var(--gris-claro)!important}
 /* Ficha de detalle de contraparte (solo lectura) */
 .ficha-cp{display:flex;flex-direction:column;gap:2px}
 .ficha-cp .ficha-seccion{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--verde);
@@ -752,19 +785,18 @@ tr.anulada td:nth-child(2) .enlace{text-decoration:line-through;text-decoration-
   .grid2{grid-template-columns:1fr}
 }
 @media(max-width:860px){
-  .btn-menu{display:block}
-  header.top{padding:0 14px;gap:10px}
-  header.top .marca{font-size:14px}
+  /* MARCO en móvil: el riel se queda (66px); el menú agrupado se vuelve cajón deslizable. */
+  .btn-menu{display:flex}
+  .modbar{padding:0 12px;gap:10px}
   .estado{display:none}
   nav.lateral{
-    position:fixed;top:60px;left:0;bottom:0;z-index:50;height:auto;
-    transform:translateX(-100%);transition:transform .2s ease;box-shadow:var(--sombra-alta);
+    position:fixed;top:52px;left:66px;bottom:0;z-index:50;width:228px;
+    transform:translateX(-110%);transition:transform .2s ease;box-shadow:0 12px 40px rgba(0,0,0,.28);
   }
   nav.lateral.abierto{transform:translateX(0)}
-  .menu-fondo.abierto{display:block;position:fixed;inset:60px 0 0 0;background:rgba(20,38,28,.4);z-index:49}
+  .menu-fondo.abierto{display:block;position:fixed;inset:52px 0 0 66px;background:rgba(0,0,0,.4);z-index:49}
   main#app{padding:18px 14px 60px}
   .det-grid{grid-template-columns:1fr 1fr}
-  .buscador{max-width:none}
   .panel{width:100%}
   .perfil{display:none !important}
   .presencia-online{display:none !important}   /* en móvil no cabe la lista; se conserva "Soy: X" */
@@ -773,8 +805,9 @@ tr.anulada td:nth-child(2) .enlace{text-decoration:line-through;text-decoration-
   .etapa .nombre{font-size:10.5px}
 }
 @media(max-width:620px){
-  /* En celular el buscador manda: la marca cede su espacio. */
-  header.top .marca{display:none}
+  /* En celular el buscador y las acciones mandan: la miga de pan cede su espacio. */
+  .modbar .mod .sep,.modbar .mod .pg{display:none}
+  .buscador{width:150px}
   .btn.lima,.btn.fantasma{padding:8px 11px}
 }
 @media(max-width:480px){
@@ -953,6 +986,14 @@ tr.anulada td:nth-child(2) .enlace{text-decoration:line-through;text-decoration-
 .so-estado.confirmada{background:var(--verde-claro);color:var(--verde)}
 .so-estado.cerrada{background:#14432B;color:#fff}
 .so-estado.cancelada{background:#EEEDE5;color:var(--gris)}
+/* Chip de estado de Lotes (Fase C.2): solo dos estados, no hay texto libre. */
+.lote-estado{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:9px;white-space:nowrap;letter-spacing:.02em}
+.lote-estado.vivo{background:var(--verde-claro);color:var(--verde)}
+.lote-estado.anulado{background:#EEEDE5;color:var(--gris)}
+/* Chip de tipo de movimiento de inventario físico del lote (merma/devolución). */
+.mov-tipo{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:9px;white-space:nowrap;letter-spacing:.02em}
+.mov-tipo.merma{background:var(--ambar-bg);color:var(--ambar)}
+.mov-tipo.rts{background:#E3EEF6;color:#2A6098}
 .fact-lineas select{width:100%;border:1px solid var(--linea);border-radius:5px;padding:5px 6px;font-size:12.5px;font-family:inherit;background:var(--tarjeta)}
 .fact-lineas select:focus{outline:none;border-color:var(--verde)}
 .fact-lineas select:disabled{background:var(--papel);color:var(--gris)}
@@ -990,3 +1031,852 @@ tr.anulada td:nth-child(2) .enlace{text-decoration:line-through;text-decoration-
 .tarea-com .tc-cab{font-size:11px;color:var(--gris);margin-bottom:4px}
 .tarea-com .tc-txt{font-size:13px;white-space:pre-wrap;line-height:1.45}
 .tarea-com-vacio{font-size:12.5px;color:var(--gris);padding:6px 0}
+
+/* ===============================================================
+   EMBARQUES — E90, primera propagación "Operador estilo Silo"
+   SCOPE = .pantalla-embarques (wrapper que modulo-cargas.js pone alrededor de TODO lo que
+   pinta en render(); solo existe en el DOM mientras el módulo Embarques está montado).
+   Toda regla de aquí para abajo va anidada bajo ese selector a propósito — .chip, .pill,
+   .badge-estado, table, .btn-mini, .card, .hoy-card, etc. son clases COMPARTIDAS con
+   Cobranza/Pagos/Tesorería/Inicio/Programas/Proyectos y no se tocan a nivel global. Cada
+   regla de abajo tiene más especificidad que su equivalente global (una clase extra:
+   `.pantalla-embarques `) para ganar el cascade pase lo que pase el orden en el archivo,
+   así que puede vivir en cualquier parte de esta hoja — se deja al final por prolijidad.
+
+   E99 — RECONSTRUCCIÓN ESTRUCTURAL (no re-pintado): se instaló el layout de tarjetas
+   agrupadas por programa (.group/.ghead/.gtag/.gsub/.kv/.actions/.glotes) que E90 había
+   dejado pendiente. La tabla plana original se reemplazó por tarjetas .group (una por
+   programa comercial, vía v_cargas_programa) con tabla de lotes anidada. El proveedor del
+   grupo se resuelve con un join en frontend a v_programas_comerciales (v_cargas_programa no
+   lo trae) — ver comentario de agruparPorPrograma() en modulo-cargas.js. Cargas sin programa
+   caen en un grupo "Sin programa asignado" al final, nunca se pierden.
+   La FICHA de carga (pintarFicha, abierta en el panel/drawer global #panelBody) sigue sin
+   tocarse: ese panel es compartido por TODA la app, no vive dentro de este wrapper. */
+
+/* Tira de KPIs */
+.pantalla-embarques .kpistrip{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.pantalla-embarques .kpi{background:var(--pan);border:1px solid var(--bd);border-radius:10px;padding:11px 16px;flex:1;min-width:130px}
+.pantalla-embarques .kpi .k{font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--i2)}
+.pantalla-embarques .kpi .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:20px;color:var(--money);margin-top:4px}
+.pantalla-embarques .kpi .v.ink{color:var(--ink)}
+.pantalla-embarques .kpi .v.neg{color:var(--red)}
+
+/* Chips de filtro (reusa .chip/.chip.activo existentes — mismo look que la pestaña .tb/.tb.on) */
+.pantalla-embarques .chip{font-size:11.5px;font-weight:600;color:var(--i2);background:var(--pan);border:1px solid var(--bd);border-radius:16px;padding:5px 12px}
+.pantalla-embarques .chip:hover{border-color:var(--brand);color:var(--brand)}
+.pantalla-embarques .chip.activo{background:var(--brand);color:#fff;border-color:var(--brand)}
+.pantalla-embarques .chip .chip-n{opacity:.85}
+.pantalla-embarques .filtros input.busca{background:var(--pan);border:1px solid var(--bd);color:var(--ink)}
+.pantalla-embarques .filtros input.busca:focus{border-color:var(--brand)}
+.pantalla-embarques .conteo{color:var(--i3)}
+/* E93 fix A (complemento): .filtros-rango input[type=date] traía background:var(--tarjeta)
+   explícito (token viejo, estático) — ESO es lo que ganaba sobre el color-scheme nuevo de
+   tokens.css para estos 2 inputs específicos (el resto de los date-input sin fondo propio en
+   la app SÍ ya se arreglan solo con color-scheme). .filtros-rango solo lo usa este módulo. */
+.pantalla-embarques .filtros-rango input[type="date"]{background:var(--pan);border-color:var(--bd);color:var(--ink)}
+.pantalla-embarques .chip-rango{background:var(--hair);color:var(--brand)}
+.pantalla-embarques .chip-rango-x:hover{color:var(--red)}
+
+/* Tabla densa */
+.pantalla-embarques table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-embarques thead th{text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-embarques thead th.num{text-align:right}
+.pantalla-embarques tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-embarques tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-embarques tbody tr:hover{background:var(--gtint)}
+/* Fix: tr.total td traía background:var(--papel) fijo (token viejo, no cambia en oscuro) —
+   se veía como una barra casi blanca ilegible sobre el fondo oscuro. */
+.pantalla-embarques tr.total td{background:var(--hair);border-top:2px solid var(--ink);color:var(--ink)}
+
+/* Folio: pestaña naranja + producto en tinta */
+.pantalla-embarques .ltag{display:inline-flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--brand)}
+.pantalla-embarques .ltag::before{content:"";width:4px;height:16px;border-radius:2px;background:var(--tabO);display:inline-block}
+.pantalla-embarques td.prod{color:var(--ink);font-weight:500}
+/* E99-fix: P.O./V7 en la tabla de lotes — identificadores cortos, sin romper línea, tamaño
+   reducido para no amontonar la fila (ya densa con 14 columnas). */
+.pantalla-embarques .glotes td.id-corta{font-size:11px;color:var(--i2);white-space:nowrap}
+
+/* Pastillas — modalidad (m/g/c) + variantes existentes de .pill remapeadas a tokens */
+.pantalla-embarques .pill{font-size:10px;font-weight:600;border-radius:13px;padding:2px 8px}
+.pantalla-embarques .pill.m{background:color-mix(in srgb,var(--brand) 13%,transparent);color:var(--brand)}
+.pantalla-embarques .pill.g{background:color-mix(in srgb,var(--brand) 13%,transparent);color:var(--brand)}
+.pantalla-embarques .pill.c{background:var(--amb-bg);color:var(--amb)}
+.pantalla-embarques .pill.verde{background:color-mix(in srgb,var(--brand) 13%,transparent);color:var(--brand)}
+.pantalla-embarques .pill.ambar{background:var(--amb-bg);color:var(--amb)}
+.pantalla-embarques .pill.rojo{background:var(--red-bg);color:var(--red)}
+.pantalla-embarques .pill.gris{background:var(--hair);color:var(--i2)}
+
+/* Badge de estado (ERP.badgeEstado/chipCobroHTML son helpers compartidos — solo el color
+   se remapea aquí, la lógica que decide qué color usar sigue siendo la de comun.js) */
+.pantalla-embarques .badge-estado{border-radius:9px}
+.pantalla-embarques .badge-estado.verde{background:color-mix(in srgb,var(--money) 16%,transparent);color:var(--money)}
+.pantalla-embarques .badge-estado.ambar{background:var(--amb-bg);color:var(--amb)}
+.pantalla-embarques .badge-estado.rojo{background:var(--red-bg);color:var(--red)}
+.pantalla-embarques .badge-estado.gris{background:var(--hair);color:var(--i2)}
+.pantalla-embarques .badge-estado.azul{background:var(--gtint);color:var(--brand)}
+.pantalla-embarques .badge-estado.lila{background:var(--gtint);color:var(--brand)}
+.pantalla-embarques .badge-estado.naranja{background:var(--amb-bg);color:var(--amb)}
+
+/* Botones (reusa .btn-mini existente: sin modificador = primario negro, .gris = fantasma) */
+.pantalla-embarques .btn-mini{background:var(--btn);color:var(--btnT);border:0;border-radius:8px;font-size:12.5px;font-weight:600;padding:9px 14px}
+.pantalla-embarques .btn-mini:hover{filter:brightness(1.3)}
+.pantalla-embarques .btn-mini.gris{background:var(--pan);border:1px solid var(--bd);color:var(--i2);font-weight:500;font-size:12px;padding:8px 12px}
+.pantalla-embarques .btn-mini.gris:hover{background:var(--hair)}
+
+/* Tarjetas de agenda: mismo panel/borde que el resto de la pantalla (armonía ligera, sin clases nuevas) */
+/* E91 — fix: color explícito en vez de heredado (la regla global .hoy-card trae background:#fff
+   fijo, no un token; .hoy-card-titulo no tenía ninguna regla de color propia). Se deja explícito
+   para no depender de la cadena de herencia de un ancestro compartido. */
+.pantalla-embarques .hoy-card{background:var(--pan);border-color:var(--bd);color:var(--ink)}
+.pantalla-embarques .hoy-card.clic:hover{border-color:var(--brand)}
+.pantalla-embarques .hoy-card-titulo{color:var(--ink)}
+.pantalla-embarques .hoy-card-detalle{color:var(--i2)}
+.pantalla-embarques .agenda-toggle{color:var(--i2)}
+.pantalla-embarques .agenda-toggle:hover{color:var(--brand)}
+
+/* Superficies genéricas */
+.pantalla-embarques .card{background:var(--pan);border-color:var(--bd)}
+.pantalla-embarques .leyenda{color:var(--i2)}
+
+/* ================= E99: agrupado por programa (.group/.ghead/.kv/.glotes) =================
+   Contrato de SISTEMA-DISEÑO.md §6: .group → .ghead (pestaña verde border-left:4px --tabG,
+   tinte --gtint) con .gtag + celdas .kv; .actions a la derecha (.mini). Fila de lote .ltag ya
+   existía (pestaña naranja --tabO, folio en verde marca) — se reusa tal cual dentro de .glotes. */
+.pantalla-embarques .tabla-controles{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px}
+.pantalla-embarques .conteo-grupos{font-size:11px;color:var(--i3)}
+.pantalla-embarques .orden-ctl{display:flex;gap:6px}
+
+.pantalla-embarques .group{background:var(--pan);border:1px solid var(--bd);border-radius:10px;overflow:hidden;margin-bottom:14px}
+.pantalla-embarques .group.sin-programa{border-style:dashed}
+.pantalla-embarques .ghead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border-left:4px solid var(--tabG);background:var(--gtint)}
+.pantalla-embarques .group.sin-programa .ghead{border-left-color:var(--i3)}
+.pantalla-embarques .gicon{font-size:18px;color:var(--brand);flex-shrink:0}
+.pantalla-embarques .group.sin-programa .gicon{color:var(--i3)}
+.pantalla-embarques .gtxt{min-width:160px;flex:1 1 200px}
+.pantalla-embarques .gtag{font-family:'Archivo',sans-serif;font-weight:700;font-size:14px;color:var(--ink)}
+.pantalla-embarques .gsub{font-size:11px;color:var(--i2);margin-top:2px}
+.pantalla-embarques .kv-row{display:flex;gap:18px;flex-wrap:wrap}
+.pantalla-embarques .kv{display:flex;flex-direction:column;min-width:64px}
+.pantalla-embarques .kv .k{font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--i3)}
+.pantalla-embarques .kv .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:14px;color:var(--money);margin-top:2px}
+.pantalla-embarques .kv .v.ink{color:var(--ink)}
+.pantalla-embarques .kv .v.neg{color:var(--red)}
+.pantalla-embarques .actions{display:flex;gap:6px;margin-left:auto;flex-shrink:0}
+.pantalla-embarques .mini{background:var(--pan);border:1px solid var(--bd);color:var(--i2);border-radius:6px;font-size:11.5px;font-weight:600;padding:6px 10px;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+.pantalla-embarques .mini:hover{border-color:var(--brand);color:var(--brand)}
+.pantalla-embarques .mini.gbtn{background:var(--pan)}
+.pantalla-embarques .mini.group-toggle{padding:6px 8px}
+.pantalla-embarques .mini.ver-lote{padding:4px 7px;border-radius:5px}
+.pantalla-embarques .glotes{border-top:1px solid var(--bd)}
+.pantalla-embarques .group.colapsado .glotes{display:none}
+
+/* ===============================================================
+   CUENTAS POR COBRAR — E91, segunda propagación "Operador estilo Silo"
+   SCOPE = .pantalla-cxc (wrapper nuevo que modulo-cobranza.js pone alrededor de TODO lo que
+   pinta render(); no existía — el módulo escribía directo a #modContenido genérico, igual que
+   pasaba en Embarques antes de E90). Mismo criterio de especificidad que el bloque de Embarques
+   de arriba: una clase extra sobre cada equivalente global, gana el cascade sin importar orden.
+
+   El drill-down de verCliente() (panel/drawer global #panelBody, compartido por TODA la app)
+   se deja FUERA del wrapper — misma frontera que la ficha de carga en Embarques.
+   No hay chips/filtros en esta pantalla hoy (a diferencia de Embarques) — no se inventó
+   ninguno nuevo, solo se resuelve lo que ya existe. */
+
+.pantalla-cxc .kpistrip{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.pantalla-cxc .kpi{background:var(--pan);border:1px solid var(--bd);border-radius:10px;padding:11px 16px;flex:1;min-width:130px}
+.pantalla-cxc .kpi .k{font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--i2)}
+.pantalla-cxc .kpi .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:20px;color:var(--money);margin-top:4px}
+.pantalla-cxc .kpi .v.ink{color:var(--ink)}
+.pantalla-cxc .kpi .v.neg{color:var(--red)}
+
+/* Tablas densas (Saldo por cliente + Rotación DSO, mismo <table> genérico en las dos) */
+.pantalla-cxc table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-cxc thead th{text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-cxc thead th.num{text-align:right}
+.pantalla-cxc tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-cxc tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-cxc tbody tr:hover{background:var(--gtint)}
+.pantalla-cxc tr.total td{background:var(--hair);border-top:2px solid var(--ink);color:var(--ink)}
+.pantalla-cxc td.cliente{color:var(--ink);font-weight:500}
+
+/* Botón "+ cobro" en la fila — fantasma con borde, no la pastilla verde vieja */
+.pantalla-cxc .btn-cap{background:var(--pan);border:1px solid var(--bd);color:var(--i2);font-weight:500}
+.pantalla-cxc .btn-cap:hover{border-color:var(--brand);background:var(--hair);color:var(--brand)}
+
+/* Barras de antigüedad */
+.pantalla-cxc .barra{background:var(--hair)}
+.pantalla-cxc .barra-top{color:var(--i2)}
+.pantalla-cxc .barra-top .b{color:var(--ink)}
+
+/* Botones (reusa .btn-mini existente: sin modificador = primario negro, .gris = fantasma) */
+.pantalla-cxc .btn-mini{background:var(--btn);color:var(--btnT);border:0;border-radius:8px;font-size:12.5px;font-weight:600;padding:9px 14px}
+.pantalla-cxc .btn-mini:hover{filter:brightness(1.3)}
+.pantalla-cxc .btn-mini.gris{background:var(--pan);border:1px solid var(--bd);color:var(--i2);font-weight:500;font-size:12px;padding:8px 12px}
+.pantalla-cxc .btn-mini.gris:hover{background:var(--hair)}
+
+/* Superficies genéricas */
+.pantalla-cxc .card{background:var(--pan);border-color:var(--bd)}
+.pantalla-cxc .leyenda{color:var(--i2)}
+.pantalla-cxc h2.sec{color:var(--ink)}
+.pantalla-cxc h2.sec::after{background:var(--bd)}
+
+/* ===============================================================
+   CUENTAS POR PAGAR — E92, tercera propagación "Operador estilo Silo"
+   SCOPE = .pantalla-cxp (wrapper nuevo que modulo-pagos.js pone alrededor de TODO lo que pinta
+   render(); no existía, mismo patrón que .pantalla-embarques/.pantalla-cxc). verProveedor()
+   (panel/drawer global #panelBody) se deja FUERA del wrapper — misma frontera de siempre.
+   .venc-si/.venc-no/.venc-hoy (ERP.venc()) también las usa modulo-finanzas.js — se remapean
+   SOLO aquí, anidadas, sin tocar la regla global que Finanzas sigue usando tal cual. */
+
+.pantalla-cxp .kpistrip{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.pantalla-cxp .kpi{background:var(--pan);border:1px solid var(--bd);border-radius:10px;padding:11px 16px;flex:1;min-width:130px}
+.pantalla-cxp .kpi .k{font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--i2)}
+.pantalla-cxp .kpi .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:20px;color:var(--money);margin-top:4px}
+.pantalla-cxp .kpi .v.ink{color:var(--ink)}
+.pantalla-cxp .kpi .v.neg{color:var(--red)}
+
+/* Tablas densas (Saldo por proveedor + Próximos vencimientos + CxP por lote, mismo <table> genérico) */
+.pantalla-cxp table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-cxp thead th{text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-cxp thead th.num{text-align:right}
+.pantalla-cxp tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-cxp tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-cxp tbody tr:hover{background:var(--gtint)}
+.pantalla-cxp tr.total td{background:var(--hair);border-top:2px solid var(--ink);color:var(--ink)}
+.pantalla-cxp td.prov{color:var(--ink);font-weight:500}
+
+/* Situación de vencimiento (Próximos vencimientos) */
+.pantalla-cxp .venc-si{color:var(--red)}
+.pantalla-cxp .venc-no{color:var(--money)}
+.pantalla-cxp .venc-hoy{color:var(--amb)}
+
+/* Botón "+ pago" en la fila — fantasma con borde, mismo trato que "+ cobro" en CxC */
+.pantalla-cxp .btn-cap{background:var(--pan);border:1px solid var(--bd);color:var(--i2);font-weight:500}
+.pantalla-cxp .btn-cap:hover{border-color:var(--brand);background:var(--hair);color:var(--brand)}
+
+/* Select de agrupación de "CxP por lote" — no tenía NINGÚN estilo global (bare <select>) */
+.pantalla-cxp select.busca{background:var(--pan);border:1px solid var(--bd);border-radius:8px;color:var(--ink);font-size:12.5px;padding:6px 10px}
+.pantalla-cxp select.busca:focus{outline:none;border-color:var(--brand)}
+
+/* Botones (reusa .btn-mini existente: sin modificador = primario negro, .gris = fantasma) */
+.pantalla-cxp .btn-mini{background:var(--btn);color:var(--btnT);border:0;border-radius:8px;font-size:12.5px;font-weight:600;padding:9px 14px}
+.pantalla-cxp .btn-mini:hover{filter:brightness(1.3)}
+.pantalla-cxp .btn-mini.gris{background:var(--pan);border:1px solid var(--bd);color:var(--i2);font-weight:500;font-size:12px;padding:8px 12px}
+.pantalla-cxp .btn-mini.gris:hover{background:var(--hair)}
+
+/* Superficies genéricas */
+.pantalla-cxp .card{background:var(--pan);border-color:var(--bd)}
+.pantalla-cxp .leyenda{color:var(--i2)}
+.pantalla-cxp h2.sec{color:var(--ink)}
+.pantalla-cxp h2.sec::after{background:var(--bd)}
+
+/* ===============================================================
+   PULIDO de modo oscuro (E93) — 2 fixes que tocan las 3 pantallas ya vestidas de una sola vez.
+   FIX B: .enlace es GLOBAL (toda la app la usa) y trae color:var(--verde) — token viejo, estático,
+   casi ilegible sobre fondo oscuro. No se toca la clase global; se sube la especificidad SOLO
+   dentro de los 3 scopes ya existentes. (FIX A — inputs de fecha nativos — vive en tokens.css:
+   color-scheme en :root y [data-theme="dark"], arregla date pickers/scrollbars nativos en toda
+   la app sin tocar ninguna regla de aquí.) */
+.pantalla-embarques .enlace, .pantalla-cxc .enlace, .pantalla-cxp .enlace{color:var(--brand)}
+
+/* ===============================================================
+   TESORERÍA — E93, cuarta propagación "Operador estilo Silo"
+   SCOPE = .pantalla-tesoreria (wrapper nuevo, mismo patrón que las 3 pantallas anteriores).
+   Incluye "Estado de cuenta" e "Historial de cambios" (no nombradas en la tarea pero dentro de
+   render(), heredan el trato genérico de tabla/card/chip/botón). Los paneles de edición de
+   movimiento (#panelBody global) quedan fuera. */
+
+.pantalla-tesoreria .kpistrip{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.pantalla-tesoreria .kpi{background:var(--pan);border:1px solid var(--bd);border-radius:10px;padding:11px 16px;flex:1;min-width:130px}
+.pantalla-tesoreria .kpi .k{font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--i2)}
+.pantalla-tesoreria .kpi .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:20px;color:var(--money);margin-top:4px}
+.pantalla-tesoreria .kpi .v.neg{color:var(--red)}
+
+/* Tablas densas (Saldo por cuenta, Flujo mensual, Estado de cuenta, Historial de cambios) */
+.pantalla-tesoreria table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-tesoreria thead th{text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-tesoreria thead th.num{text-align:right}
+.pantalla-tesoreria tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-tesoreria tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-tesoreria tbody tr:hover{background:var(--gtint)}
+.pantalla-tesoreria tr.total td{background:var(--hair);border-top:2px solid var(--ink);color:var(--ink)}
+.pantalla-tesoreria td.cuenta{color:var(--ink);font-weight:500}
+
+/* Positivo/negativo — .pos/.neg son GLOBALES (verde/rojo viejos, estáticos); remapeados aquí */
+.pantalla-tesoreria .pos{color:var(--money)}
+.pantalla-tesoreria .neg{color:var(--red)}
+
+/* Gráfica de flujo semanal — barras de ingresos/egresos y neto */
+.pantalla-tesoreria .fb.in{background:var(--money)}
+.pantalla-tesoreria .fb.out{background:var(--i3)}
+.pantalla-tesoreria .fneto.pos{color:var(--money)}
+.pantalla-tesoreria .fneto.negv{color:var(--red)}
+.pantalla-tesoreria .fsem{color:var(--i2)}
+
+/* Pastillas (virtual, tipo de movimiento, ANULADO) */
+.pantalla-tesoreria .pill{font-size:10px;font-weight:600;border-radius:13px;padding:2px 8px}
+.pantalla-tesoreria .pill.gris{background:var(--hair);color:var(--i2)}
+.pantalla-tesoreria .pill.rojo{background:var(--red-bg);color:var(--red)}
+
+/* Chips de cuenta / rango (Estado de cuenta) — mismo look pestaña que Embarques */
+.pantalla-tesoreria .chip{font-size:11.5px;font-weight:600;color:var(--i2);background:var(--pan);border:1px solid var(--bd);border-radius:16px;padding:5px 12px}
+.pantalla-tesoreria .chip:hover{border-color:var(--brand);color:var(--brand)}
+.pantalla-tesoreria .chip.activo{background:var(--brand);color:#fff;border-color:var(--brand)}
+.pantalla-tesoreria .filtros input.busca{background:var(--pan);border:1px solid var(--bd);color:var(--ink)}
+.pantalla-tesoreria .filtros input.busca:focus{border-color:var(--brand)}
+.pantalla-tesoreria .conteo{color:var(--i3)}
+.pantalla-tesoreria .fechas{color:var(--i2)}
+.pantalla-tesoreria .fechas input{border:1px solid var(--bd);background:var(--pan);color:var(--ink)}
+.pantalla-tesoreria .fechas input:focus{border-color:var(--brand)}
+
+/* Folios "Aplicado a" (tags mono verdes) + "sin carga" */
+.pantalla-tesoreria .chip-folio{background:var(--hair);color:var(--brand)}
+.pantalla-tesoreria .chip-folio:hover{border-color:var(--brand);background:var(--gtint)}
+.pantalla-tesoreria .sin-carga{color:var(--i3)}
+
+/* Botones (reusa .btn-mini existente: sin modificador = primario negro, .gris = fantasma) */
+.pantalla-tesoreria .btn-mini{background:var(--btn);color:var(--btnT);border:0;border-radius:8px;font-size:12.5px;font-weight:600;padding:9px 14px}
+.pantalla-tesoreria .btn-mini:hover{filter:brightness(1.3)}
+.pantalla-tesoreria .btn-mini.gris{background:var(--pan);border:1px solid var(--bd);color:var(--i2);font-weight:500;font-size:12px;padding:8px 12px}
+.pantalla-tesoreria .btn-mini.gris:hover{background:var(--hair)}
+
+/* Superficies genéricas */
+.pantalla-tesoreria .card{background:var(--pan);border-color:var(--bd)}
+.pantalla-tesoreria .leyenda{color:var(--i2)}
+.pantalla-tesoreria h2.sec{color:var(--ink)}
+.pantalla-tesoreria h2.sec::after{background:var(--bd)}
+
+/* ===============================================================
+   INICIO — E94, quinta propagación "Operador estilo Silo"
+   SCOPE = .pantalla-inicio (wrapper nuevo, mismo patrón que las 4 pantallas anteriores).
+   .hoy-card/.hoy-* se comparten con la agenda de Embarques (ya scopeada bajo .pantalla-embarques
+   en E90); .fila-utilidad/.fila-margen se comparten con modulo-finanzas.js. Ambas remapeadas
+   SOLO aquí. .errbox (panel Hoy, caso de error) NO se tocó — es un componente universal usado
+   en decenas de módulos, fuera del alcance de esta propagación. */
+
+/* Tarjetas grandes (NO se introdujo un .kpistrip paralelo — .tarjeta ya cumple ese rol) */
+.pantalla-inicio .tarjeta{background:var(--pan);border-color:var(--bd)}
+.pantalla-inicio .tarjeta::before{background:var(--money)}
+.pantalla-inicio .tarjeta.alerta::before{background:var(--amb)}
+.pantalla-inicio .tarjeta.neg::before{background:var(--red)}
+.pantalla-inicio .tarjeta .lbl{color:var(--i2)}
+.pantalla-inicio .tarjeta .val{color:var(--money)}
+.pantalla-inicio .tarjeta.ink .val{color:var(--ink)}
+.pantalla-inicio .tarjeta.neg .val{color:var(--red)}
+.pantalla-inicio .tarjeta .sub{color:var(--i2)}
+.pantalla-inicio .tarjeta .ir{color:var(--i3)}
+.pantalla-inicio .tarjeta:hover .ir{color:var(--brand)}
+
+/* Panel "Hoy" — mismo trato que las agenda-cards de Embarques (E93: color explícito, no heredado) */
+.pantalla-inicio .hoy-conteo{color:var(--i2)}
+.pantalla-inicio .hoy-card{background:var(--pan);border-color:var(--bd);color:var(--ink)}
+.pantalla-inicio .hoy-card.sev-roja::before{background:var(--red)}
+.pantalla-inicio .hoy-card.sev-ambar::before{background:var(--amb)}
+.pantalla-inicio .hoy-card.sev-gris::before{background:var(--i3)}
+.pantalla-inicio .hoy-card.clic:hover{border-color:var(--brand)}
+.pantalla-inicio .hoy-card-titulo{color:var(--ink)}
+.pantalla-inicio .hoy-card-detalle{color:var(--i2)}
+.pantalla-inicio .hoy-card.sev-roja .hoy-card-monto{color:var(--red)}
+.pantalla-inicio .hoy-card.sev-ambar .hoy-card-monto{color:var(--amb)}
+.pantalla-inicio .hoy-card-ref{color:var(--i2);background:var(--hair)}
+.pantalla-inicio .hoy-info>summary{color:var(--brand)}
+.pantalla-inicio .hoy-info>summary::before{color:var(--i3)}
+.pantalla-inicio .hoy-vacio{background:var(--gtint);color:var(--money)}
+
+/* Tabla densa (cascada de resultados + Posición) */
+.pantalla-inicio table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-inicio thead th{text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-inicio thead th.num{text-align:right}
+.pantalla-inicio tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-inicio tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-inicio tbody tr:hover{background:var(--gtint)}
+.pantalla-inicio tr.total td{background:var(--hair);border-top:2px solid var(--ink);color:var(--ink)}
+
+/* Cascada de resultados: filas de utilidad (resaltadas) y de margen (secundarias) */
+.pantalla-inicio tr.fila-utilidad td{background:var(--gtint);border-top:1.5px solid var(--ink)}
+.pantalla-inicio tr.fila-utilidad td.neg{color:var(--red)}
+.pantalla-inicio tr.fila-margen td{color:var(--i2);border-bottom:1px solid var(--bd)}
+
+/* Positivo/negativo y pastilla "préstamo de socio" (sección Posición) */
+.pantalla-inicio .pos{color:var(--money)}
+.pantalla-inicio .neg{color:var(--red)}
+.pantalla-inicio .pill.gris{background:var(--hair);color:var(--i2)}
+
+/* Enlaces y superficies genéricas */
+.pantalla-inicio .enlace{color:var(--brand)}
+.pantalla-inicio .card{background:var(--pan);border-color:var(--bd)}
+.pantalla-inicio .leyenda{color:var(--i2)}
+.pantalla-inicio h2.sec{color:var(--ink)}
+.pantalla-inicio h2.sec::after{background:var(--bd)}
+
+/* ===============================================================
+   ANTIGÜEDAD DE SALDOS — E95, sexta propagación "Operador estilo Silo"
+   SCOPE = .pantalla-antiguedad (wrapper nuevo, mismo patrón que las 5 pantallas anteriores).
+   .pestanas/.pestana se comparten con Directorio Comercial, Expediente y Cotiz./órdenes —
+   remapeadas SOLO aquí, componente de pestaña subrayada intacto (no se cambió a .chip).
+   .aging-hero/.ah-* es la tira de KPIs propia de esta pantalla (nadie más la usa) — se mantuvo
+   con sus clases en vez de introducir un .kpistrip paralelo. .barra/.fill se comparten con CxC
+   (ya scopeados ahí en E91). verDetalle() (panel/drawer global) queda fuera del wrapper. */
+
+/* Pestañas (subrayado, no pastilla — el componente real de este módulo) */
+.pantalla-antiguedad .pestanas{border-bottom-color:var(--bd)}
+.pantalla-antiguedad .pestana{color:var(--i2)}
+.pantalla-antiguedad .pestana:hover{color:var(--ink)}
+.pantalla-antiguedad .pestana.activa{color:var(--brand);border-bottom-color:var(--brand)}
+
+/* Tira de KPIs propia (Saldo total / Cartera vencida / Por vencer) */
+.pantalla-antiguedad .aging-hero>div{background:var(--pan);border-color:var(--bd)}
+.pantalla-antiguedad .aging-hero .l{color:var(--i2)}
+.pantalla-antiguedad .aging-hero .v{color:var(--ink)}
+.pantalla-antiguedad .aging-hero .ah-nota{color:var(--i2)}
+.pantalla-antiguedad .aging-hero .ah-venc{border-left-color:var(--red)}
+.pantalla-antiguedad .aging-hero .ah-venc .v{color:var(--red)}
+.pantalla-antiguedad .aging-hero .ah-venc .pct{color:var(--red)}
+.pantalla-antiguedad .aging-hero .ah-porvencer{border-left-color:var(--money)}
+.pantalla-antiguedad .aging-hero .ah-porvencer .v{color:var(--money)}
+.pantalla-antiguedad .aging-hero .ah-porvencer .nota2{color:var(--i2)}
+
+/* Barras de distribución por días vencidos (mismo trato que CxC, E91) */
+.pantalla-antiguedad .barra{background:var(--hair)}
+.pantalla-antiguedad .barra-top{color:var(--i2)}
+.pantalla-antiguedad .barra-top .b{color:var(--ink)}
+
+/* Tabla "Detalle por cliente/proveedor" */
+.pantalla-antiguedad table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-antiguedad thead th{text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-antiguedad thead th.num{text-align:right}
+.pantalla-antiguedad tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-antiguedad tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-antiguedad tbody tr:hover{background:var(--gtint)}
+.pantalla-antiguedad tr.total td{background:var(--hair);border-top:2px solid var(--ink);color:var(--ink)}
+.pantalla-antiguedad td.ent{color:var(--ink);font-weight:500}
+
+/* Fila "más de la mitad vencido" (antes rojo estático) */
+.pantalla-antiguedad tr.vencido-alto>td{background:var(--red-bg)}
+.pantalla-antiguedad tr.vencido-alto .enlace{color:var(--red)}
+
+/* Pastillas, positivo/negativo, enlaces, superficies genéricas */
+.pantalla-antiguedad .pill.gris{background:var(--hair);color:var(--i2)}
+.pantalla-antiguedad .pill.ambar{background:var(--amb-bg);color:var(--amb)}
+.pantalla-antiguedad .pill.rojo{background:var(--red-bg);color:var(--red)}
+.pantalla-antiguedad .pos{color:var(--money)}
+.pantalla-antiguedad .neg{color:var(--red)}
+.pantalla-antiguedad .enlace{color:var(--brand)}
+.pantalla-antiguedad .card{background:var(--pan);border-color:var(--bd)}
+.pantalla-antiguedad .leyenda{color:var(--i2)}
+.pantalla-antiguedad h2.sec{color:var(--ink)}
+.pantalla-antiguedad h2.sec::after{background:var(--bd)}
+.pantalla-antiguedad h3{color:var(--ink)}
+
+/* ===============================================================
+   FINANZAS — E96, séptima propagación "Operador estilo Silo"
+   SCOPE = .pantalla-finanzas (wrapper nuevo, mismo patrón que las 6 pantallas anteriores).
+   Módulo grande (12 secciones/tablas) pero ninguna sección introduce un componente nuevo — todas
+   reusan clases ya scopeadas en pantallas previas: .fila-utilidad/.fila-margen (Inicio, E94),
+   .barra/.fill (CxC, E91), tr.vencido-alto/.venc-* (CxC/Antigüedad/CxP), .badge-estado
+   (Embarques, E90), .pmargen (Embarques, E90 — reemplaza ERP.semaforo() SOLO en este archivo).
+   verMes()/verGastos() (drawers globales #panelBody) quedan fuera del wrapper. Sin pastillas de
+   modalidad (.pill.m/.g/.c): el módulo no las genera, nada que construir ahí. */
+
+/* Tablas densas — 12 secciones, todas <table> genéricas, misma receta de siempre */
+.pantalla-finanzas table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-finanzas thead th{text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-finanzas thead th.num{text-align:right}
+.pantalla-finanzas tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-finanzas tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-finanzas tbody tr:hover{background:var(--gtint)}
+.pantalla-finanzas tr.total td{background:var(--hair);border-top:2px solid var(--ink);color:var(--ink)}
+.pantalla-finanzas td.ent{color:var(--ink);font-weight:500}
+
+/* Cascada del P&L: filas de utilidad (resaltadas) y de margen (secundarias) — mismo trato que Inicio */
+.pantalla-finanzas tr.fila-utilidad td{background:var(--gtint);border-top:1.5px solid var(--ink)}
+.pantalla-finanzas tr.fila-utilidad td.neg{color:var(--red)}
+.pantalla-finanzas tr.fila-margen td{color:var(--i2);border-bottom:1px solid var(--bd)}
+
+/* Punto de margen (Márgenes por cliente/producto + Rentabilidad) */
+.pantalla-finanzas .pmargen{font-size:9px}
+.pantalla-finanzas .pmargen.bien{color:var(--money)}
+.pantalla-finanzas .pmargen.medio{color:var(--amb)}
+.pantalla-finanzas .pmargen.mal{color:var(--red)}
+
+/* Antigüedad CxC / CxP próximas: fila "más vencido", situación de vencimiento, badge de estado */
+.pantalla-finanzas tr.vencido-alto>td{background:var(--red-bg)}
+.pantalla-finanzas tr.vencido-alto .enlace{color:var(--red)}
+.pantalla-finanzas .venc-si{color:var(--red)}
+.pantalla-finanzas .venc-no{color:var(--money)}
+.pantalla-finanzas .venc-hoy{color:var(--amb)}
+.pantalla-finanzas .badge-estado{border-radius:9px}
+.pantalla-finanzas .badge-estado.verde{background:color-mix(in srgb,var(--money) 16%,transparent);color:var(--money)}
+.pantalla-finanzas .badge-estado.ambar{background:var(--amb-bg);color:var(--amb)}
+.pantalla-finanzas .badge-estado.rojo{background:var(--red-bg);color:var(--red)}
+.pantalla-finanzas .badge-estado.gris{background:var(--hair);color:var(--i2)}
+.pantalla-finanzas .badge-estado.azul{background:var(--gtint);color:var(--brand)}
+
+/* Concentración de cartera: barras (mismo trato que CxC, E91) */
+.pantalla-finanzas .barra{background:var(--hair)}
+.pantalla-finanzas .barra-top{color:var(--i2)}
+.pantalla-finanzas .barra-top .b{color:var(--ink)}
+
+/* Flujo de caja semanal: mini-barra de tendencia (propia de este módulo) */
+.pantalla-finanzas .mini-bar{background:var(--hair)}
+.pantalla-finanzas .mini-fill{background:var(--money)}
+.pantalla-finanzas .mini-fill.neg{background:var(--red)}
+
+/* Días de pago: pastilla de gap (reusa .pill.rojo/.ambar/.gris ya establecidos) */
+.pantalla-finanzas .pill.rojo{background:var(--red-bg);color:var(--red)}
+.pantalla-finanzas .pill.ambar{background:var(--amb-bg);color:var(--amb)}
+.pantalla-finanzas .pill.gris{background:var(--hair);color:var(--i2)}
+
+/* Positivo/negativo, enlaces, superficies genéricas */
+.pantalla-finanzas .pos{color:var(--money)}
+.pantalla-finanzas .neg{color:var(--red)}
+.pantalla-finanzas .enlace{color:var(--brand)}
+.pantalla-finanzas .card{background:var(--pan);border-color:var(--bd)}
+.pantalla-finanzas .card h3{color:var(--i2)}
+.pantalla-finanzas .leyenda{color:var(--i2)}
+.pantalla-finanzas h2.sec{color:var(--ink)}
+.pantalla-finanzas h2.sec::after{background:var(--bd)}
+
+/* SCOPE = .pantalla-catalogos (wrapper nuevo alrededor de TODO lo que pinta render())
+   Directorio Comercial: catálogos de clientes/proveedores/beneficiarios/productos.
+   Contiene: pestañas, filtros, busca, tabla de registros, ficha de contraparte en panel. */
+.pantalla-catalogos{display:contents}
+.pantalla-catalogos .errbox{background:var(--red-bg);border-color:var(--red);color:var(--red)}
+.pantalla-catalogos .pestanas{display:flex;gap:8px;margin-bottom:12px;border-bottom:1px solid var(--bd);flex-wrap:wrap}
+.pantalla-catalogos .pestana{background:transparent;border:0;color:var(--i2);font-size:13px;font-weight:600;padding:8px 12px 7px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.pantalla-catalogos .pestana:hover{color:var(--ink)}
+.pantalla-catalogos .pestana.activa{color:var(--brand);border-bottom-color:var(--brand)}
+.pantalla-catalogos .pestana .cuenta{opacity:.65;font-size:11px;margin-left:4px}
+.pantalla-catalogos .filtros{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
+.pantalla-catalogos .filtros input.busca{background:var(--pan);border:1px solid var(--bd);color:var(--ink);padding:8px 12px;border-radius:6px;font-size:13px;flex:1;min-width:150px}
+.pantalla-catalogos .filtros input.busca:focus{border-color:var(--brand);outline:0}
+.pantalla-catalogos .chip{background:var(--hair);border:1px solid var(--bd);color:var(--i2);font-size:12px;font-weight:600;padding:6px 12px;border-radius:16px;cursor:pointer;white-space:nowrap}
+.pantalla-catalogos .chip:hover{border-color:var(--brand);color:var(--ink)}
+.pantalla-catalogos .chip.activo{background:var(--brand);color:#fff;border-color:var(--brand)}
+.pantalla-catalogos .btn-mini{background:var(--btn);color:var(--btnT);border:0;border-radius:8px;font-size:12.5px;font-weight:600;padding:9px 14px;cursor:pointer;white-space:nowrap}
+.pantalla-catalogos .btn-mini:hover{opacity:.85}
+.pantalla-catalogos .solo-lectura{font-size:12px;color:var(--i3);font-style:italic}
+.pantalla-catalogos .conteo{font-size:11px;color:var(--i3);opacity:.8}
+.pantalla-catalogos .card{background:var(--pan);border:1px solid var(--bd);border-radius:8px;overflow:hidden}
+.pantalla-catalogos table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-catalogos thead th{background:var(--hair);text-align:left;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-catalogos tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-catalogos tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-catalogos tbody tr:hover{background:var(--gtint)}
+.pantalla-catalogos .cp-nombre-link{background:0;border:0;color:var(--brand);cursor:pointer;font-weight:600;padding:0;text-decoration:none;font-size:inherit}
+.pantalla-catalogos .cp-nombre-link:hover{text-decoration:underline}
+.pantalla-catalogos .pill{font-size:10px;font-weight:600;border-radius:13px;padding:2px 8px;display:inline-block}
+.pantalla-catalogos .pill.rojo{background:var(--red-bg);color:var(--red)}
+.pantalla-catalogos .pill.ambar{background:var(--amb-bg);color:var(--amb)}
+.pantalla-catalogos .pill.gris{background:var(--hair);color:var(--i2)}
+.pantalla-catalogos .alias-chip{background:var(--hair);color:var(--i2);font-size:11px;font-weight:600;padding:3px 8px;border-radius:11px;display:inline-block;margin-right:4px}
+.pantalla-catalogos .ficha-seccion{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--i3);margin-top:12px;margin-bottom:8px;padding-top:8px;border-top:1px solid var(--bd)}
+.pantalla-catalogos .ficha-linea{display:flex;align-items:flex-start;gap:12px;margin-bottom:8px;font-size:12px}
+.pantalla-catalogos .ficha-etq{color:var(--i2);font-weight:600;min-width:100px;text-align:right}
+.pantalla-catalogos .ficha-val{color:var(--ink);word-break:break-word}
+.pantalla-catalogos .enlace{color:var(--brand)}
+.pantalla-catalogos .pos{color:var(--money)}
+.pantalla-catalogos .neg{color:var(--red)}
+
+/* SCOPE = .pantalla-programas (wrapper nuevo alrededor de TODO lo que pinta render())
+   Programas: comerciales con proyección anual y real de cargas por programa. */
+.pantalla-programas{display:contents}
+.pantalla-programas .exp-acciones{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px;flex-wrap:wrap}
+.pantalla-programas .sec{font-size:14px;font-weight:700;color:var(--ink);margin:16px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--bd)}
+.pantalla-programas .btn-mini{background:var(--btn);color:var(--btnT);border:0;border-radius:8px;font-size:12.5px;font-weight:600;padding:9px 14px;cursor:pointer}
+.pantalla-programas .card{background:var(--pan);border:1px solid var(--bd);border-radius:8px;overflow:hidden}
+.pantalla-programas table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-programas thead th{background:var(--hair);text-align:left;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-programas tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-programas tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-programas tbody tr:hover{background:var(--gtint)}
+.pantalla-programas .barra{background:var(--hair);border-radius:3px;overflow:hidden;height:20px;display:inline-flex;width:80px;vertical-align:middle}
+.pantalla-programas .fill{background:var(--money);display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:600;min-width:20px}
+.pantalla-programas .pos{color:var(--money)}
+.pantalla-programas .neg{color:var(--red)}
+
+/* SCOPE = .pantalla-proyectos (wrapper nuevo alrededor de TODO lo que pinta render())
+   Proyectos: línea de crédito, dispuesto, saldo vivo, disponible, comisión, fondeo y rentabilidad. */
+.pantalla-proyectos{display:contents}
+.pantalla-proyectos .exp-acciones{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px;flex-wrap:wrap}
+.pantalla-proyectos .sec{font-size:14px;font-weight:700;color:var(--ink);margin:16px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--bd)}
+.pantalla-proyectos .btn-mini{background:var(--btn);color:var(--btnT);border:0;border-radius:8px;font-size:12.5px;font-weight:600;padding:9px 14px;cursor:pointer}
+.pantalla-proyectos .vacio{color:var(--i2)}
+.pantalla-proyectos .card{background:var(--pan);border:1px solid var(--bd);border-radius:8px;overflow:hidden}
+.pantalla-proyectos .tabla-wrap{overflow-x:auto}
+.pantalla-proyectos table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-proyectos thead th{background:var(--hair);text-align:left;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-proyectos thead th.num{text-align:right}
+.pantalla-proyectos tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-proyectos tbody td.mono{font-family:'IBM Plex Mono',monospace;font-weight:600}
+.pantalla-proyectos tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-proyectos tbody tr:hover{background:var(--gtint)}
+.pantalla-proyectos tr.clic{cursor:pointer}
+.pantalla-proyectos .enlace{color:var(--brand)}
+.pantalla-proyectos .pos{color:var(--money)}
+.pantalla-proyectos .neg{color:var(--red)}
+
+/* SCOPE = .pantalla-comercial (wrapper nuevo alrededor de TODO lo que pinta render())
+   Comercial: cotizaciones a clientes (Cotiz.) y órdenes de compra a proveedores (OC). */
+.pantalla-comercial{display:contents}
+.pantalla-comercial .pestanas{display:flex;gap:8px;margin-bottom:12px;border-bottom:1px solid var(--bd);flex-wrap:wrap}
+.pantalla-comercial .pestana{background:transparent;border:0;color:var(--i2);font-size:13px;font-weight:600;padding:8px 12px 7px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.pantalla-comercial .pestana:hover{color:var(--ink)}
+.pantalla-comercial .pestana.activa{color:var(--brand);border-bottom-color:var(--brand)}
+.pantalla-comercial .filtros{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
+.pantalla-comercial input.busca{background:var(--pan);border:1px solid var(--bd);color:var(--ink);padding:8px 12px;border-radius:6px;font-size:13px;flex:1;min-width:150px}
+.pantalla-comercial input.busca:focus{border-color:var(--brand);outline:0}
+.pantalla-comercial .btn-mini{background:var(--btn);color:var(--btnT);border:0;border-radius:8px;font-size:12.5px;font-weight:600;padding:9px 14px;cursor:pointer;white-space:nowrap}
+.pantalla-comercial .conteo{font-size:11px;color:var(--i3);opacity:.8}
+.pantalla-comercial .card{background:var(--pan);border:1px solid var(--bd);border-radius:8px;overflow:hidden}
+.pantalla-comercial .skel{padding:20px;color:var(--i2);text-align:center}
+.pantalla-comercial .errbox{background:var(--red-bg);border-color:var(--red);color:var(--red);padding:12px}
+.pantalla-comercial table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-comercial thead th{background:var(--hair);text-align:left;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-comercial tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-comercial tbody td.mono{font-family:'IBM Plex Mono',monospace;font-weight:600}
+.pantalla-comercial tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-comercial tbody tr:hover{background:var(--gtint)}
+.pantalla-comercial .enlace{color:var(--brand);cursor:pointer;text-decoration:none}
+.pantalla-comercial .pill{font-size:10px;font-weight:600;border-radius:13px;padding:2px 8px;display:inline-block}
+
+/* SCOPE = .pantalla-lotes */
+.pantalla-lotes{display:contents}
+.pantalla-lotes .filtros{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
+.pantalla-lotes .busca{background:var(--pan);border:1px solid var(--bd);color:var(--ink);padding:8px 12px;border-radius:6px;font-size:13px}
+.pantalla-lotes .busca:focus{border-color:var(--brand);outline:0}
+.pantalla-lotes .btn-mini{background:var(--btn);color:var(--btnT);border:0;border-radius:8px;font-size:12.5px;font-weight:600;padding:9px 14px;cursor:pointer}
+.pantalla-lotes .conteo{font-size:11px;color:var(--i3);opacity:.8}
+.pantalla-lotes .card{background:var(--pan);border:1px solid var(--bd);border-radius:8px;overflow:hidden}
+.pantalla-lotes table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-lotes thead th{background:var(--hair);text-align:left;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd)}
+.pantalla-lotes tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-lotes tbody tr:hover{background:var(--gtint)}
+.pantalla-lotes .leyenda{font-size:11px;color:var(--i2);padding:12px;font-style:italic}
+
+/* SCOPE = .pantalla-facturas (wrapper nuevo alrededor de TODO lo que pinta render()) */
+.pantalla-facturas{display:contents}
+.pantalla-facturas .filtros{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
+.pantalla-facturas input.busca{background:var(--pan);border:1px solid var(--bd);color:var(--ink);padding:8px 12px;border-radius:6px;font-size:13px;flex:1;min-width:150px}
+.pantalla-facturas input.busca:focus{border-color:var(--brand);outline:0}
+.pantalla-facturas select.busca{background:var(--pan);border:1px solid var(--bd);color:var(--ink);padding:8px 12px;border-radius:6px;font-size:13px}
+.pantalla-facturas select.busca:focus{border-color:var(--brand);outline:0}
+.pantalla-facturas .btn-mini{background:var(--btn);color:var(--btnT);border:0;border-radius:8px;font-size:12.5px;font-weight:600;padding:9px 14px;cursor:pointer;white-space:nowrap}
+.pantalla-facturas .btn-mini:hover{filter:brightness(1.08)}
+.pantalla-facturas .btn-mini.gris{background:var(--i3);color:var(--ink)}
+.pantalla-facturas .conteo{font-size:11px;color:var(--i3);opacity:.8}
+.pantalla-facturas .card{background:var(--pan);border:1px solid var(--bd);border-radius:8px;overflow:hidden}
+.pantalla-facturas .tabla-wrap{overflow-x:auto}
+.pantalla-facturas table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-facturas thead th{background:var(--hair);text-align:left;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-facturas tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-facturas tbody td.mono{font-family:'IBM Plex Mono',monospace;font-weight:600}
+.pantalla-facturas tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-facturas tbody tr:hover{background:var(--gtint);cursor:pointer}
+.pantalla-facturas tbody tr.clic{cursor:pointer}
+.pantalla-facturas .enlace{color:var(--brand);cursor:pointer;text-decoration:none}
+.pantalla-facturas .enlace:hover{text-decoration:underline}
+.pantalla-facturas .pill{font-size:10px;font-weight:600;border-radius:13px;padding:2px 8px;display:inline-block}
+.pantalla-facturas .pill.ambar{background:#FBF0DB;color:#B26B12}
+.pantalla-facturas .pill.verde{background:#E8F5E9;color:#1E7A3C}
+.pantalla-facturas .pill.gris{background:#E3E7E1;color:#56655C}
+.pantalla-facturas [data-theme="dark"] .pill.ambar{background:#2A2213;color:#D69A3C}
+.pantalla-facturas [data-theme="dark"] .pill.verde{background:#1B4620;color:#57C06A}
+.pantalla-facturas [data-theme="dark"] .pill.gris{background:#232B26;color:#93A197}
+.pantalla-facturas .pos{color:var(--money);font-weight:600}
+.pantalla-facturas .neg{color:var(--red);font-weight:600}
+.pantalla-facturas .skel{padding:20px;color:var(--i2);text-align:center}
+.pantalla-facturas .errbox{background:var(--red-bg);border:1px solid var(--red);color:var(--red);padding:12px;border-radius:6px}
+.pantalla-facturas .leyenda{font-size:11px;color:var(--i2);padding:12px;font-style:italic}
+.pantalla-facturas .vacio{padding:20px;text-align:center;color:var(--i2)}
+.pantalla-facturas .form-erp{background:var(--pan);border:1px solid var(--bd);border-radius:8px;padding:14px;margin-bottom:12px}
+.pantalla-facturas .form-erp .campos{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.pantalla-facturas .form-erp .campo{display:flex;flex-direction:column;min-width:0}
+.pantalla-facturas .form-erp .campo.ancho{grid-column:1/-1}
+.pantalla-facturas .form-erp label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--i2);font-weight:700;margin-bottom:4px}
+.pantalla-facturas .form-erp input,.pantalla-facturas .form-erp select,.pantalla-facturas .form-erp textarea{border:1px solid var(--bd);border-radius:6px;padding:8px 10px;font-size:13px;font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);width:100%}
+.pantalla-facturas .form-erp input:focus,.pantalla-facturas .form-erp select:focus,.pantalla-facturas .form-erp textarea:focus{outline:none;border-color:var(--brand)}
+.pantalla-facturas .form-erp input.mono{font-family:'IBM Plex Mono',monospace}
+.pantalla-facturas .form-erp textarea{min-height:52px;resize:vertical}
+.pantalla-facturas .form-erp .acciones{display:flex;gap:8px;margin-top:12px;align-items:center}
+.pantalla-facturas .form-erp .req{color:var(--red)}
+.pantalla-facturas .campo-fijo{background:var(--bg);border:1px dashed var(--bd);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--ink)}
+.pantalla-facturas .form-erp.fact-editor{display:flex;flex-direction:column;gap:12px}
+.pantalla-facturas .fact-cxc{background:var(--hair);border:1px solid var(--bd);border-radius:6px;padding:10px;margin:8px 0}
+.pantalla-facturas .fact-cxc .fc-h{font-size:11px;font-weight:700;color:var(--i2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
+.pantalla-facturas .fact-cxc .fc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;font-size:12px}
+.pantalla-facturas .fact-cxc .fc-grid > div{display:flex;justify-content:space-between;align-items:center}
+.pantalla-facturas .fact-cxc .fc-grid .l{color:var(--i2);font-weight:600}
+.pantalla-facturas .fact-cxc .fc-grid .v{font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--ink)}
+.pantalla-facturas .fact-cxc .fc-grid .v.neg{color:var(--red)}
+.pantalla-facturas .fact-cxc .fc-grid .v.pos{color:var(--money)}
+.pantalla-facturas .seccion-head{display:flex;justify-content:space-between;align-items:center;margin-top:14px;margin-bottom:8px;padding-top:8px;border-top:1px solid var(--bd)}
+.pantalla-facturas .seccion-head h4{font-size:13px;font-weight:700;color:var(--ink);margin:0;padding:0}
+.pantalla-facturas .fact-lineas{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-facturas .fact-lineas thead th{background:var(--hair);text-align:left;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd)}
+.pantalla-facturas .fact-lineas tbody td{padding:8px 10px;border-top:1px solid var(--hair)}
+.pantalla-facturas .fact-lineas input.li{border:1px solid var(--bd);border-radius:4px;padding:4px 6px;font-size:12px;width:100%;font-family:inherit;background:var(--bg);color:var(--ink)}
+.pantalla-facturas .fact-lineas input.li:focus{outline:none;border-color:var(--brand)}
+.pantalla-facturas .fact-lineas input.li.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-facturas .fact-lineas .btn-cap{background:var(--red);color:#fff;border:0;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer;width:32px;height:28px}
+.pantalla-facturas .fact-lineas .btn-cap:hover{filter:brightness(1.1)}
+.pantalla-facturas .aviso{padding:10px 12px;border-radius:6px;font-size:12px;display:none;margin-bottom:12px}
+.pantalla-facturas .aviso.visible{display:block}
+.pantalla-facturas .aviso.warn{background:var(--amb-bg);color:var(--amb);border:1px solid var(--amb)}
+.pantalla-facturas .aviso.err{background:var(--red-bg);color:var(--red);border:1px solid var(--red)}
+.pantalla-facturas .aviso.ok{background:#E8F5E9;color:var(--money);border:1px solid var(--money)}
+
+/* SCOPE = .pantalla-inventario (wrapper nuevo alrededor de TODO lo que pinta render()) */
+.pantalla-inventario{display:contents}
+.pantalla-inventario .hoy-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.pantalla-inventario .hoy-card{background:var(--pan);border:1px solid var(--bd);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.pantalla-inventario .hoy-card.sev-gris{border-left:4px solid var(--i3)}
+.pantalla-inventario .hoy-card.sev-ambar{border-left:4px solid var(--amb)}
+.pantalla-inventario .hoy-card.sev-roja{border-left:4px solid var(--red)}
+.pantalla-inventario .hoy-card-titulo{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink)}
+.pantalla-inventario .hoy-card-detalle{font-size:11px;color:var(--i2);line-height:1.4}
+.pantalla-inventario .hoy-card-monto{font-size:14px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--i2);margin-top:4px}
+.pantalla-inventario .hoy-card.sev-ambar .hoy-card-monto{color:var(--amb)}
+.pantalla-inventario .hoy-card.sev-roja .hoy-card-monto{color:var(--red)}
+.pantalla-inventario .filtros{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
+.pantalla-inventario input.busca{background:var(--pan);border:1px solid var(--bd);color:var(--ink);padding:8px 12px;border-radius:6px;font-size:13px;flex:1;min-width:180px}
+.pantalla-inventario input.busca:focus{border-color:var(--brand);outline:0}
+.pantalla-inventario .conteo{font-size:11px;color:var(--i3);opacity:.8}
+.pantalla-inventario .tabla-wrap{overflow-x:auto}
+.pantalla-inventario table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px}
+.pantalla-inventario thead th{background:var(--hair);text-align:left;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-inventario tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-inventario tbody td.mono{font-family:'IBM Plex Mono',monospace;font-weight:600}
+.pantalla-inventario tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-inventario tbody tr:hover{background:var(--gtint);cursor:pointer}
+.pantalla-inventario tbody tr.clic{cursor:pointer}
+.pantalla-inventario .enlace{color:var(--brand);cursor:pointer;text-decoration:none}
+.pantalla-inventario .enlace:hover{text-decoration:underline}
+.pantalla-inventario .neg{color:var(--red);font-weight:600}
+.pantalla-inventario .seccion-head{margin-top:20px;padding-bottom:8px;border-bottom:1px solid var(--bd)}
+.pantalla-inventario .seccion-head h4{font-size:13px;font-weight:700;color:var(--ink);margin:0;padding:0}
+.pantalla-inventario .seccion-head h4 span{font-weight:400;color:var(--i2);font-size:11px}
+.pantalla-inventario .vacio{padding:20px;text-align:center;color:var(--i2);font-style:italic;font-size:12px}
+.pantalla-inventario .leyenda{font-size:11px;color:var(--i2);padding:12px;font-style:italic}
+.pantalla-inventario .errbox{background:var(--red-bg);border:1px solid var(--red);color:var(--red);padding:12px;border-radius:6px}
+
+/* SCOPE = .pantalla-concentracion (wrapper nuevo alrededor de TODO lo que pinta render()) */
+.pantalla-concentracion{display:contents}
+.pantalla-concentracion .conc-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:16px}
+.pantalla-concentracion .conc-card{background:var(--pan);border:1px solid var(--bd);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.pantalla-concentracion .conc-card.nivel-concentrado{border-left:4px solid var(--red)}
+.pantalla-concentracion .conc-card.nivel-moderado{border-left:4px solid var(--amb)}
+.pantalla-concentracion .conc-card.nivel-competitivo{border-left:4px solid var(--money)}
+.pantalla-concentracion .conc-dim{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--i2)}
+.pantalla-concentracion .conc-hhi{font-size:18px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--ink);margin-top:4px}
+.pantalla-concentracion .conc-hhi-lbl{font-size:11px;font-weight:600;color:var(--i2)}
+.pantalla-concentracion .conc-top{font-size:10px;color:var(--i2);margin-top:4px}
+.pantalla-concentracion .conc-ref{font-size:10px;color:var(--i3)}
+.pantalla-concentracion .pill{font-size:10px;font-weight:600;border-radius:13px;padding:2px 8px;display:inline-block;width:fit-content}
+.pantalla-concentracion .pill.rojo{background:var(--red-bg);color:var(--red)}
+.pantalla-concentracion .pill.ambar{background:var(--amb-bg);color:var(--amb)}
+.pantalla-concentracion .pill.verde{background:#E8F5E9;color:var(--money)}
+.pantalla-concentracion .pill.gris{background:var(--hair);color:var(--i2)}
+.pantalla-concentracion .sec{font-size:13px;font-weight:700;color:var(--ink);margin:18px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--bd)}
+.pantalla-concentracion .card{background:var(--pan);border:1px solid var(--bd);border-radius:8px;overflow:hidden;margin-bottom:12px}
+.pantalla-concentracion .tabla-wrap{overflow-x:auto}
+.pantalla-concentracion table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-concentracion thead th{background:var(--hair);text-align:left;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-concentracion tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-concentracion tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-concentracion tbody tr.pareto{background:var(--gtint);font-weight:600}
+.pantalla-concentracion tbody tr:hover{background:var(--gtint)}
+.pantalla-concentracion tfoot tr.total{font-weight:700;border-top:2px solid var(--bd);background:var(--hair)}
+.pantalla-concentracion tfoot tr.total td{padding:10px;color:var(--ink)}
+.pantalla-concentracion .vacio{padding:16px;text-align:center;color:var(--i2);font-size:12px;font-style:italic}
+.pantalla-concentracion .leyenda{font-size:11px;color:var(--i2);padding:12px;font-style:italic;background:var(--hair);border-radius:6px}
+
+/* SCOPE = .pantalla-cierres */
+.pantalla-cierres{display:contents}
+.pantalla-cierres .card{background:var(--pan);border:1px solid var(--bd);border-radius:8px;overflow:hidden}
+.pantalla-cierres .tabla-wrap{overflow-x:auto}
+.pantalla-cierres table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-cierres thead th{background:var(--hair);text-align:left;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-cierres tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-cierres tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-cierres tbody tr:hover{background:var(--gtint)}
+.pantalla-cierres .pill{font-size:10px;font-weight:600;border-radius:13px;padding:2px 8px;display:inline-block}
+.pantalla-cierres .pill.verde{background:#E8F5E9;color:var(--money)}
+.pantalla-cierres .pill.ambar{background:var(--amb-bg);color:var(--amb)}
+.pantalla-cierres .neg{color:var(--red);font-weight:600}
+.pantalla-cierres .vacio{padding:20px;text-align:center;color:var(--i2);font-style:italic}
+.pantalla-cierres .leyenda{font-size:11px;color:var(--i2);padding:12px;font-style:italic}
+
+/* SCOPE = .pantalla-liquidaciones */
+.pantalla-liquidaciones{display:contents}
+.pantalla-liquidaciones .filtros{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
+.pantalla-liquidaciones input.busca,.pantalla-liquidaciones select.busca{background:var(--pan);border:1px solid var(--bd);color:var(--ink);padding:8px 12px;border-radius:6px;font-size:13px}
+.pantalla-liquidaciones input.busca:focus,.pantalla-liquidaciones select.busca:focus{border-color:var(--brand);outline:0}
+.pantalla-liquidaciones .btn-mini{background:var(--btn);color:var(--btnT);border:0;border-radius:8px;font-size:12.5px;font-weight:600;padding:9px 14px;cursor:pointer;white-space:nowrap}
+.pantalla-liquidaciones .btn-mini.gris{background:var(--i3);color:var(--ink)}
+.pantalla-liquidaciones .conteo{font-size:11px;color:var(--i3);opacity:.8}
+.pantalla-liquidaciones .tabla-wrap{overflow-x:auto}
+.pantalla-liquidaciones table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-liquidaciones thead th{background:var(--hair);text-align:left;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-liquidaciones tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-liquidaciones tbody td.mono{font-family:'IBM Plex Mono',monospace;font-weight:600}
+.pantalla-liquidaciones tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-liquidaciones tbody tr:hover{background:var(--gtint)}
+.pantalla-liquidaciones tbody tr.clic{cursor:pointer}
+.pantalla-liquidaciones .card{background:var(--pan);border:1px solid var(--bd);border-radius:8px;overflow:hidden;margin-bottom:12px}
+.pantalla-liquidaciones .form-erp{background:var(--pan);border:1px solid var(--bd);border-radius:8px;padding:14px;margin-bottom:12px}
+.pantalla-liquidaciones .form-erp .campos{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.pantalla-liquidaciones .form-erp .campo{display:flex;flex-direction:column;min-width:0}
+.pantalla-liquidaciones .form-erp .campo.ancho{grid-column:1/-1}
+.pantalla-liquidaciones .form-erp label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--i2);font-weight:700;margin-bottom:4px}
+.pantalla-liquidaciones .form-erp input,.pantalla-liquidaciones .form-erp textarea,.pantalla-liquidaciones .form-erp select{border:1px solid var(--bd);border-radius:6px;padding:8px 10px;font-size:13px;background:var(--bg);color:var(--ink);width:100%}
+.pantalla-liquidaciones .form-erp input:focus,.pantalla-liquidaciones .form-erp textarea:focus,.pantalla-liquidaciones .form-erp select:focus{outline:none;border-color:var(--brand)}
+.pantalla-liquidaciones .campo-fijo{background:var(--bg);border:1px dashed var(--bd);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--ink)}
+.pantalla-liquidaciones .pill{font-size:10px;font-weight:600;border-radius:13px;padding:2px 8px;display:inline-block}
+.pantalla-liquidaciones .pill.ambar{background:var(--amb-bg);color:var(--amb)}
+.pantalla-liquidaciones .pill.verde{background:#E8F5E9;color:var(--money)}
+.pantalla-liquidaciones .pill.gris{background:var(--hair);color:var(--i2)}
+.pantalla-liquidaciones .enlace{color:var(--brand);cursor:pointer;text-decoration:none}
+.pantalla-liquidaciones .enlace:hover{text-decoration:underline}
+.pantalla-liquidaciones .pos{color:var(--money);font-weight:600}
+.pantalla-liquidaciones .neg{color:var(--red);font-weight:600}
+.pantalla-liquidaciones .vacio{padding:20px;text-align:center;color:var(--i2);font-style:italic}
+.pantalla-liquidaciones .leyenda{font-size:11px;color:var(--i2);padding:12px;font-style:italic}
+.pantalla-liquidaciones .errbox{background:var(--red-bg);border:1px solid var(--red);color:var(--red);padding:12px;border-radius:6px}
+.pantalla-liquidaciones .aviso{padding:10px 12px;border-radius:6px;font-size:12px;display:none;margin-bottom:12px}
+.pantalla-liquidaciones .aviso.visible{display:block}
+.pantalla-liquidaciones .aviso.warn{background:var(--amb-bg);color:var(--amb);border:1px solid var(--amb)}
+.pantalla-liquidaciones .aviso.err{background:var(--red-bg);color:var(--red);border:1px solid var(--red)}
+
+/* SCOPE = .pantalla-tareas, .pantalla-flags, .pantalla-datos-faltantes, .pantalla-bitacora, .pantalla-usuarios, .pantalla-ventas — CSS genérico */
+.pantalla-tareas,.pantalla-flags,.pantalla-datos-faltantes,.pantalla-bitacora,.pantalla-usuarios,.pantalla-ventas{display:contents}
+.pantalla-tareas .filtros,.pantalla-flags .filtros,.pantalla-datos-faltantes .filtros,.pantalla-bitacora .filtros,.pantalla-usuarios .filtros,.pantalla-ventas .filtros{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
+.pantalla-tareas input.busca,.pantalla-flags input.busca,.pantalla-datos-faltantes input.busca,.pantalla-bitacora input.busca,.pantalla-usuarios input.busca,.pantalla-ventas input.busca,.pantalla-tareas select.busca,.pantalla-flags select.busca,.pantalla-datos-faltantes select.busca,.pantalla-bitacora select.busca,.pantalla-usuarios select.busca,.pantalla-ventas select.busca{background:var(--pan);border:1px solid var(--bd);color:var(--ink);padding:8px 12px;border-radius:6px;font-size:13px;flex:1;min-width:150px}
+.pantalla-tareas input.busca:focus,.pantalla-flags input.busca:focus,.pantalla-datos-faltantes input.busca:focus,.pantalla-bitacora input.busca:focus,.pantalla-usuarios input.busca:focus,.pantalla-ventas input.busca:focus,.pantalla-tareas select.busca:focus,.pantalla-flags select.busca:focus,.pantalla-datos-faltantes select.busca:focus,.pantalla-bitacora select.busca:focus,.pantalla-usuarios select.busca:focus,.pantalla-ventas select.busca:focus{border-color:var(--brand);outline:0}
+.pantalla-tareas .btn-mini,.pantalla-flags .btn-mini,.pantalla-datos-faltantes .btn-mini,.pantalla-bitacora .btn-mini,.pantalla-usuarios .btn-mini,.pantalla-ventas .btn-mini{background:var(--btn);color:var(--btnT);border:0;border-radius:8px;font-size:12.5px;font-weight:600;padding:9px 14px;cursor:pointer;white-space:nowrap}
+.pantalla-tareas .btn-mini.gris,.pantalla-flags .btn-mini.gris,.pantalla-datos-faltantes .btn-mini.gris,.pantalla-bitacora .btn-mini.gris,.pantalla-usuarios .btn-mini.gris,.pantalla-ventas .btn-mini.gris{background:var(--i3);color:var(--ink)}
+.pantalla-tareas .conteo,.pantalla-flags .conteo,.pantalla-datos-faltantes .conteo,.pantalla-bitacora .conteo,.pantalla-usuarios .conteo,.pantalla-ventas .conteo{font-size:11px;color:var(--i3);opacity:.8}
+.pantalla-tareas .card,.pantalla-flags .card,.pantalla-datos-faltantes .card,.pantalla-bitacora .card,.pantalla-usuarios .card,.pantalla-ventas .card{background:var(--pan);border:1px solid var(--bd);border-radius:8px;overflow:hidden;margin-bottom:12px}
+.pantalla-tareas .tabla-wrap,.pantalla-flags .tabla-wrap,.pantalla-datos-faltantes .tabla-wrap,.pantalla-bitacora .tabla-wrap,.pantalla-usuarios .tabla-wrap,.pantalla-ventas .tabla-wrap{overflow-x:auto}
+.pantalla-tareas table,.pantalla-flags table,.pantalla-datos-faltantes table,.pantalla-bitacora table,.pantalla-usuarios table,.pantalla-ventas table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-tareas thead th,.pantalla-flags thead th,.pantalla-datos-faltantes thead th,.pantalla-bitacora thead th,.pantalla-usuarios thead th,.pantalla-ventas thead th{background:var(--hair);text-align:left;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-tareas tbody td,.pantalla-flags tbody td,.pantalla-datos-faltantes tbody td,.pantalla-bitacora tbody td,.pantalla-usuarios tbody td,.pantalla-ventas tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-tareas tbody td.mono,.pantalla-flags tbody td.mono,.pantalla-datos-faltantes tbody td.mono,.pantalla-bitacora tbody td.mono,.pantalla-usuarios tbody td.mono,.pantalla-ventas tbody td.mono{font-family:'IBM Plex Mono',monospace;font-weight:600}
+.pantalla-tareas tbody td.num,.pantalla-flags tbody td.num,.pantalla-datos-faltantes tbody td.num,.pantalla-bitacora tbody td.num,.pantalla-usuarios tbody td.num,.pantalla-ventas tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-tareas tbody tr:hover,.pantalla-flags tbody tr:hover,.pantalla-datos-faltantes tbody tr:hover,.pantalla-bitacora tbody tr:hover,.pantalla-usuarios tbody tr:hover,.pantalla-ventas tbody tr:hover{background:var(--gtint)}
+.pantalla-tareas tbody tr.clic,.pantalla-flags tbody tr.clic,.pantalla-datos-faltantes tbody tr.clic,.pantalla-bitacora tbody tr.clic,.pantalla-usuarios tbody tr.clic,.pantalla-ventas tbody tr.clic{cursor:pointer}
+.pantalla-tareas .pill,.pantalla-flags .pill,.pantalla-datos-faltantes .pill,.pantalla-bitacora .pill,.pantalla-usuarios .pill,.pantalla-ventas .pill{font-size:10px;font-weight:600;border-radius:13px;padding:2px 8px;display:inline-block}
+.pantalla-tareas .pill.ambar,.pantalla-flags .pill.ambar,.pantalla-datos-faltantes .pill.ambar,.pantalla-bitacora .pill.ambar,.pantalla-usuarios .pill.ambar,.pantalla-ventas .pill.ambar{background:var(--amb-bg);color:var(--amb)}
+.pantalla-tareas .pill.verde,.pantalla-flags .pill.verde,.pantalla-datos-faltantes .pill.verde,.pantalla-bitacora .pill.verde,.pantalla-usuarios .pill.verde,.pantalla-ventas .pill.verde{background:#E8F5E9;color:var(--money)}
+.pantalla-tareas .pill.gris,.pantalla-flags .pill.gris,.pantalla-datos-faltantes .pill.gris,.pantalla-bitacora .pill.gris,.pantalla-usuarios .pill.gris,.pantalla-ventas .pill.gris{background:var(--hair);color:var(--i2)}
+.pantalla-tareas .enlace,.pantalla-flags .enlace,.pantalla-datos-faltantes .enlace,.pantalla-bitacora .enlace,.pantalla-usuarios .enlace,.pantalla-ventas .enlace{color:var(--brand);cursor:pointer;text-decoration:none}
+.pantalla-tareas .enlace:hover,.pantalla-flags .enlace:hover,.pantalla-datos-faltantes .enlace:hover,.pantalla-bitacora .enlace:hover,.pantalla-usuarios .enlace:hover,.pantalla-ventas .enlace:hover{text-decoration:underline}
+.pantalla-tareas .pos,.pantalla-flags .pos,.pantalla-datos-faltantes .pos,.pantalla-bitacora .pos,.pantalla-usuarios .pos,.pantalla-ventas .pos{color:var(--money);font-weight:600}
+.pantalla-tareas .neg,.pantalla-flags .neg,.pantalla-datos-faltantes .neg,.pantalla-bitacora .neg,.pantalla-usuarios .neg,.pantalla-ventas .neg{color:var(--red);font-weight:600}
+.pantalla-tareas .vacio,.pantalla-flags .vacio,.pantalla-datos-faltantes .vacio,.pantalla-bitacora .vacio,.pantalla-usuarios .vacio,.pantalla-ventas .vacio{padding:20px;text-align:center;color:var(--i2);font-style:italic}
+.pantalla-tareas .leyenda,.pantalla-flags .leyenda,.pantalla-datos-faltantes .leyenda,.pantalla-bitacora .leyenda,.pantalla-usuarios .leyenda,.pantalla-ventas .leyenda{font-size:11px;color:var(--i2);padding:12px;font-style:italic}
+.pantalla-tareas .errbox,.pantalla-flags .errbox,.pantalla-datos-faltantes .errbox,.pantalla-bitacora .errbox,.pantalla-usuarios .errbox,.pantalla-ventas .errbox{background:var(--red-bg);border:1px solid var(--red);color:var(--red);padding:12px;border-radius:6px}
+.pantalla-tareas .form-erp,.pantalla-flags .form-erp,.pantalla-datos-faltantes .form-erp,.pantalla-bitacora .form-erp,.pantalla-usuarios .form-erp,.pantalla-ventas .form-erp{background:var(--pan);border:1px solid var(--bd);border-radius:8px;padding:14px;margin-bottom:12px}
+.pantalla-tareas .form-erp .campos,.pantalla-flags .form-erp .campos,.pantalla-datos-faltantes .form-erp .campos,.pantalla-bitacora .form-erp .campos,.pantalla-usuarios .form-erp .campos,.pantalla-ventas .form-erp .campos{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.pantalla-tareas .form-erp .campo,.pantalla-flags .form-erp .campo,.pantalla-datos-faltantes .form-erp .campo,.pantalla-bitacora .form-erp .campo,.pantalla-usuarios .form-erp .campo,.pantalla-ventas .form-erp .campo{display:flex;flex-direction:column;min-width:0}
+.pantalla-tareas .campo-fijo,.pantalla-flags .campo-fijo,.pantalla-datos-faltantes .campo-fijo,.pantalla-bitacora .campo-fijo,.pantalla-usuarios .campo-fijo,.pantalla-ventas .campo-fijo{background:var(--bg);border:1px dashed var(--bd);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--ink)}

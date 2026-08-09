@@ -159,7 +159,7 @@
           ${extra}
         </div>
 
-        <label style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--gris);font-weight:700">Líneas <span class="req">*</span></label>
+        <label style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--i2);font-weight:700">Líneas <span class="req">*</span></label>
         <div class="lineas-doc" id="lineas"></div>
         <button type="button" class="btn-linea" id="btnAgregarLinea">+ Agregar línea</button>
         <div class="doc-total">Total <span class="n" id="docTotal">$0.00</span></div>
@@ -296,7 +296,7 @@
         <td>${esc(it.unidad || '—')}</td>
         <td class="num">${monto(it.precio_unitario, h.moneda)}</td>
         <td class="num">${monto(it.importe, h.moneda)}</td></tr>`).join('')
-      : '<tr><td colspan="5" style="color:var(--gris)">Sin líneas.</td></tr>';
+      : '<tr><td colspan="5" style="color:var(--i2)">Sin líneas.</td></tr>';
 
     const transHtml = (!anulado && puedeCapturar && permitidos.length)
       ? `<h4>Cambiar estado</h4><div class="transiciones">
@@ -344,7 +344,7 @@
           <button class="btn-mini gris" id="btnPdf">Exportar PDF</button>
           <button class="btn-mini gris" id="btnDocOficial">${cfg.id === 'cotizacion' ? 'Generar Quote (PDF)' : 'Generar PO (PDF)'}</button>
           ${(!anulado && ERP.puede('capturar')) ? `
-            <span class="solo-lectura" style="font-style:normal;font-weight:600;color:var(--tinta)">Enviar:</span>
+            <span class="solo-lectura" style="font-style:normal;font-weight:600;color:var(--ink)">Enviar:</span>
             <button class="btn-mini" id="btnWhatsapp">WhatsApp</button>
             <button class="btn-mini gris" id="btnCorreo" disabled title="Próximamente (cuando esté Resend)">Correo</button>` : ''}
         </div>
@@ -807,8 +807,8 @@
 
   async function render(cont) {
     pestana = 'cotizacion'; busqueda = '';
-    cont.innerHTML = barra();
-    await conectar(cont);
+    cont.innerHTML = `<div class="pantalla-comercial">${barra()}</div>`;
+    await conectar(cont.querySelector('.pantalla-comercial'));
   }
 
   // Abridor global para que otros módulos (p.ej. Tareas) abran un documento por su folio.

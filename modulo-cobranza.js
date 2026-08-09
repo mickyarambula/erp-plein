@@ -1,4 +1,9 @@
-/* Módulo Cobranza — CxC por cliente, antigüedad de cartera y drill-down por cliente. */
+/* Módulo Cobranza — CxC por cliente, antigüedad de cartera y drill-down por cliente.
+   E91: vestida con la gramática "Operador estilo Silo" (ver REPORTE-FRONTEND.md, E90/E91).
+   SCOPE = .pantalla-cxc, wrapper nuevo alrededor de TODO lo que pinta render() (igual que
+   .pantalla-embarques en modulo-cargas.js) — el drill-down de verCliente() abre en el panel/
+   drawer global #panelBody, compartido por TODA la app, y se deja FUERA del wrapper a propósito
+   (misma frontera que se usó en Embarques con la ficha de carga). */
 
 (function () {
   'use strict';
@@ -55,7 +60,10 @@
     if (!rows.length) return '<div class="vacio">Sin cartera pendiente.</div>';
     const max = Math.max(...rows.map(r => num(r.saldo)), 1);
     const total = rows.reduce((s, r) => s + num(r.saldo), 0);
-    const color = b => b === '0-30' ? '#1E5B3A' : b === '31-60' ? '#5F8C3E' : b === '61-90' ? '#C98A2D' : '#B3402E';
+    // E91: antes 4 tonos hex fijos (verde oscuro/verde claro/ámbar/rojo); el set de tokens de
+    // tokens.css solo define 3 semáforos (money/amb/red), así que 31-60 y 61-90 comparten ámbar
+    // — simplificación deliberada, no un descuido (documentado en REPORTE-FRONTEND.md).
+    const color = b => b === '0-30' ? 'var(--money)' : b === '90+' ? 'var(--red)' : 'var(--amb)';
     // Cartera vencida: de saldo_vencido (backend, contra fecha de vencimiento), no del bucket.
     const vencido = rows.reduce((s, r) => s + num(r.saldo_vencido), 0);
 
@@ -64,7 +72,7 @@
       const etq = r.bucket === '0-30' ? '0-30 días venc. (incluye por vencer)' : `${esc(r.bucket)} días vencidos`;
       return `<div class="barra-row">
         <div class="barra-top">
-          <span>${etq} · ${r.cargas} carga${r.cargas === 1 ? '' : 's'} ${r.bucket === '90+' ? '⚠' : ''}</span>
+          <span>${etq} · ${r.cargas} carga${r.cargas === 1 ? '' : 's'} ${r.bucket === '90+' ? '<i class="ti ti-alert-triangle-filled" style="color:var(--red)"></i>' : ''}</span>
           <span class="b">${usd(s)}</span>
         </div>
         <div class="barra">
@@ -96,7 +104,23 @@
 
     const puedeCap = ERP.puede('capturar');
 
+    // Tira de KPIs (E91): mismos totales que ya arma el módulo — "vencido" es la MISMA suma que
+    // pintarAging() calcula internamente para su leyenda (Σ saldo_vencido de v_cxc_aging_resumen),
+    // recalculada aquí una vez más sobre el mismo `aging` ya traído (sin fetch nuevo) porque
+    // pintarAging() no exponía ese número hacia afuera. "Al corriente" es total − vencido, no un
+    // dato nuevo del backend.
+    const vencido = aging.reduce((s, r) => s + num(r.saldo_vencido), 0);
+    const alCorriente = total - vencido;
+    const kpiTile = (etiqueta, valor, clase) => `<div class="kpi"><div class="k">${esc(etiqueta)}</div><div class="v${clase ? ' ' + clase : ''}">${valor}</div></div>`;
+    const kpistrip = `<div class="kpistrip">
+      ${kpiTile('Por cobrar', usd(total))}
+      ${kpiTile('Vencido', usd(vencido), vencido > 0.009 ? 'neg' : 'ink')}
+      ${kpiTile('Al corriente', usd(alCorriente), 'ink')}
+    </div>`;
+
     cont.innerHTML = `
+      <div class="pantalla-cxc">
+      ${kpistrip}
       ${ERP.botonesExportar ? ERP.botonesExportar('CuentasPorCobrar', 'Cuentas por Cobrar', '') : ''}
       <h2 class="sec">Saldo por cliente</h2>
       <div class="card">
@@ -104,7 +128,7 @@
           <thead><tr><th>Cliente</th><th class="num">Cargas</th><th class="num">Saldo CxC</th><th class="num">% cartera</th></tr></thead>
           <tbody>
             ${conSaldo.map(r => `<tr class="clic" data-cliente="${esc(r.cliente)}">
-              <td><span class="enlace">${esc(r.cliente)}</span>${puedeCap ? ` <button class="btn-cap" data-cap-cliente="${esc(r.cliente)}" title="Registrar un cobro de ${esc(r.cliente)}">+ cobro</button>` : ''}</td>
+              <td class="cliente"><span class="enlace">${esc(r.cliente)}</span>${puedeCap ? ` <button class="btn-cap" data-cap-cliente="${esc(r.cliente)}" title="Registrar un cobro de ${esc(r.cliente)}">+ cobro</button>` : ''}</td>
               <td class="num">${r.cargas}</td>
               <td class="num">${usd(r.saldo_cxc)}</td>
               <td class="num">${total > 0 ? fmt(num(r.saldo_cxc) / total * 100) + '%' : '—'}</td>
@@ -129,9 +153,9 @@
             <th class="num">Pendiente</th><th class="num">Antigüedad</th></tr></thead>
           <tbody>${filasDso.map(r => {
             const ant = r.antiguedad_pendiente_dias == null ? null : num(r.antiguedad_pendiente_dias);
-            const col = ant != null && ant >= 90 ? 'var(--rojo)' : ant != null && ant >= 60 ? 'var(--ambar)' : 'inherit';
+            const col = ant != null && ant >= 90 ? 'var(--red)' : ant != null && ant >= 60 ? 'var(--amb)' : 'inherit';
             return `<tr class="clic" data-cliente="${esc(r.cliente)}">
-              <td><span class="enlace">${esc(r.cliente)}</span></td>
+              <td class="cliente"><span class="enlace">${esc(r.cliente)}</span></td>
               <td class="num">${usd0(r.cobrado)}</td>
               <td class="num">${r.dso_cobrado_dias == null ? '—' : ERP.fmt0(r.dso_cobrado_dias)}</td>
               <td class="num">${usd0(r.saldo_pendiente)}</td>
@@ -142,6 +166,7 @@
         <div class="leyenda">DSO = días promedio embarque→cobro, ponderado por monto (negativo = anticipo).
           Antigüedad = días promedio de lo que sigue pendiente.</div>`
           : '<div class="vacio">Sin datos de rotación todavía.</div>'}
+      </div>
       </div>`;
 
     cont.querySelectorAll('tr.clic[data-cliente]').forEach(tr =>

@@ -242,6 +242,8 @@ WHERE n.nspname='public' AND proname IN ('fn_capturar_mov','fn_editar_movimiento
 **Dueño sugerido:** Miguel (confirmar con Samuel si el margen 0 de la 1457 es real y estampar la etiqueta).
 **Fix en una línea:** agregar `[VENTA=COSTO CONFIRMADO]` a nota_revision de P-019 si procede.
 
+**✅ RESUELTO (E80, 2026-08-03, D-78):** confirmado con Miguel que el margen 0 de P-019 es REAL (venta 21,948 = costo 21,948; los 5 costos están banco-atribuidos: MP Cornejos 11,141.27 + Comisión Luis Álvarez 5,334.73 + Fletes BBA 4,800 + Aduanas Suárez 530.73 + In&Out Agricooling 141.27). La nota `[E26]` "margen 672" quedó stale — las atribuciones E60 (Aduanas + In&Out = 672 exactos) consumieron ese margen. Se estampó `[VENTA=COSTO CONFIRMADO]` en `nota_revision`. **Precisión de la premisa:** A-12 NO bloqueaba julio (el checklist es por mes; P-019 cuenta en marzo; julio tiene placeholders=0). A-12 limpió el ÚNICO placeholder del sistema → `v_placeholders` 1→0, marzo `cerrable=true`. **Mecanismo:** marzo cerrado congelaba `nota_revision`; se añadió una excepción acotada a `fn_chk_periodo_cerrado` (patrón E44/E59) que permite editar `nota_revision` (texto, nunca contable) en meses cerrados — habilita las etiquetas de confirmación D-39. ENSAYO probó que un cambio de `ingreso_venta` en mes cerrado SIGUE bloqueado. Money-neutral (Cuadre 0.00, seg 0/0/0). **Parqueado para criterio de Miguel:** la comisión de Luis Álvarez (24% del bruto) es lo que deja a Plein en margen 0; revisarla sería reabrir marzo + mover dinero, decisión aparte.
+
 ---
 
 ### A-13 · Cobro anterior al embarque en P-013 (anomalía de fecha menor)
@@ -337,6 +339,22 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid='fac
 
 ---
 
+### E75 (2026-08-02) — C.2 · Inventario por lote (DDL aditivo, MONEY-NEUTRAL, sin hallazgos)
+- **Objetos nuevos:** tabla `lote_movimientos` (`merma|rts`, nace cerrada RLS+REVOKE, guard `Σ≤cajas`, soft-delete) + vistas `v_lote_inventario` / `v_lote_movimientos` + RPCs `fn_registrar_mov_lote` / `fn_anular_mov_lote` (D-67/D-67b).
+- **Dinero:** NO se movió (merma/RTS son físicos). CxC 588,061.82 · CxP 507,241.00 · Cuadre **0.00** · JPM/JEAMS sin cambio — **idénticos a E74**. `disc_vs_vlotes = 0` (número-preservador).
+- **Seguridad:** sentinelas **0/0/0** tras el DDL (ENSAYO que revierte + verificación post-apply). Advisor Supabase: los objetos caen en el patrón de la casa (`rls_enabled_no_policy` INFO; `security_definer_view`; `authenticated_security_definer_function_executable`) — **cero categoría nueva**, NO aparecen en `anon_*` ni en `function_search_path_mutable` (se les puso `SET search_path`).
+- **Sin hallazgo de auditoría** abierto en esta sesión.
+
+---
+
+### E67–E68 (2026-07-31) — Corrección de datos vía V8 (toca dinero, con GATE + ENSAYO)
+- **P-082/083/084** (Crystal Valley/espárrago): costo mal etiquetado `Otro` → `Materia prima` + comisión faltante agregada (`fn_editar_costo`/`fn_agregar_costo`). CxP 510,115.14 → 510,595.14 (+480). Cuadre 0.00, sentinelas 0/0/0.
+- **P-034** (PO 7568, "Rechazo"): wash (pago+devolución), se deja sin costo.
+- **Módulo Presencia (E68):** 2 tablas + 1 RPC + 2 vistas, nacen cerradas; verificado seg_anon/escritura/auth 0/0/0 post-apply. Sin impacto en anclas de dinero.
+- **Kabocha 370/372:** diagnosticados (no préstamo, sólo sin aplicar; adelanto excede el costo de la carga); ejecución en E69.
+
+---
+
 ### E55 (2026-07-29) — Limpieza de documentos de prueba
 
 Se borraron todos los documentos de prueba anulados (8 facturas, 3 OC, 2 cotizaciones, 1 liquidación
@@ -387,3 +405,123 @@ saldo real (~55.6k). Detalle de la decisión en `BITACORA-DECISIONES.md` D-49.
 **Pendiente (E62):** 31 líneas de costo residuales sin atribuir; atribución de PAGOS por línea
 (hoy estimados por prorrateo en `v_cxp_proveedor_atribuido`). Sin impacto en anclas al cierre de
 E61 (Cuadre 0.00, CxC/CxP/JPM sin cambio).
+
+
+## Baseline advisor actualizado (E79, 2026-08-02)
+function_search_path_mutable: 9 (bajo de 10 al endurecer fn_carga_costos_set_lote, D-72).
+security_definer_view: 131 (+4 vistas nuevas: v_cxp_lote, v_venta_ejes, v_venta_ejes_resumen, v_rm_sugerido_carga).
+authenticated_secdef_fn 102 . rls_enabled_no_policy 64 . anon 1 (sin cambio). Cero categoria nueva en E77-E79.
+Regla de chequeo para proximas sesiones: search_path_mutable NO debe subir de 9; secdef_view baseline 131.
+
+## E77-E79: verificacion money-neutral (todas las escrituras)
+- D-72 costo->lote: Sigma carga_costos 1,215,630.81 y CxP atribuido 1,170,414.05 identicos antes->despues.
+- D-73/D-74/D-75/D-76: Cuadre 0.00, seg 0/0/0, CxC 588,061.82 / CxP 507,241.00 sin cambio; ingreso eje-lote
+  1,224,484.40 estable. Backfill 7 SO: delta detector 0 por-carga ($36/caja reconstruye la venta exacta).
+- Cada DDL paso por ENSAYO que revierte + verificacion no-circular (v_anclas + sentinelas) antes de aplicar.
+
+
+---
+
+## CIERRE E84 (2026-08-04) — ESTADO DE HALLAZGOS
+
+Resolución de la ola de hardening. Detalle técnico de cada uno en BITACORA D-84..D-92.
+
+| Hallazgo | Estado | Resolución |
+|---|---|---|
+| A-01 | ✅ Resuelto | RLS + REVOKE (E48–E51). |
+| A-02 | ✅ Resuelto | fn_hoy() reemplazó CURRENT_DATE (E48–E51). |
+| A-03 | ✅ Resuelto | Tráfico consolidado en AGROFEPAC (id 4); **cola E84**: id 67 retirado de selectores (D-91). |
+| A-04 | ✅ Resuelto | Renglón "Ajuste bancario reconocido (sin par)" +21.81 (E49). |
+| A-05 | ✅ Resuelto E84 | aplicaciones.capturado_por/_ts + trigger de sellado (D-84). |
+| A-06 | ✅ Resuelto E84 | Gate cargas → whitelist; venta_esperada inmutable (D-85). |
+| A-06b | ✅ Resuelto E84 | Gate movimientos/carga_costos → whitelist (D-85). |
+| A-07 | 🟡 Parcial | Guarda futura **pendiente** (backend, ~10 min); datos de las 3 notas **bloqueados por Samuel**. |
+| A-08 | ✅ Resuelto | Flag stale P-085 ya no existe (único flag vivo = P-089, que es otro tema). |
+| A-09 | ✅ Resuelto E84 | cc42/46 (staging FRX en anuladas) borrados; reapertura/re-cierre junio (D-89). |
+| A-10 | ✅ Resuelto E84 | cc282 "Otros gastos"→"Otro"; reapertura/re-cierre marzo (D-88). |
+| A-09/10 prevención | ✅ Resuelto E84 | FK carga_costos.concepto→conceptos_costo.nombre (D-90). |
+| A-11 | ✅ Resuelto E84 | fn_editar_movimiento: NULL=no-toca en descripcion/nota (D-87). |
+| A-12 | ✅ Resuelto | P-019 etiquetada (E80). |
+| A-13 | 🚫 Won't-fix | Cobro pre-embarque P-013 (cosmético). Documentado. |
+| A-14 | 🟡 Pendiente Miguel | Alta "Bell Pepper Rojo" con codigo_item FRX + ligar PC-006. |
+| A-15 | ✅ Resuelto E84 | fn_editar_factura no cambia estado (D-86). |
+| A-15b | ✅ Resuelto E84 | fn_editar_factura no cambia numero (D-86). |
+
+**Neto:** la superficie de hardening queda cerrada salvo A-07 (guarda futura backend pendiente + datos de Samuel) y A-14 (dato de Miguel). Anclas de dinero intactas; carga_costos bajó 257→255 por diseño (A-09).
+
+
+---
+
+## CIERRE E85 (2026-08-04)
+
+### A-07 — Reconocimiento de venta de consignación sin fuente
+Estado: RESUELTO EN BACKEND (D-93) · pendiente dato de Samuel. Guardas en `fn_editar_carga` y `fn_crear_carga`. Cierra 100% cuando lleguen las notas fuente de P-071 y P-075.
+
+### A-14 — Alta/ligado de "Bell Pepper Rojo"
+Estado: CERRADO (D-95). Modelo producto+variedades. PC-006 ligado a producto Bell Pepper (id 4). 0 sin producto, 0 en diverge.
+
+### A-16 — Espejos lote_ventas del backfill C.2/E73  (OJO: número corregido)
+Estado E85: ABIERTO (derivado de D-96). NOTA DE NUMERACIÓN: en el borrador de E85 se propuso como "A-15" por error — pero A-15/A-15b ya existen (fn_editar_factura, E84/D-86). El número correcto de la auditoría de espejos es **A-16**.
+Riesgo: otras cargas margen podrían arrastrar `lote_ventas` con precio de venta espejo desalineado del real ("ventas fantasma" heredadas del backfill). Acción: comparar `venta_lote` (v_ingreso_reconocido) vs venta real en todas las cargas margen/buy_resell con lote_ventas.
+
+### Sanidad E85
+seg 0/0/0 · Cuadre 0.00 · CxC 589,263.13 · CxP 507,241.00.
+
+---
+
+## CIERRE E86 (2026-08-04)
+
+### A-16 — Espejos lote_ventas — CERRADO (D-97)
+Barrido de consistencia interna (NO comparación con V8): todas las cargas margen/buy_resell con lote_ventas, `round(venta_lote,2)` vs `round(cargas.ingreso_venta,2)`, reusando la lógica exacta de `v_ingreso_reconocido`. Universo = 50 cargas margen/buy_resell (de 80 con lote_ventas; las otras 30 son consignación/comisión, fuera de alcance por diseño). Resultado: **50/50 cuadran exacto, 0 mismatches.** P-035 confirmado como caso único. Sin acción de corrección. Criterio de salida cumplido → BASE declarada CERRADA / lista para uso real.
+
+### Akambarhu — clasificación de préstamo — CERRADO (D-100)
+Ya NO es hallazgo de auditoría. Los préstamos/financiamiento a Akambarhu viven en el módulo Proyectos (disposiciones, no ligadas a carga). Las cargas P-073/P-075/P-043/P-047 son consignación normal (carga_costos: cero concepto de préstamo; notas E63 ya decían "consignacion normal, no prestamo"). Removido de parqueados. NO reabrir.
+
+### A-07 — sin cambio
+Resuelto en backend (D-93); pendiente SOLO nota de Samuel para P-071/P-075. Miguel indicó que puede resolverlo él.
+
+### Sanidad E86 (post-DDL y post-money-mover)
+seg 0/0/0 · Cuadre 0.00 · CxC 589,263.13 · CxP 507,241.00 (sin cambio vs E85; todo E86 money-neutral). Advisor secdef_view: usar catálogo (140).
+
+### Tabla de estado (agregar a tu matriz de hallazgos)
+| A-07 | 🟠 Resuelto backend (D-93), pend. nota Samuel P-071/P-075 |
+| A-14 | ✅ Cerrado E85 (D-95) |
+| A-16 | ✅ Cerrado E86 (D-97) — espejos lote_ventas, 0 mismatches |
+| Akambarhu | ✅ Cerrado E86 (D-100) — préstamos en Proyectos, no en cargas |
+
+
+## CIERRE E87 (2026-08-05)
+
+### Diagnóstico CxP (barrido técnico solicitado por Miguel) — NO es hallazgo de dinero perdido
+- Integridad de costos: 51 cargas margen (50 con costo, 1 sin = P-034 Rechazo, venta 0 → correcto);
+  18 consignación todas con costo; 13 comisión todas sin costo (correcto). Sin huecos de dinero.
+- Dos modelos de CxP coexisten: DIRECTO (asentado, alimenta Cuadre/ancla = 496,368.03) vs ATRIBUIDO
+  (estimado por prorrateo = 455,964.78; lo usa la pantalla CxP). La diferencia son líneas con
+  carga_costos.contraparte_id NULL (consignación). Ver D-104. Vista nueva
+  v_cxp_detalle_proveedor_atribuido para el cajón.
+- Ancla CxP movida en sesión 506,941.00→496,368.03 = 5 pagos a proveedor de Miguel (movs 382/384,
+  Σ 10,572.97). Cuadre 0.00 en todo momento.
+
+### PARKED (para E88, no urgente)
+- **AGROFEPAC / consignación en CxP directo (235k):** decidir si esos costos de consignación deben
+  ser CxP normal o ir por liquidación (sus líneas traen contraparte_id NULL → invisibles en atribuido).
+- **JPM −9,584.71:** confirmar contra el estado de cuenta (banco manda). Si el banco no está en
+  negativo, falta registrar un ingreso/traspaso.
+- **Barrido de CxC:** aún sin correr (más simple: 1 cliente por carga; confirmar que lista y detalle
+  usan la misma vista).
+
+### Sanidad E87
+seg 0/0/0 · Cuadre 0.00 · CxC 589,263.13 · CxP 496,368.03. Todo E87 money-neutral salvo los pagos
+operativos de Miguel en la UI.
+
+### Tabla de estado (agregar a tu matriz)
+| CxP dos modelos | 🔵 Diagnosticado E87 (D-104); vista detalle atribuida creada; front consistente |
+| AGROFEPAC consignación en CxP | 🟠 PARKED E88 — decisión de clasificación |
+| JPM negativo | 🟠 PARKED — confirmar vs banco (banco manda) |
+| Barrido CxC | 🟠 PARKED E88 — sin correr |
+
+---
+## E88 — sin nuevos hallazgos A-##
+E88 fue features + conciliación, no auditoría de backend. D-105 (permisos granulares) es money-neutral; D-106/107/108
+(conciliación banco Paso 1) cerraron con Cuadre 0.00 y seg 0/0/0. La conciliación V8↔ERP por hojas continúa (Paso 2
+Cargas); si algo rompe el Cuadre se abre A-## aquí. Base sigue CERRADA.

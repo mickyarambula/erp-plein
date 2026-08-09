@@ -1,4 +1,15 @@
-/* Módulo Inicio — tarjetas grandes clicables. Ligero: solo lo indispensable. */
+/* Módulo Inicio — tarjetas grandes clicables. Ligero: solo lo indispensable.
+
+   E94: vestida con la gramática "Operador estilo Silo" (ver REPORTE-FRONTEND.md, E90-E93).
+   SCOPE = .pantalla-inicio, wrapper nuevo alrededor de TODO lo que pinta render() (mismo patrón
+   que las 4 pantallas anteriores). .hoy-card/.hoy-* se COMPARTEN con la agenda de Embarques
+   (ya scopeada bajo .pantalla-embarques en E90) y .fila-utilidad/.fila-margen se comparten con
+   modulo-finanzas.js — remapeadas SOLO aquí, sin tocar esas reglas globales.
+   Se mantuvo .tarjetas/.tarjeta (ya es, en los hechos, una tira de KPIs — grande, clicable,
+   con acento de color) en vez de introducir un .kpistrip/.kpi paralelo: habría sido un segundo
+   componente haciendo el mismo trabajo. Nuevo modificador .tarjeta.ink para las 2 tarjetas que
+   NO son dinero (Flags activas, Cargas activas) — mismo lenguaje "verde=dinero/ink=neutro" de
+   las tiras de KPI de Embarques/CxC/CxP/Tesorería, sin duplicar el componente. */
 
 (function () {
   'use strict';
@@ -136,7 +147,7 @@
     const filas = (hoy || []).filter(r => r.categoria !== 'Sin alertas');
     if (!filas.length) {
       return `<section class="hoy"><h2 class="sec">Hoy</h2>
-        <div class="hoy-vacio">✅ Todo en orden — no hay alertas hoy.</div></section>`;
+        <div class="hoy-vacio"><i class="ti ti-circle-check-filled"></i> Todo en orden — no hay alertas hoy.</div></section>`;
     }
     const nR = filas.filter(f => f.severidad === 'roja').length;
     const nA = filas.filter(f => f.severidad === 'ambar').length;
@@ -177,6 +188,7 @@
     const cuentasReales = cuentas.filter(c => c.banco !== 'Virtual');
 
     cont.innerHTML = `
+      <div class="pantalla-inicio">
       ${pintarHoy(hoy)}
       <div class="tarjetas">
         ${tarjeta({
@@ -194,8 +206,8 @@
         })}
         ${tarjeta({
           id: 'tFlags', lbl: 'Flags activas', val: String(flags),
-          clase: flags > 0 ? 'alerta' : '',
-          sub: flags > 0 ? 'Dudas parqueadas, pendientes de resolver' : 'Nada pendiente 🎉',
+          clase: flags > 0 ? 'alerta' : 'ink',
+          sub: flags > 0 ? 'Dudas parqueadas, pendientes de resolver' : 'Nada pendiente — todo resuelto',
           destino: 'flags'
         })}
         ${un ? tarjeta({
@@ -207,7 +219,7 @@
           destino: 'finanzas'
         }) : ''}
         ${cargas ? tarjeta({
-          id: 'tCargas', lbl: 'Cargas activas', val: String(cargas.activas),
+          id: 'tCargas', lbl: 'Cargas activas', val: String(cargas.activas), clase: 'ink',
           sub: `${cargas.total} ${cargas.total === 1 ? 'carga vigente' : 'cargas vigentes'} en el ERP` +
                (cargas.anuladas ? ` · ${cargas.anuladas} anulada${cargas.anuladas === 1 ? '' : 's'}` : '') +
                (cargas.porConfirmar ? ` · +${cargas.porConfirmar} por confirmar` : ''),
@@ -238,6 +250,7 @@
       <div class="leyenda" style="margin-top:22px">
         Toca cualquier tarjeta para ver su desglose. Usa el buscador de arriba (o <b>⌘K</b>) para saltar
         directo a una carga, cliente, proveedor o movimiento.
+      </div>
       </div>`;
 
     cont.querySelectorAll('.tarjeta').forEach(b =>

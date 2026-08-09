@@ -109,11 +109,14 @@
       <h2 class="sec">${esc(d.label)}</h2>
       <div class="card">${tabla(d, filasPorDim[d.key] || [])}</div>`).join('');
 
-    cont.innerHTML = cabecera + secciones + `
+    cont.innerHTML = `<div class="pantalla-concentracion">
+      ${cabecera}
+      ${secciones}
       <div class="leyenda" style="margin-top:18px">
         Las filas resaltadas son el <b>Pareto 80/20</b>: las contrapartes que juntas acumulan
         el primer 80% de la venta — donde se concentra el riesgo. Base carga (venta reconocida).
-      </div>`;
+      </div>
+    </div>`;
   }
 
   ERP.registrar('concentracion', {

@@ -23,7 +23,7 @@
     const rows = await q('v_cierre_checklist', '&order=mes.desc');
 
     if (!rows.length) {
-      cont.innerHTML = '<div class="card"><div class="vacio">Sin periodos en el checklist de cierre.</div></div>';
+      cont.innerHTML = '<div class="pantalla-cierres"><div class="card"><div class="vacio">Sin periodos en el checklist de cierre.</div></div></div>';
       return;
     }
 
@@ -41,7 +41,7 @@
       </tr>`;
     }).join('');
 
-    cont.innerHTML = `
+    cont.innerHTML = `<div class="pantalla-cierres">
       <div class="card">
         <div class="tabla-wrap"><table>
           <thead><tr><th>Mes</th><th>Estado</th><th>Bloqueadores</th>
@@ -51,7 +51,8 @@
         <div class="leyenda">Vista de solo lectura del avance de cierre por periodo.
           Un mes con <b>bloqueadores</b> no puede cerrarse hasta resolverlos.
           El cierre se ejecuta desde el backend, no desde aquí.</div>
-      </div>`;
+      </div>
+    </div>`;
   }
 
   ERP.registrar('cierres', {

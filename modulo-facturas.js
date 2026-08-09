@@ -1,15 +1,24 @@
 /* Módulo Facturación (ruta 'facturas') — facturas de embarques. Backend E32, no se toca.
-   Vistas: v_facturas (id, numero, carga_folio, po, cliente, fecha_emision, terminos, estado,
-           total, bill_to, ship_to, lineas jsonb, comentarios, creado_por, creado_en)
+   Vistas: v_facturas (id, numero, carga_folio, so_folio, po, cliente, fecha_emision, terminos,
+           estado, total, bill_to, ship_to, lineas jsonb, comentarios, creado_por, creado_en) —
+           carga_folio puede venir NULL en facturas nacidas de una Orden de Venta (E76); po ya
+           viene COALESCE.
            v_cxc (folio, po, cliente, ingreso_venta, cobrado, saldo_cxc, f_vencimiento, dias_vencido)
+           v_sales_orders (folio, cliente, estado, anulado, revenue_model) — picker de "Factura
+           desde Orden de Venta" y de confirmación rápida.
    estado: borrador | emitida | anulada  (el estado cancelado es 'anulada'; se muestra como "Cancelada")
    RPCs (todas capacidad 'capturar'):
-     fn_crear_factura(p_carga_folio) -> (r_id, r_advertencia)
+     fn_crear_factura(p_carga_folio) -> (r_id, r_advertencia)   [ruta legacy, intacta]
+     fn_crear_factura_desde_so(p_so_folio, p_numero) -> (r_id, r_advertencia) [E76] — exige SO
+       'Confirmada'|'Cerrada'; bloquea consignación/comisión (error del backend tal cual).
      fn_editar_factura(p_id, p_numero, p_fecha, p_terminos, p_bill_to, p_ship_to, p_lineas jsonb, p_comentarios, p_estado)
      fn_emitir_factura(p_id) -> (r_id, r_numero)   borrador -> emitida, número PP-AAAA-NNNN
      fn_cancelar_factura(p_id, p_motivo) -> (r_id, r_estado)
+     fn_confirmar_so(p_folio) — capacidad 'capturar', usada aquí solo como atajo para confirmar una
+       SO en Borrador sin salir de Facturación (el flujo completo vive en modulo-ventas.js).
    El número NO se edita a mano (serie). El estado de PAGO se lee de v_cxc (no es flag manual).
-   Expone: ERP.verFactura, ERP.montarFacturasCarga, ERP.generarInvoiceDesdeCarga, ERP.nuevaFactura */
+   Expone: ERP.verFactura, ERP.montarFacturasCarga, ERP.generarInvoiceDesdeCarga, ERP.nuevaFactura,
+   ERP.nuevaFacturaDesdeSO */
 
 (function () {
   'use strict';
@@ -54,7 +63,7 @@
       if (fEstado === 'anulada') { if (!ES_CANCELADA(f.estado)) return false; }
       else if (fEstado && f.estado !== fEstado) return false;
       if (!t) return true;
-      return [f.numero, f.po, f.cliente, f.carga_folio].some(v => ERP.norm(v).includes(t));
+      return [f.numero, f.po, f.cliente, f.carga_folio, f.so_folio].some(v => ERP.norm(v).includes(t));
     });
   }
 
@@ -66,11 +75,12 @@
     if (!rows.length) { cont.innerHTML = '<div class="vacio">Ninguna factura coincide con el filtro.</div>'; return; }
 
     cont.innerHTML = `<div class="tabla-wrap"><table id="tblFacturas">
-      <thead><tr><th>Número</th><th>PO</th><th>Cliente</th><th>Emisión</th><th>Términos</th>
+      <thead><tr><th>Número</th><th>PO</th><th>Embarque / SO</th><th>Cliente</th><th>Emisión</th><th>Términos</th>
         <th>Estado</th><th class="num">Total</th><th>Cobro</th></tr></thead>
       <tbody>${rows.map(f => `<tr class="clic" data-id="${esc(f.id)}">
         <td class="mono"><span class="enlace">${f.numero ? esc(f.numero) : '— borrador'}</span></td>
         <td class="mono">${esc(f.po || f.carga_folio || '—')}</td>
+        <td class="mono">${esc(f.carga_folio || f.so_folio || '—')}</td>
         <td>${esc(f.cliente || '—')}</td>
         <td>${esc(fecha4(f.fecha_emision))}</td>
         <td>${esc(f.terminos || '—')}</td>
@@ -95,9 +105,10 @@
     cxc.forEach(c => { cxcPorFolio[c.folio] = c; });
     fEstado = ''; fTexto = '';
 
-    cont.innerHTML = `
+    cont.innerHTML = `<div class="pantalla-facturas">
       <div class="filtros">
         ${puedeCap ? '<button class="btn-mini" id="factNueva">+ Nueva factura</button>' : ''}
+        ${puedeCap ? '<button class="btn-mini gris" id="factNuevaSO">Factura desde Orden de Venta</button>' : ''}
         <select class="busca" id="factFEstado" style="max-width:180px">
           <option value="">Todos los estados</option>
           <option value="borrador">Borrador</option>
@@ -111,10 +122,13 @@
       <div class="card" style="padding:14px"><div id="factTabla"></div></div>
       <div class="leyenda">Toca una factura para abrir su ficha (editar, emitir, imprimir).
         El <b>número</b> lo asigna la serie al emitir (una en borrador aún no lo tiene).
-        La columna <b>Cobro</b> se lee de CxC del embarque, no es un estado manual.</div>`;
+        La columna <b>Cobro</b> se lee de CxC del embarque, no es un estado manual.</div>
+    </div>`;
 
     const btnN = document.getElementById('factNueva');
     if (btnN) btnN.addEventListener('click', () => nuevaFactura());
+    const btnNSO = document.getElementById('factNuevaSO');
+    if (btnNSO) btnNSO.addEventListener('click', () => nuevaFacturaDesdeSO());
     document.getElementById('factFEstado').addEventListener('change', e => { fEstado = e.target.value; pintarTabla(); });
     let tempo;
     document.getElementById('factFTexto').addEventListener('input', e => {
@@ -217,6 +231,116 @@
     await crearDesde(folio, null, id => { ERP.ir('facturas'); setTimeout(() => verFactura(id), 60); });
   }
 
+  /* ================= Nueva factura desde Orden de Venta (E76) ================= */
+
+  let comboSODesde = null;
+
+  async function nuevaFacturaDesdeSO() {
+    if (!ERP.puede('capturar')) return;
+    ERP.abrirPanel('Factura desde Orden de Venta', 'Elige la orden de venta a facturar',
+      '<div class="skel">Cargando órdenes de venta…</div>');
+    let sos;
+    try {
+      sos = await q('v_sales_orders');
+    } catch (e) {
+      ERP.abrirPanel('Factura desde Orden de Venta', '',
+        `<div class="errbox">No se pudieron leer las órdenes de venta: ${esc(e.message)}</div>`);
+      return;
+    }
+
+    const facturables = (sos || []).filter(s => !s.anulado && (s.estado === 'Confirmada' || s.estado === 'Cerrada'));
+    if (!facturables.length) {
+      // Hoy (E76) las Órdenes de Venta nacen en Borrador: es el caso normal, no un error — se
+      // ofrece confirmar directo desde aquí sin salir a Órdenes de Venta.
+      const borradores = (sos || []).filter(s => !s.anulado && s.estado === 'Borrador');
+      ERP.abrirPanel('Factura desde Orden de Venta', '', `
+        <div class="vacio">No hay Órdenes de Venta confirmadas — confírmalas primero.</div>
+        ${borradores.length ? `<div class="tabla-wrap"><table>
+            <thead><tr><th>Folio</th><th>Cliente</th><th>Revenue Model</th><th></th></tr></thead>
+            <tbody>${borradores.map(s => `<tr>
+              <td class="mono">${esc(s.folio)}</td><td>${esc(s.cliente || '—')}</td>
+              <td>${esc(s.revenue_model || '—')}</td>
+              <td><button class="btn-mini gris" data-confirmar-so="${esc(s.folio)}">Confirmar SO</button></td>
+            </tr>`).join('')}</tbody>
+          </table></div>`
+          : '<div class="vacio">Tampoco hay Órdenes de Venta en Borrador todavía.</div>'}
+        <div class="aviso" id="factSOConfAviso"></div>`);
+      document.querySelectorAll('[data-confirmar-so]').forEach(b =>
+        b.addEventListener('click', () => confirmarSODesdeFacturas(b.dataset.confirmarSo)));
+      return;
+    }
+
+    ERP.abrirPanel('Factura desde Orden de Venta', 'Elige la orden de venta a facturar', `
+      <div class="form-erp">
+        <div class="campo ancho"><label>Orden de venta <span class="req">*</span></label><div id="factSODesde"></div>
+          <div class="alias-ayuda">Solo órdenes Confirmada o Cerrada. El backend bloquea consignación/comisión (te lo explica si aplica).</div></div>
+        <div class="campo"><label>Número (opcional)</label>
+          <input id="factSONumero" type="text" maxlength="40" placeholder="Se asigna al emitir si lo dejas vacío"></div>
+        <div class="acciones">
+          <button class="btn-mini" id="factSOCrear">Crear factura (borrador)</button>
+          <button class="btn-mini gris" id="factSOCancelar">Cancelar</button>
+        </div>
+        <div class="aviso" id="factSOAviso"></div>
+      </div>`);
+
+    comboSODesde = ERP.crearCombo({
+      contenedor: document.getElementById('factSODesde'),
+      items: facturables.map(s => ({
+        id: s.folio,
+        nombre: `${s.folio}${s.cliente ? ' · ' + s.cliente : ''}${s.revenue_model ? ' · ' + s.revenue_model : ''}`,
+        alias: [s.cliente, s.revenue_model, s.folio].filter(Boolean)
+      })),
+      placeholder: 'Folio, cliente o Revenue Model…', permitirNuevo: false
+    });
+
+    document.getElementById('factSOCancelar').addEventListener('click', ERP.cerrarPanel);
+    document.getElementById('factSOCrear').addEventListener('click', crearFacturaDesdeSO);
+  }
+
+  function avisoSODesde(tipo, html) {
+    const el = document.getElementById('factSOAviso');
+    if (el) { el.className = 'aviso visible ' + tipo; el.innerHTML = html; }
+  }
+
+  async function crearFacturaDesdeSO() {
+    const soFolio = comboSODesde && comboSODesde.valorId();
+    if (!soFolio) { avisoSODesde('err', 'Elige una orden de venta de la lista.'); return; }
+    const numero = ((document.getElementById('factSONumero') || {}).value || '').trim() || null;
+
+    const btn = document.getElementById('factSOCrear');
+    btn.disabled = true;
+    avisoSODesde('warn', 'Creando factura…');
+    try {
+      const data = await rpc('fn_crear_factura_desde_so', { p_so_folio: soFolio, p_numero: numero });
+      const r = (data && data[0]) || {};
+      if (!r.r_id) throw new Error('El ERP no devolvió el id de la factura.');
+      ERP.marcarDatosSucios();
+      if (r.r_advertencia) ERP.toast('warn', `Factura creada en borrador, pero: ${esc(r.r_advertencia)}`, 8000);
+      else ERP.toast('ok', 'Factura creada en borrador desde la orden de venta.');
+      verFactura(r.r_id);
+    } catch (e) {
+      // El backend explica por qué (SO no Confirmada/Cerrada, consignación/comisión bloqueada,
+      // etc.) — se muestra tal cual, nunca se esconde con un .catch defensivo.
+      if (ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
+      avisoSODesde('err', `El ERP rechazó la factura: ${esc(e.message)}`);
+      btn.disabled = false;
+    }
+  }
+
+  async function confirmarSODesdeFacturas(folio) {
+    if (!window.confirm(`¿Confirmar la orden de venta ${folio}? Lo registra el ERP.`)) return;
+    const aviso = (tipo, html) => { const a = document.getElementById('factSOConfAviso'); if (a) { a.className = 'aviso visible ' + tipo; a.innerHTML = html; } };
+    aviso('warn', 'Confirmando…');
+    try {
+      await rpc('fn_confirmar_so', { p_folio: folio });
+      ERP.toast('ok', `Orden de venta ${esc(folio)} confirmada.`);
+      nuevaFacturaDesdeSO();   // recarga la vista: ya debería aparecer en el picker
+    } catch (e) {
+      if (ERP.avisarSiPermiso(e)) return;
+      aviso('err', `No se pudo confirmar la orden de venta: ${esc(e.message)}`);
+    }
+  }
+
   /* ================= Ficha / editor ================= */
 
   let facturaActual = null;
@@ -237,17 +361,22 @@
     }
     facturaActual = f;
     cxcActual = null;
-    try {
-      const cx = await q('v_cxc', `&folio=${ERP.eq(f.carga_folio)}`);
-      cxcActual = (cx && cx[0]) || null;
-    } catch (_) { cxcActual = null; }
-
-    // Estado del embarque (para el botón Emitir): fn_emitir_factura solo emite si está "Entregada".
     cargaEstadoActual = null;
-    try {
-      const cd = await q('v_carga_detalle', `&folio=${ERP.eq(f.carga_folio)}`);
-      cargaEstadoActual = (cd && cd[0] && cd[0].estado) || null;
-    } catch (_) { cargaEstadoActual = null; }
+    // carga_folio puede venir NULL (factura nacida de una Orden de Venta, E76): sin carga que
+    // consultar, cxc/estado se quedan en null y el resto del flujo degrada solo (Emitir no se
+    // bloquea por un estado de embarque que no aplica a este documento).
+    if (f.carga_folio) {
+      try {
+        const cx = await q('v_cxc', `&folio=${ERP.eq(f.carga_folio)}`);
+        cxcActual = (cx && cx[0]) || null;
+      } catch (_) { cxcActual = null; }
+
+      // Estado del embarque (para el botón Emitir): fn_emitir_factura solo emite si está "Entregada".
+      try {
+        const cd = await q('v_carga_detalle', `&folio=${ERP.eq(f.carga_folio)}`);
+        cargaEstadoActual = (cd && cd[0] && cd[0].estado) || null;
+      } catch (_) { cargaEstadoActual = null; }
+    }
 
     lineas = Array.isArray(f.lineas) ? f.lineas.map(l => ({
       item: l.item ?? '', descripcion: l.descripcion ?? '',
@@ -257,10 +386,11 @@
 
     const puedeCap = ERP.puede('capturar');
     const editable = puedeCap && f.estado === 'borrador';   // se edita solo en borrador
+    const origenTxt = f.carga_folio ? `Embarque ${f.carga_folio}` : (f.so_folio ? `Orden de venta ${f.so_folio}` : 'Sin origen');
 
     ERP.abrirPanel(
       `Factura ${f.numero ? esc(f.numero) : '(borrador)'}`,
-      `Embarque ${esc(f.carga_folio || '—')} · ${esc(f.cliente || '')} · ${pillEstado(f.estado)}`,
+      `${esc(origenTxt)} · ${esc(f.cliente || '')} · ${pillEstado(f.estado)}`,
       cuerpoEditor(f, editable, puedeCap)
     );
 
@@ -295,8 +425,11 @@
       </div>
     </div>`;
 
+    const origenTxt = f.carga_folio ? `Embarque ${f.carga_folio}` : (f.so_folio ? `Orden de venta ${f.so_folio}` : 'Sin origen');
     return `<div class="form-erp fact-editor">
       <div class="campos">
+        <div class="campo"><label>Origen</label>
+          <div class="campo-fijo">${esc(origenTxt)}</div></div>
         <div class="campo"><label>Número</label>
           <div class="campo-fijo">${f.numero ? esc(f.numero) : 'Se asigna al emitir'}</div></div>
         <div class="campo"><label>Emisión</label>
@@ -645,6 +778,7 @@
   });
 
   ERP.nuevaFactura = nuevaFactura;
+  ERP.nuevaFacturaDesdeSO = nuevaFacturaDesdeSO;
   ERP.verFactura = verFactura;
   ERP.generarInvoiceDesdeCarga = generarInvoiceDesdeCarga;
   ERP.montarFacturasCarga = montarFacturasCarga;

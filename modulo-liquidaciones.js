@@ -2,13 +2,19 @@
    PACA exige: bruto de venta − comisión − deducciones = neto al productor; menos anticipos = saldo.
    Espejo del módulo Facturación (mismo flujo borrador→emitida→anulada, misma serie al emitir).
    Solo CONSUME vistas + RPCs, nunca tablas.
-   Vistas: v_liquidaciones, v_liquidacion_deducciones.
-   RPCs: fn_crear_liquidacion (capturar) · fn_emitir_liquidacion (editar) · fn_anular_liquidacion (administrar).
-   Expone: ERP.verLiquidacion. */
+   Vistas: v_liquidaciones, v_liquidacion_deducciones, v_liquidacion_ventas.
+   RPCs: fn_crear_liquidacion (capturar) · fn_emitir_liquidacion (editar) · fn_anular_liquidacion (administrar)
+     · fn_crear_liquidacion_auto(p_productor_id, p_cargas text[], p_comision_pct numeric DEFAULT 10, p_nota)
+       (capturar) [E76/E77] — solo consignación ya LIQUIDADA (ingreso_venta>0) del productor; el
+       desglose (bruto/deducciones) lo calcula el backend a partir de v_carga_detalle, reusando el
+       mismo motor PACA de v_liquidaciones/v_liquidacion_ventas. p_comision_pct se OMITE del payload
+       si el usuario lo deja vacío (para que aplique el DEFAULT 10 real de la función, no un null
+       explícito que lo pisaría).
+   Expone: ERP.verLiquidacion, ERP.nuevaLiquidacionAuto. */
 
 (function () {
   'use strict';
-  const { q, rpc, esc, usd, num } = ERP;
+  const { q, rpc, esc, usd, num, fmt0 } = ERP;
 
   const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   function fecha4(f) {
@@ -22,10 +28,13 @@
   // Estados espejo de Facturación: borrador | emitida | anulada.
   const ESTADO_PILL = { borrador: 'ambar', emitida: 'verde', anulada: 'gris' };
 
-  // Categorías de deducción (E52). Valores exactos del backend; default 'general'. En el PDF se
-  // agrupan: CUSTOMS y DUTIES en secciones propias; TODO lo demás (incluidos valores futuros) cae
-  // en DEDUCTIONS — así el total nunca se pierde por una categoría no listada.
-  const CATEGORIAS = ['general', 'material', 'flete', 'in_out', 'customs', 'duties', 'otro'];
+  // Categorías de deducción. El selector de "+ Agregar deducción" ahora lee el catálogo en vivo
+  // (v_categorias_deduccion, Fase 2a/D-134) — ver verLiquidacion()/cuerpoFicha(). CAT_LABEL queda
+  // SOLO como respaldo de despliegue para categorías históricas/código no encontrado en el
+  // catálogo (p.ej. datos viejos con un código que ya no está activo). En el PDF se agrupan:
+  // CUSTOMS y DUTIES en secciones propias; TODO lo demás (incluidos valores futuros/nuevas
+  // categorías del catálogo) cae en DEDUCTIONS — así el total nunca se pierde por una categoría
+  // no listada aquí.
   const CAT_LABEL = { general: 'General', material: 'Material', flete: 'Flete', in_out: 'In & Out', customs: 'Customs', duties: 'Duties', otro: 'Otro' };
   const catLabel = c => CAT_LABEL[String(c || '').toLowerCase()] || (c || 'General');
   const estadoLabel = e => ({ borrador: 'Borrador', emitida: 'Emitida', anulada: 'Anulada' }[e] || e || 'Borrador');
@@ -60,6 +69,7 @@
   /* ================= Lista ================= */
 
   let liquidaciones = [];
+  let pendientesActuales = [];   // v_liquidaciones_pendientes del último render, para el botón de cada card
   let fEstado = '';
   let fTexto = '';
 
@@ -103,21 +113,49 @@
       tr.addEventListener('click', () => verLiquidacion(tr.dataset.id)));
   }
 
+  /** "Listas para liquidar" (v_liquidaciones_pendientes, agrupada por productor): card por
+      productor con acento de color por severidad y botón que dispara la liquidación automática
+      YA existente, precargando productor + folios. Sin filas -> sin sección (nada de "no hay
+      pendientes" ruidoso). */
+  function pintarPanelPendientes(filas) {
+    pendientesActuales = filas || [];
+    if (!pendientesActuales.length) return '';
+    const cards = pendientesActuales.map((p, i) => {
+      const sev = p.severidad === 'rojo' ? 'rojo' : 'ambar';
+      const etiquetaSev = sev === 'rojo' ? 'Urgente' : 'Pendiente';
+      return `<div class="card" style="border-left:4px solid var(--${sev});padding:12px 14px;min-width:230px;flex:1 1 230px">
+        <div style="font-weight:700;margin-bottom:2px">${esc(p.productor || '—')}</div>
+        <div style="font-size:12.5px;color:var(--gris)">${esc(p.n_cargas ?? 0)} carga${p.n_cargas === 1 ? '' : 's'} · ${usd(p.bruto_total)} · hace ${esc(p.dias_max ?? 0)} día${p.dias_max === 1 ? '' : 's'}</div>
+        <div class="mono" style="font-size:11.5px;color:var(--gris);margin:4px 0">${esc(p.folios || '—')}</div>
+        <span class="pill ${sev}">${etiquetaSev}</span>
+        <div style="margin-top:8px"><button class="btn-mini" data-liq-pend-idx="${i}">Liquidación automática</button></div>
+      </div>`;
+    }).join('');
+    return `<div class="seccion-head"><h4>Listas para liquidar</h4></div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">${cards}</div>`;
+  }
+
   async function render(cont) {
     const puedeCap = ERP.puede('capturar');
     let liqs;
     try {
       liqs = await q('v_liquidaciones', '&order=id.desc');
     } catch (e) {
-      cont.innerHTML = `<div class="errbox">No se pudieron leer las liquidaciones: ${esc(e.message)}</div>`;
+      cont.innerHTML = `<div class="pantalla-liquidaciones"><div class="errbox">No se pudieron leer las liquidaciones: ${esc(e.message)}</div></div>`;
       return;
     }
     liquidaciones = liqs;
     fEstado = ''; fTexto = '';
 
-    cont.innerHTML = `
+    // Enriquecimiento, no núcleo: si v_liquidaciones_pendientes falla, se degrada a "sin panel"
+    // en vez de tumbar la lista de liquidaciones.
+    const pendientes = await q('v_liquidaciones_pendientes').catch(() => []);
+
+    cont.innerHTML = `<div class="pantalla-liquidaciones">
+      ${pintarPanelPendientes(pendientes)}
       <div class="filtros">
         ${puedeCap ? '<button class="btn-mini" id="liqNueva">+ Nueva liquidación</button>' : ''}
+        ${puedeCap ? '<button class="btn-mini gris" id="liqNuevaAuto">Liquidación automática</button>' : ''}
         <select class="busca" id="liqFEstado" style="max-width:180px">
           <option value="">Todos los estados</option>
           <option value="borrador">Borrador</option>
@@ -132,15 +170,24 @@
       <div class="leyenda">Toca una liquidación para abrir su ficha (ver desglose, emitir, imprimir).
         El <b>número</b> (LQ-AAAA-NNNN) lo asigna la serie al emitir. La columna <b>Descuadre</b>
         debe ser $0.00: si no, la liquidación no cuadra y no se puede emitir. Un <b>saldo a pagar
-        negativo</b> significa que el productor le debe a Plein (no es error).</div>`;
+        negativo</b> significa que el productor le debe a Plein (no es error).</div>
+    </div>`;
 
     const btnN = document.getElementById('liqNueva');
     if (btnN) btnN.addEventListener('click', () => nuevaLiquidacion());
+    const btnNAuto = document.getElementById('liqNuevaAuto');
+    if (btnNAuto) btnNAuto.addEventListener('click', () => nuevaLiquidacionAuto());
     document.getElementById('liqFEstado').addEventListener('change', e => { fEstado = e.target.value; pintarTabla(); });
     let tempo;
     document.getElementById('liqFTexto').addEventListener('input', e => {
       clearTimeout(tempo); tempo = setTimeout(() => { fTexto = e.target.value; pintarTabla(); }, 150);
     });
+    cont.querySelectorAll('[data-liq-pend-idx]').forEach(b => b.addEventListener('click', () => {
+      const p = pendientesActuales[Number(b.dataset.liqPendIdx)];
+      if (!p) return;
+      const folios = String(p.folios || '').split(',').map(s => s.trim()).filter(Boolean);
+      nuevaLiquidacionAuto({ productorId: p.productor_id, productorNombre: p.productor, folios });
+    }));
 
     pintarTabla();
     if (ERP.cablearExportar) ERP.cablearExportar(cont);
@@ -255,18 +302,146 @@
     }
   }
 
+  /* ================= Liquidación automática (E76/E77) =================
+     Igual que "Nueva liquidación" pero: (a) solo ofrece embarques de consignación YA liquidada
+     (modalidad='consignacion' && ingreso_venta>0) — el bruto NO se captura a mano, lo calcula el
+     backend; (b) la comisión tiene default 10 en el propio backend. */
+
+  let comboProductorAuto = null;
+  let cargasAutoTodas = [];
+
+  function cargasAutoDelProductor(productorId) {
+    if (productorId == null) return [];
+    return cargasAutoTodas.filter(c => !c.anulado && c.modalidad === 'consignacion'
+      && String(c.proveedor_id) === String(productorId) && num(c.ingreso_venta) > 0);
+  }
+
+  function pintarCargasAutoCheck(productorId) {
+    const cont = document.getElementById('liqAutoCargas');
+    if (!cont) return;
+    if (productorId == null) { cont.innerHTML = '<div class="vacio" style="padding:8px">Elige un productor para ver sus embarques liquidables.</div>'; return; }
+    const cargas = cargasAutoDelProductor(productorId);
+    if (!cargas.length) { cont.innerHTML = '<div class="vacio" style="padding:8px">Este productor no tiene consignación liquidada (con venta ya capturada) todavía.</div>'; return; }
+    cont.innerHTML = cargas.map(c => `<label style="display:flex;align-items:center;gap:6px;font-size:12.5px">
+      <input type="checkbox" value="${esc(c.folio)}" style="width:auto">
+      <span class="mono">${esc(c.folio)}</span> · ${esc(c.po || '—')} · ${esc(c.cliente || '—')} · ${usd(c.ingreso_venta)}</label>`).join('');
+  }
+
+  /** preseleccion opcional (desde el panel "Listas para liquidar"): { productorId, productorNombre,
+      folios[] } — precarga el combo de productor (dispara alCambiar -> pinta sus embarques) y
+      marca los checkboxes de esos folios. Sin preseleccion se comporta exactamente igual que antes. */
+  async function nuevaLiquidacionAuto(preseleccion) {
+    if (!ERP.puede('capturar')) return;
+    ERP.abrirPanel('Liquidación automática', 'Elige el productor y sus embarques de consignación liquidada',
+      '<div class="skel">Cargando catálogos…</div>');
+    let productores;
+    try {
+      [productores, cargasAutoTodas] = await Promise.all([
+        q('v_catalogo_proveedores', '&order=nombre.asc'),
+        q('v_carga_detalle')
+      ]);
+    } catch (e) {
+      ERP.abrirPanel('Liquidación automática', '', `<div class="errbox">No se pudieron leer los catálogos: ${esc(e.message)}</div>`);
+      return;
+    }
+
+    ERP.abrirPanel('Liquidación automática', 'Elige el productor y sus embarques de consignación liquidada', `
+      <div class="form-erp"><div class="campos">
+        <div class="campo"><label>Productor <span class="req">*</span></label><div id="liqAutoProductor"></div>
+          <small style="color:var(--gris);font-size:11px">Solo consignación ya liquidada (con venta capturada). Si no aparece, dalo de alta en Directorio Comercial.</small></div>
+        <div class="campo ancho"><label>Embarques a liquidar <span class="req">*</span></label>
+          <div class="chk-lista" id="liqAutoCargas"></div></div>
+        <div class="campo"><label>Comisión (%)</label>
+          <input id="liqAutoComision" class="mono" type="number" step="0.01" min="0" max="100" placeholder="10 (default del ERP)"></div>
+        <div class="campo ancho"><label>Nota</label>
+          <input id="liqAutoNota" type="text" maxlength="200" placeholder="Opcional — referencia de la liquidación"></div>
+      </div>
+      <div class="acciones">
+        <button class="btn-mini" id="liqAutoGuardar">Crear liquidación automática (borrador)</button>
+        <button class="btn-mini gris" id="liqAutoCancelar">Cancelar</button>
+      </div>
+      <div class="aviso" id="liqAutoAviso"></div>
+      </div>
+      <div class="leyenda">El bruto de venta y el desglose de deducciones se calculan solos a partir
+      de la venta ya reportada de cada embarque de consignación. Revisa el desglose y el descuadre
+      antes de emitir.</div>`);
+
+    comboProductorAuto = ERP.crearCombo({
+      contenedor: document.getElementById('liqAutoProductor'), items: productores,
+      placeholder: 'Busca por nombre o alias…', permitirNuevo: false,
+      alCambiar: sel => pintarCargasAutoCheck(sel ? sel.id : null)
+    });
+
+    if (preseleccion && preseleccion.productorId != null) {
+      // seleccionar() dispara alCambiar de forma síncrona (pintarCargasAutoCheck ya deja los
+      // checkboxes en el DOM antes de continuar) — por eso se puede marcar folios justo después.
+      comboProductorAuto.seleccionar({ id: preseleccion.productorId, nombre: preseleccion.productorNombre || '' });
+      if (preseleccion.folios && preseleccion.folios.length) {
+        const folioSet = new Set(preseleccion.folios);
+        document.querySelectorAll('#liqAutoCargas input[type=checkbox]').forEach(chk => {
+          if (folioSet.has(chk.value)) chk.checked = true;
+        });
+      }
+    } else {
+      pintarCargasAutoCheck(null);
+    }
+
+    document.getElementById('liqAutoCancelar').addEventListener('click', ERP.cerrarPanel);
+    document.getElementById('liqAutoGuardar').addEventListener('click', guardarNuevaAuto);
+  }
+
+  async function guardarNuevaAuto() {
+    const aviso = (tipo, html) => { const a = document.getElementById('liqAutoAviso'); a.className = 'aviso visible ' + tipo; a.innerHTML = html; };
+    const productorId = comboProductorAuto ? comboProductorAuto.valorId() : null;
+    const comisionRaw = document.getElementById('liqAutoComision').value.trim();
+    const nota = document.getElementById('liqAutoNota').value.trim();
+    const folios = Array.from(document.querySelectorAll('#liqAutoCargas input[type=checkbox]:checked')).map(el => el.value);
+
+    if (productorId == null) { aviso('err', 'Elige un productor de la lista.'); return; }
+    if (!folios.length) { aviso('err', 'Marca al menos un embarque a liquidar.'); return; }
+    let comisionPct = null;
+    if (comisionRaw !== '') {
+      comisionPct = Number(comisionRaw);
+      if (Number.isNaN(comisionPct) || comisionPct < 0) { aviso('err', 'La comisión (%) no es válida.'); return; }
+    }
+
+    // p_comision_pct se OMITE del payload si el usuario no la capturó, para que aplique el DEFAULT
+    // 10 real de la función — mandar null explícito lo pisaría con NULL, no con el default.
+    const args = { p_productor_id: productorId, p_cargas: folios, p_nota: nota || null };
+    if (comisionPct != null) args.p_comision_pct = comisionPct;
+
+    const btn = document.getElementById('liqAutoGuardar');
+    btn.disabled = true;
+    aviso('warn', 'Creando liquidación automática…');
+    try {
+      const data = await rpc('fn_crear_liquidacion_auto', args);
+      const nuevoId = unwrap(data, 'id');
+      if (nuevoId == null) throw new Error('El ERP no devolvió el id de la liquidación.');
+      ERP.marcarDatosSucios();
+      await verLiquidacion(nuevoId);
+      ERP.toast('ok', 'Liquidación automática creada en borrador. Revisa el desglose y el descuadre.');
+    } catch (e) {
+      if (ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
+      aviso('err', `El ERP rechazó la liquidación: ${esc(e.message)}`);
+      btn.disabled = false;
+    }
+  }
+
   /* ================= Ficha ================= */
 
   let liqActual = null;
 
   async function verLiquidacion(id) {
     ERP.abrirPanel('Liquidación', 'Cargando…', '<div class="skel">Cargando liquidación…</div>');
-    let l, ventas, deducciones;
+    let l, ventas, deducciones, categoriasDed;
     try {
-      [l, ventas, deducciones] = await Promise.all([
+      [l, ventas, deducciones, categoriasDed] = await Promise.all([
         q('v_liquidaciones', `&id=eq.${encodeURIComponent(id)}`).then(r => r && r[0]),
         q('v_liquidacion_ventas', `&liquidacion_id=eq.${encodeURIComponent(id)}&order=orden.asc`),
-        q('v_liquidacion_deducciones', `&liquidacion_id=eq.${encodeURIComponent(id)}&order=orden.asc`)
+        q('v_liquidacion_deducciones', `&liquidacion_id=eq.${encodeURIComponent(id)}&order=orden.asc`),
+        // Fase 2a (D-134): catálogo en vivo (solo activas) para el selector de "+ Agregar
+        // deducción" — si falla, el form degrada a un único 'General' en vez de quedar sin opciones.
+        q('v_categorias_deduccion', '&order=orden.asc').catch(() => [])
       ]);
       if (!l) throw new Error('La liquidación no existe.');
     } catch (e) {
@@ -278,7 +453,7 @@
     ERP.abrirPanel(
       `Liquidación ${l.numero ? esc(l.numero) : '(borrador)'}`,
       `${esc(l.productor || '—')} · ${pillEstado(l.estado)}`,
-      cuerpoFicha(l, ventas || [], deducciones || [])
+      cuerpoFicha(l, ventas || [], deducciones || [], categoriasDed || [])
     );
 
     const bImp = document.getElementById('liqImprimir');
@@ -391,7 +566,7 @@
     }
   }
 
-  function cuerpoFicha(l, ventas, deducciones) {
+  function cuerpoFicha(l, ventas, deducciones, categoriasDed) {
     const desc = hayDescuadre(l);
     const esBorrador = l.estado === 'borrador';
     const anulada = l.estado === 'anulada';
@@ -490,7 +665,9 @@
         <div class="campo"><label>Monto USD <span class="req">*</span></label>
           <input id="dedMonto" class="mono" type="number" step="0.01" min="0.01" placeholder="0.00"></div>
         <div class="campo"><label>Categoría</label>
-          <select id="dedCategoria">${CATEGORIAS.map(c => `<option value="${c}"${c === 'general' ? ' selected' : ''}>${esc(CAT_LABEL[c])}</option>`).join('')}</select></div>
+          <select id="dedCategoria">${(categoriasDed && categoriasDed.length
+            ? categoriasDed.map(c => `<option value="${esc(c.codigo)}"${c.codigo === 'general' ? ' selected' : ''}>${esc(c.nombre)}</option>`).join('')
+            : '<option value="general">General</option>')}</select></div>
         <div class="campo ancho"><label>Nota</label>
           <input id="dedNota" type="text" maxlength="200" placeholder="Opcional — referencia"></div>
       </div>
@@ -589,11 +766,25 @@
     ERP.imprimirArea(htmlImpresion(l, ventas || [], deducciones || []));
   }
 
-  /** PRODUCTOR: un solo campo, mismo patrón "omitir vacíos" de los otros bloques de contraparte
-      (VENDOR/BILL TO) — placeholder honesto si no hay nombre, nunca una celda en blanco muda. */
+  /** PRODUCTOR: desglose completo (E79 — v_liquidaciones ganó 7 columnas productor_*), mismo
+      patrón "omitir vacíos" de los otros bloques de contraparte (VENDOR/BILL TO en Facturas/PO) —
+      placeholder honesto si no hay nombre, nunca una celda en blanco muda. NO existe
+      productor_tel: no se pinta un teléfono aquí. */
   function bloqueProductor(l) {
-    const v = (l.productor && String(l.productor).trim()) || '';
-    return v ? esc(v) : '<span class="sin-alias">— sin productor asociado —</span>';
+    const nombre = (l.productor_razon_social && String(l.productor_razon_social).trim())
+      || (l.productor && String(l.productor).trim()) || '';
+    if (!nombre) return '<span class="sin-alias">— sin productor asociado —</span>';
+    const soloTexto = v => (v && String(v).trim()) ? String(v).trim() : null;
+    const ciudadPais = [soloTexto(l.productor_ciudad), soloTexto(l.productor_pais)].filter(Boolean).join(', ');
+    const lineas = [
+      nombre,
+      soloTexto(l.productor_direccion),
+      ciudadPais || null,
+      soloTexto(l.productor_rfc) ? `RFC/Tax ID: ${soloTexto(l.productor_rfc)}` : null,
+      soloTexto(l.productor_paca) ? `PACA #: ${soloTexto(l.productor_paca)}` : null,
+      soloTexto(l.productor_email)
+    ].filter(Boolean);
+    return lineas.map(esc).join('<br>');
   }
 
   function htmlImpresion(l, ventas, deducciones) {
@@ -672,4 +863,5 @@
   });
 
   ERP.verLiquidacion = verLiquidacion;
+  ERP.nuevaLiquidacionAuto = nuevaLiquidacionAuto;
 })();

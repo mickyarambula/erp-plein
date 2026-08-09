@@ -51,13 +51,14 @@
       return;
     }
 
-    cont.innerHTML = `
+    cont.innerHTML = `<div class="pantalla-datos-faltantes">
       ${ERP.botonesExportar ? ERP.botonesExportar('DatosFaltantes', 'Datos faltantes', '#tblFaltantes') : ''}
       <div class="card" style="padding:14px"><div class="tabla-wrap"><table id="tblFaltantes">
         <thead><tr><th>Carga</th><th>P.O.</th><th>Cliente</th><th>Producto</th><th>Estado</th><th>Qué falta</th><th>Acciones</th></tr></thead>
         <tbody>${filas.map(f => filaHTML(f, puedeCap)).join('')}</tbody>
       </table></div></div>
-      <div class="leyenda">Ordenadas por prioridad (lo que bloquea una alerta operativa va primero, no por folio). Al capturar lo que falta, la carga desaparece de esta lista.</div>`;
+      <div class="leyenda">Ordenadas por prioridad (lo que bloquea una alerta operativa va primero, no por folio). Al capturar lo que falta, la carga desaparece de esta lista.</div>
+    </div>`;
 
     const recargar = () => render(cont);
     const folioDe = el => el.closest('tr').dataset.folio;

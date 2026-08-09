@@ -4,10 +4,25 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ERP Plein Produce</title>
+<script>
+  // Anti-parpadeo (E89 — capa de tokens claro/oscuro): fija data-theme ANTES de que cargue
+  // cualquier CSS, para que el primer paint ya salga en el tema correcto.
+  (function () {
+    try {
+      var t = localStorage.getItem('plein-theme');
+      if (t !== 'light' && t !== 'dark') {
+        t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (_) { /* localStorage bloqueado (modo privado, etc.): se queda en claro por defecto */ }
+  })();
+</script>
 <link rel="icon" type="image/png" href="assets/icono.png">
 <link rel="apple-touch-icon" href="assets/icono.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.7.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="estilos.css">
 </head>
 <body>
@@ -26,59 +41,111 @@
   </div>
 </div>
 
-<!-- ===== Shell ===== -->
+<!-- ===== Shell (E97 — MARCO "Operador estilo Silo": riel + barra de módulo + menú agrupado) ===== -->
 <div id="shell">
 
-  <header class="top">
-    <button class="btn-menu" id="btnMenu" aria-label="Menú">☰</button>
-    <div class="marca"><img class="marca-icono" src="assets/icono.png" alt="" onerror="this.style.display='none'">PLEIN <span>PRODUCE</span></div>
+  <!-- Riel de íconos angosto (66px): logo, un ícono por GRUPO, toggle de tema abajo -->
+  <nav class="icrail" id="icrail">
+    <img class="lg" src="assets/icono.png" alt="Plein" onerror="this.style.display='none'">
+    <a class="ic" data-grupo="inicio"    title="Inicio"><i class="ti ti-home"></i>Inicio</a>
+    <a class="ic" data-grupo="operacion" title="Operación"><i class="ti ti-package"></i>Oper.</a>
+    <a class="ic" data-grupo="dinero"    title="Dinero"><i class="ti ti-cash"></i>Dinero</a>
+    <a class="ic" data-grupo="finanzas"  title="Finanzas"><i class="ti ti-chart-bar"></i>Fin.</a>
+    <a class="ic" data-grupo="catalogos" title="Catálogos"><i class="ti ti-book-2"></i>Catál.</a>
+    <a class="ic" data-grupo="revision"  title="Revisión"><i class="ti ti-checkup-list"></i>Revis.</a>
+    <a class="ic" data-grupo="admin"     title="Admin"><i class="ti ti-shield-lock"></i>Admin</a>
+    <button class="themebtn" id="btnTema" aria-label="Cambiar tema claro/oscuro" title="Cambiar tema claro/oscuro">
+      <i class="ti ti-moon" id="icoTema"></i>
+    </button>
+  </nav>
 
-    <div class="buscador">
-      <span class="lupa">🔍</span>
-      <input id="buscaUniv" type="text" autocomplete="off" spellcheck="false"
-             placeholder="Buscar carga, cliente, proveedor, producto, movimiento…">
-      <div class="resultados" id="resultados"></div>
+  <div class="col">
+
+    <!-- Barra de módulo (52px): hamburguesa móvil · chip de grupo + miga · buscador + estado + acciones -->
+    <div class="modbar">
+      <button class="btn-menu" id="btnMenu" aria-label="Menú"><i class="ti ti-menu-2"></i></button>
+      <div class="mod">
+        <span class="chip" id="modChip"><i class="ti ti-home" id="modChipIco"></i><span id="modChipTxt">Inicio</span></span>
+        <span class="sep"><i class="ti ti-chevron-right"></i></span>
+        <span class="pg" id="modPg">Inicio</span>
+      </div>
+      <div class="sp">
+        <div class="buscador">
+          <span class="lupa"><i class="ti ti-search"></i></span>
+          <input id="buscaUniv" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="Buscar carga, cliente, proveedor, producto, movimiento…">
+          <div class="resultados" id="resultados"></div>
+        </div>
+        <div class="presencia-online" id="presenciaOnline"></div>
+        <div class="presencia-soy" id="presenciaSoy" style="display:none"></div>
+        <div class="estado"><span class="dot load" id="dot"></span><span id="ultimaAct">conectando…</span></div>
+        <button class="btn lima" id="btnRf">Actualizar</button>
+        <button class="btn fantasma" id="btnSalir">Salir</button>
+        <div class="perfil" id="perfil" style="display:none"></div>
+      </div>
     </div>
 
-    <div class="top-derecha">
-      <div class="presencia-online" id="presenciaOnline"></div>
-      <div class="presencia-soy" id="presenciaSoy" style="display:none"></div>
-      <div class="perfil" id="perfil" style="display:none"></div>
-      <div class="estado"><span class="dot load" id="dot"></span><span id="ultimaAct">conectando…</span></div>
-      <button class="btn lima" id="btnRf">Actualizar</button>
-      <button class="btn fantasma" id="btnSalir">Salir</button>
+    <div class="cuerpo">
+      <div class="menu-fondo" id="menuFondo"></div>
+
+      <!-- Menú agrupado: eyebrow por grupo + ítems (filtrados por ERP.perfil.modulos, D-105) -->
+      <nav class="lateral">
+        <div class="nav-grupo" data-grupo="inicio">
+          <div class="nav-eyebrow">Inicio</div>
+          <a class="item" data-modulo="inicio" href="#/inicio"><i class="ti ti-home ico"></i>Inicio</a>
+        </div>
+
+        <div class="nav-grupo" data-grupo="operacion">
+          <div class="nav-eyebrow">Operación</div>
+          <a class="item" data-modulo="cargas"   href="#/cargas"><i class="ti ti-package ico"></i>Embarques</a>
+          <a class="item" data-modulo="ordenes"  href="#/ordenes"><i class="ti ti-shopping-cart ico"></i>Órdenes de compra</a>
+          <a class="item" data-modulo="ventas"   href="#/ventas"><i class="ti ti-file-invoice ico"></i>Órdenes de venta</a>
+          <a class="item" data-modulo="lotes"    href="#/lotes"><i class="ti ti-stack-2 ico"></i>Lotes</a>
+          <a class="item" data-modulo="loads"    href="#/loads"><i class="ti ti-truck ico"></i>Embarques físicos</a>
+          <a class="item" data-modulo="programas" href="#/programas"><i class="ti ti-plant-2 ico"></i>Programas</a>
+          <a class="item" data-modulo="comercial" href="#/comercial"><i class="ti ti-file-text ico"></i>Cotiz. y órdenes</a>
+          <a class="item" data-modulo="tareas"   href="#/tareas"><i class="ti ti-checklist ico"></i>Tareas</a>
+        </div>
+
+        <div class="nav-grupo" data-grupo="dinero">
+          <div class="nav-eyebrow">Dinero</div>
+          <a class="item" data-modulo="cobranza" href="#/cobranza"><i class="ti ti-arrow-down-left ico"></i>Cuentas por Cobrar</a>
+          <a class="item" data-modulo="pagos"    href="#/pagos"><i class="ti ti-arrow-up-right ico"></i>Cuentas por Pagar</a>
+          <a class="item" data-modulo="tesoreria" href="#/tesoreria"><i class="ti ti-wallet ico"></i>Tesorería</a>
+          <a class="item" data-modulo="liquidaciones" href="#/liquidaciones"><i class="ti ti-cash ico"></i>Liquidaciones al productor<span class="badge" id="badgeLiquidaciones" style="display:none"></span></a>
+          <a class="item" data-modulo="antiguedad" href="#/antiguedad"><i class="ti ti-clock ico"></i>Antigüedad de saldos</a>
+        </div>
+
+        <div class="nav-grupo" data-grupo="finanzas">
+          <div class="nav-eyebrow">Finanzas</div>
+          <a class="item" data-modulo="finanzas" href="#/finanzas"><i class="ti ti-chart-bar ico"></i>Finanzas</a>
+          <a class="item" data-modulo="cierres"  href="#/cierres"><i class="ti ti-calendar ico"></i>Cierres Contables</a>
+          <a class="item" data-modulo="proyectos" href="#/proyectos"><i class="ti ti-seeding ico"></i>Proyectos</a>
+          <a class="item" data-modulo="concentracion" href="#/concentracion"><i class="ti ti-target ico"></i>Concentración de riesgo</a>
+        </div>
+
+        <div class="nav-grupo" data-grupo="catalogos">
+          <div class="nav-eyebrow">Catálogos</div>
+          <a class="item" data-modulo="catalogos" href="#/catalogos"><i class="ti ti-address-book ico"></i>Directorio Comercial</a>
+          <a class="item" data-modulo="inventario" href="#/inventario"><i class="ti ti-packages ico"></i>Inventario</a>
+          <a class="item" data-modulo="facturas"  href="#/facturas"><i class="ti ti-receipt ico"></i>Facturación</a>
+        </div>
+
+        <div class="nav-grupo" data-grupo="revision">
+          <div class="nav-eyebrow">Revisión</div>
+          <a class="item" data-modulo="flags"     href="#/flags"><i class="ti ti-flag ico"></i>Revisiones Pendientes<span class="badge" id="badgeFlags" style="display:none"></span></a>
+          <a class="item" data-modulo="faltantes" href="#/faltantes" id="itemFaltantes" style="display:none"><i class="ti ti-clipboard-list ico"></i>Datos faltantes<span class="badge" id="badgeFaltantes"></span></a>
+          <a class="item" data-modulo="bitacora"  href="#/bitacora"><i class="ti ti-history ico"></i>Bitácora</a>
+        </div>
+
+        <div class="nav-grupo" data-grupo="admin">
+          <div class="nav-eyebrow">Admin</div>
+          <a class="item" data-modulo="usuarios"  href="#/usuarios" id="itemUsuarios" style="display:none"><i class="ti ti-shield-lock ico"></i>Usuarios</a>
+        </div>
+      </nav>
+
+      <main id="app"><div class="skel">Cargando…</div></main>
     </div>
-  </header>
-
-  <div class="cuerpo">
-    <div class="menu-fondo" id="menuFondo"></div>
-
-    <nav class="lateral">
-      <a class="item" data-modulo="inicio"    href="#/inicio"><span class="ico">◉</span>Inicio</a>
-      <a class="item" data-modulo="cargas"    href="#/cargas"><span class="ico">📦</span>Embarques</a>
-      <a class="item" data-modulo="proyectos" href="#/proyectos"><span class="ico">🌱</span>Proyectos</a>
-      <a class="item" data-modulo="programas" href="#/programas"><span class="ico">🌾</span>Programas</a>
-      <a class="item" data-modulo="cobranza"  href="#/cobranza"><span class="ico">💵</span>Cuentas por Cobrar</a>
-      <a class="item" data-modulo="pagos"     href="#/pagos"><span class="ico">🧾</span>Cuentas por Pagar</a>
-      <a class="item" data-modulo="antiguedad" href="#/antiguedad"><span class="ico">⏳</span>Antigüedad de saldos</a>
-      <a class="item" data-modulo="inventario" href="#/inventario"><span class="ico">📥</span>Inventario</a>
-      <a class="item" data-modulo="comercial" href="#/comercial"><span class="ico">📄</span>Cotiz. y órdenes</a>
-      <a class="item" data-modulo="tesoreria" href="#/tesoreria"><span class="ico">🏦</span>Tesorería</a>
-      <a class="item" data-modulo="finanzas"  href="#/finanzas"><span class="ico">📊</span>Finanzas</a>
-      <a class="item" data-modulo="cierres"   href="#/cierres"><span class="ico">📅</span>Cierres Contables</a>
-      <a class="item" data-modulo="concentracion" href="#/concentracion"><span class="ico">🎯</span>Concentración de riesgo</a>
-      <a class="item" data-modulo="flags"     href="#/flags"><span class="ico">⚑</span>Revisiones Pendientes<span class="badge" id="badgeFlags" style="display:none"></span></a>
-      <a class="item" data-modulo="faltantes" href="#/faltantes" id="itemFaltantes" style="display:none"><span class="ico">📋</span>Datos faltantes<span class="badge" id="badgeFaltantes"></span></a>
-      <a class="item" data-modulo="tareas"    href="#/tareas"><span class="ico">✅</span>Tareas</a>
-      <a class="item" data-modulo="catalogos" href="#/catalogos"><span class="ico">📇</span>Directorio Comercial</a>
-      <a class="item" data-modulo="facturas"  href="#/facturas"><span class="ico">🧾</span>Facturación</a>
-      <a class="item" data-modulo="ventas"    href="#/ventas"><span class="ico">🧾</span>Órdenes de Venta</a>
-      <a class="item" data-modulo="liquidaciones" href="#/liquidaciones"><span class="ico">🧑‍🌾</span>Liquidaciones al productor</a>
-      <a class="item" data-modulo="ordenes"   href="#/ordenes"><span class="ico">📦</span>Órdenes de Compra</a>
-      <a class="item" data-modulo="bitacora"  href="#/bitacora"><span class="ico">📜</span>Bitácora</a>
-    </nav>
-
-    <main id="app"><div class="skel">Cargando…</div></main>
   </div>
 </div>
 
@@ -118,6 +185,8 @@
 <script src="modulo-flags.js"></script>
 <script src="modulo-facturas.js"></script>
 <script src="modulo-ventas.js"></script>
+<script src="modulo-lotes.js"></script>
+<script src="modulo-loads.js"></script>
 <script src="modulo-liquidaciones.js"></script>
 <script src="modulo-ordenes.js"></script>
 <script src="modulo-catalogos.js"></script>
@@ -127,6 +196,7 @@
 <script src="modulo-proyectos.js"></script>
 <script src="modulo-programas.js"></script>
 <script src="modulo-presencia.js"></script>
+<script src="modulo-usuarios.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

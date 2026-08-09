@@ -221,13 +221,13 @@
         <th>Ingreso</th><th>Frecuencia</th><th>Temporada</th><th>Estado</th></tr></thead>
       <tbody>${filas.map(p => {
         const nota = p.nota
-          ? ` <span class="info-nota" data-nota="${esc(p.nota)}" title="${esc(p.nota)}" role="button" tabindex="0" style="cursor:help;color:var(--gris)">ⓘ</span>`
+          ? ` <span class="info-nota" data-nota="${esc(p.nota)}" title="${esc(p.nota)}" role="button" tabindex="0" style="cursor:help;color:var(--i2)">ⓘ</span>`
           : '';
         const noFrente = p.es_frente === false ? ' <span class="pill gris">no frente</span>' : '';
         const frec = (p.frecuencia_valor != null && p.frecuencia_unidad) ? `${esc(p.frecuencia_valor)}/${esc(p.frecuencia_unidad)}` : '—';
         return `<tr class="clic" data-codigo="${esc(p.codigo)}">
           <td><span class="enlace">${esc(p.etiqueta || p.codigo)}</span>${nota}${noFrente}
-            <div class="mono" style="font-size:11px;color:var(--gris)">${esc(p.codigo)}</div></td>
+            <div class="mono" style="font-size:11px;color:var(--i2)">${esc(p.codigo)}</div></td>
           <td>${esc(p.cliente || '—')}</td>
           <td>${esc(p.producto || '—')}</td>
           <td>${esc(p.proveedor || '—')}</td>
@@ -284,7 +284,7 @@
         <td class="num">${esc(r.programas)}</td>
         <td class="num">${esc(r.activos)}</td>
         <td class="num">${esc(r.por_arrancar)}</td>
-        <td><div class="barra"><div class="fill" style="width:${pctBarra}%;background:${esMax ? 'var(--verde)' : 'var(--lima)'}">${fmt(v)}</div></div></td>
+        <td><div class="barra"><div class="fill" style="width:${pctBarra}%;background:${esMax ? 'var(--money)' : 'var(--money)'}">${fmt(v)}</div></div></td>
         <td class="num">${ingresoTxt(r.ingreso_sem_activos, r.programas_sin_dato)}</td>
         <td class="num">${ingresoTxt(r.ingreso_sem_por_arrancar, r.programas_sin_dato)}</td>
       </tr>`;
@@ -302,7 +302,7 @@
       const nSinDato = sel ? num(sel.programas_sin_dato) : 0;
       const codigos = (sel && Array.isArray(sel.codigos_sin_dato)) ? sel.codigos_sin_dato : [];
       const mesTxt = MESES[mesSeleccionadoProy - 1] || mesSeleccionadoProy;
-      return `<div id="progProyDetalle" style="margin-top:10px;padding:11px 15px;border-radius:8px;background:var(--ambar-bg);color:var(--ambar)">
+      return `<div id="progProyDetalle" style="margin-top:10px;padding:11px 15px;border-radius:8px;background:var(--ambar-bg);color:var(--amb)">
         ${nSinDato > 0
           ? `${nSinDato} programa${nSinDato === 1 ? '' : 's'} sin datos de ingreso en ${esc(mesTxt)} — la proyección en $ está incompleta.${codigos.length ? `<br><span class="mono">${codigos.map(esc).join(', ')}</span>` : ''}`
           : `${esc(mesTxt)} no tiene programas sin datos de ingreso.`}
@@ -365,9 +365,9 @@
         <input id="pgBloque" class="mono" type="number" step="1" value="${esc(bloque)}"></div>
       <div class="campo"><label>Cliente <span class="req">*</span></label><div id="pgCliente"></div></div>
       <div class="campo"><label>Proveedor</label><div id="pgProveedor"></div>
-        <small style="color:var(--gris);font-size:11px">Si no aparece, créalo primero en Directorio Comercial.</small></div>
+        <small style="color:var(--i2);font-size:11px">Si no aparece, créalo primero en Directorio Comercial.</small></div>
       <div class="campo"><label>Producto <span class="req">*</span></label><div id="pgProducto"></div></div>
-      <div class="campo ancho"><label>Productos del catálogo <span style="font-weight:400;color:var(--gris)">(opcional, para filtros/reportes)</span></label>
+      <div class="campo ancho"><label>Productos del catálogo <span style="font-weight:400;color:var(--i2)">(opcional, para filtros/reportes)</span></label>
         <div class="chk-lista" id="pgProductosCat"></div></div>
       <div class="campo"><label>Modalidad</label><select id="pgModalidad">
         ${opcionesSelect(['margen_fijo', 'consignacion', 'comision', 'trueque', 'por_definir'], MODALIDAD_LBL, modalidad)}
@@ -408,7 +408,7 @@
         <input id="pgPickPack" class="mono" type="number" step="0.01" min="0" max="100" value="${p.pick_pack_pct != null ? esc(p.pick_pack_pct) : ''}" placeholder="opcional"></div>
       <div class="campo"><label>Estado</label><select id="pgEstado">${opcionesSelect(['activo', 'por_arrancar'], { activo: 'Activo', por_arrancar: 'Por arrancar' }, estadoV)}</select></div>
       ${editar ? `
-      <div class="campo ancho"><label style="color:var(--gris);font-weight:600">Datos de proyección</label></div>
+      <div class="campo ancho"><label style="color:var(--i2);font-weight:600">Datos de proyección</label></div>
       <div class="campo"><label>Venta típica/carga (USD)</label>
         <input id="pgVentaTipica" class="mono" type="number" step="0.01" min="0" value="${p.venta_tipica_carga != null ? esc(p.venta_tipica_carga) : ''}" placeholder="opcional"></div>
       <div class="campo"><label>Cajas típicas/carga</label>
@@ -738,7 +738,7 @@
     filtroBloque = 'todos';
     mesSeleccionadoProy = null;
 
-    cont.innerHTML = `
+    cont.innerHTML = `<div class="pantalla-programas">
       <div class="exp-acciones">
         <h2 class="sec" style="margin:0">Programas comerciales</h2>
         ${ERP.puede('capturar') ? '<button class="btn-mini" id="btnNuevoPrograma">+ Programa</button>' : ''}
@@ -752,7 +752,8 @@
 
       <h2 class="sec">Real por programa</h2>
       ${ERP.botonesExportar ? ERP.botonesExportar('ProgramaCargas', 'Real por Programa', '#tblProgramaCargas') : ''}
-      <div class="card">${pintarRealPrograma(cargasProg)}</div>`;
+      <div class="card">${pintarRealPrograma(cargasProg)}</div>
+    </div>`;
 
     repintarLista(cont);
     repintarProyeccion(cont);

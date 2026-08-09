@@ -1,11 +1,25 @@
 /* Módulo Tesorería — saldos por cuenta, flujo semanal / mensual, y estado de cuenta
-   (bitácora completa de movimientos con saldo corrido). */
+   (bitácora completa de movimientos con saldo corrido).
+
+   E93: vestida con la gramática "Operador estilo Silo" (ver REPORTE-FRONTEND.md, E90/E91/E92).
+   SCOPE = .pantalla-tesoreria, wrapper nuevo alrededor de TODO lo que pinta render() (mismo
+   patrón que las 3 pantallas anteriores) — incluye también "Estado de cuenta" e "Historial de
+   cambios" (no nombradas explícitamente en la tarea pero SÍ dentro de render(), así que heredan
+   el trato genérico de tabla/card/chip/botón igual que las secciones secundarias de CxC/CxP).
+   Los paneles/drawers de edición de movimiento (formAplicarHtml, pintarBitacora singular —
+   distinta de pintarBitacoraGeneral) abren en #panelBody global y quedan FUERA del wrapper,
+   misma frontera de siempre. */
 
 (function () {
   'use strict';
   const { q, rpc, esc, usd, usd0, num, fmt0, norm } = ERP;
 
-  const hoyISO = () => new Date().toISOString().slice(0, 10);
+  // Fecha LOCAL, no toISOString() (UTC): en Sonora (UTC-7) toISOString ya muestra el día
+  // siguiente después de las 17:00, prellenando mal los <input type="date">.
+  const hoyISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
 
   /* "Registrar gasto" cubre SOLO costo fijo/administrativo. El costo operativo ligado a
      un embarque (fletes, aduanas, comisión, empaque) NO va aquí: tiene su propio camino
@@ -18,6 +32,12 @@
 
   /* ================= Resúmenes (lo que ya existía) ================= */
 
+  /** Mismo total que arma el <tfoot> de pintarCuentas, expuesto aparte para la tira de KPIs
+      en render() (E93) — JEAMS/virtual excluido, es el saldo bancario real, no el préstamo. */
+  function totalCuentasReales(rows) {
+    return (rows || []).filter(r => r.banco !== 'Virtual').reduce((s, r) => s + num(r.saldo), 0);
+  }
+
   function pintarCuentas(rows) {
     if (!rows.length) return '<div class="vacio">Sin cuentas registradas.</div>';
     const reales = rows.filter(r => r.banco !== 'Virtual');
@@ -27,8 +47,8 @@
       <thead><tr><th>Cuenta</th><th>Banco</th><th class="num">Movs</th><th>Último mov.</th><th class="num">Saldo</th></tr></thead>
       <tbody>${rows.map(r => {
         const s = num(r.saldo), virt = r.banco === 'Virtual';
-        return `<tr style="${virt ? 'color:var(--gris)' : ''}">
-          <td><b>${esc(r.id)}</b>${virt ? ' <span class="pill gris">virtual</span>' : ''}</td>
+        return `<tr style="${virt ? 'color:var(--i2)' : ''}">
+          <td class="cuenta"><b>${esc(r.id)}</b>${virt ? ' <span class="pill gris">virtual</span>' : ''}</td>
           <td>${esc(r.nombre)}</td>
           <td class="num">${esc(r.movs)}</td>
           <td>${esc(ERP.fecha(r.ultimo_mov))}</td>
@@ -177,11 +197,11 @@
         // sin corregir), se pinta "—" en gris en vez de duplicar el nombre.
         const descRepite = !m.descripcion || norm(m.descripcion) === norm(m.contraparte);
         const descHtml = descRepite
-          ? '<span style="color:var(--gris)">—</span>'
+          ? '<span style="color:var(--i2)">—</span>'
           : esc(m.descripcion);
         return `<tr id="mov-${esc(m.folio)}" data-folio="${esc(m.folio)}" class="${m.anulado ? 'mov-anulado' : ''}" ${m.nota ? `title="${esc(m.nota)}"` : ''}>
           <td class="mono">${esc(m.folio || '—')}${foliosConCambios.has(String(m.folio))
-            ? ` <span class="hist-ic" data-hist="${esc(m.folio)}" title="Este movimiento fue editado — ver historial">🕘</span>` : ''}</td>
+            ? ` <span class="hist-ic" data-hist="${esc(m.folio)}" title="Este movimiento fue editado — ver historial"><i class="ti ti-history"></i></span>` : ''}</td>
           <td class="mono">${esc(ERP.fecha(m.fecha))}</td>
           <td>${esc(m.contraparte || '—')}</td>
           <td>${m.tipo ? `<span class="pill gris">${esc(m.tipo)}</span>` : '—'}</td>
@@ -201,7 +221,7 @@
         <td colspan="5">Total del filtro (${vigentes.length})${nAnulados ? ` · ${nAnulados} anulado${nAnulados === 1 ? '' : 's'} sin contar` : ''}</td>
         <td class="num">${usd(totIn)}</td>
         <td class="num">${usd(totOut)}</td>
-        <td class="num">${usd(totIn - totOut)}<div style="font-size:9.5px;color:var(--gris);font-weight:400">neto del periodo</div></td>
+        <td class="num">${usd(totIn - totOut)}<div style="font-size:9.5px;color:var(--i2);font-weight:400">neto del periodo</div></td>
         <td></td>${editable ? '<td></td>' : ''}
       </tr></tfoot>
     </table></div>`;
@@ -262,7 +282,7 @@
         <td>${esc(r.descripcion_mov || '—')}</td>
         <td>${esc(r.actor_nombre || r.actor || '—')}</td>
         <td>${esc(r.campo)}</td>
-        <td><span style="color:var(--gris)">${esc(r.valor_ant ?? '—')}</span> → <b>${esc(r.valor_nuevo ?? '—')}</b></td>
+        <td><span style="color:var(--i2)">${esc(r.valor_ant ?? '—')}</span> → <b>${esc(r.valor_nuevo ?? '—')}</b></td>
       </tr>`).join('')}</tbody>
     </table></div>
     <div class="leyenda">${rows.length > 100 ? `Mostrando las 100 ediciones más recientes de ${rows.length}. ` : ''}
@@ -355,15 +375,46 @@
 
   let comboBenef = null, comboCuentaG = null;
 
+  /* Beneficiario contextual al Tipo de gasto (fix E104): antes se pedía la vista con
+     `&clase=eq.gasto`, así que Samuel/Juan (clase='socio', recibe_pagos=true) NUNCA aparecían
+     aunque el backend ya los marca como aptos para recibir un pago. Ahora se trae la vista
+     COMPLETA sin filtro de clase en la query, y el filtro vive en el cliente según el tipo
+     elegido — así "Sueldo"/"Viáticos" sí pueden ir a un socio, y el resto de tipos se queda en
+     beneficiarios de gasto/operativo (nunca un cliente o proveedor comercial). */
+  function beneficiariosParaTipo(todos, tipo) {
+    let filtrados;
+    if (tipo === 'Sueldo') {
+      filtrados = todos.filter(b => b.recibe_pagos === true);
+    } else if (tipo === 'Viaticos') {
+      filtrados = todos.filter(b => b.recibe_pagos === true || b.clase === 'gasto' || b.clase === 'operativo');
+    } else {
+      filtrados = todos.filter(b => b.clase === 'gasto' || b.clase === 'operativo');
+    }
+    // "Para Sueldo, ordenar recibe_pagos primero" — mismo criterio aplicado en general: quien
+    // puede recibir pagos sube al principio, útil sobre todo en Viáticos (lista mixta).
+    return filtrados.slice().sort((a, b) => {
+      const pa = a.recibe_pagos === true ? 0 : 1, pb = b.recibe_pagos === true ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      return String(a.nombre || '').localeCompare(String(b.nombre || ''));
+    });
+  }
+
+  function ayudaBenefTexto(tipo) {
+    if (tipo === 'Sueldo') return 'Mostrando solo a quienes pueden recibir pagos (marca "Recibe pagos" en Directorio Comercial).';
+    if (tipo === 'Viaticos') return 'Mostrando beneficiarios de gasto/operativo y a quienes pueden recibir pagos.';
+    return 'Beneficiarios de gasto y proveedores de servicio (operativo).';
+  }
+
   async function formGasto() {
     ERP.abrirPanel('Registrar gasto', 'Costo fijo o administrativo — no ligado a una carga',
       '<div class="skel">Cargando catálogos…</div>');
 
-    let beneficiarios, cuentas;
+    let beneficiariosCat, cuentas;
     try {
-      [beneficiarios, cuentas] = await Promise.all([
-        // La vista trae operativo+gasto; aquí solo gasto (el operativo va por la ficha de carga).
-        q('v_catalogo_beneficiarios_gasto', '&clase=eq.gasto&order=nombre.asc'),
+      [beneficiariosCat, cuentas] = await Promise.all([
+        // Sin filtro de clase= aquí: se trae TODO (incluye socios) y se filtra en el cliente
+        // según el Tipo de gasto elegido (beneficiariosParaTipo), no en la query.
+        q('v_catalogo_beneficiarios_gasto', '&order=nombre.asc'),
         q('v_catalogo_cuentas', '&order=id.asc')
       ]);
       if (!cuentas.length) throw new Error('no hay cuentas en el catálogo');
@@ -379,8 +430,7 @@
           <div class="campo ancho">
             <label>Beneficiario <span class="req">*</span></label>
             <div id="gBenef"></div>
-            <div class="alias-ayuda">Solo beneficiarios de gasto. Los proveedores de servicio
-              (flete, aduana, empaque) se capturan como costo dentro de su carga.</div>
+            <div class="alias-ayuda" id="gBenefAyuda">${esc(ayudaBenefTexto(''))}</div>
           </div>
           <div class="campo">
             <label>Tipo de gasto <span class="req">*</span></label>
@@ -417,11 +467,15 @@
         <div class="aviso" id="gAviso"></div>
       </div>`);
 
+    // permitirNuevo:true (mismo patrón que cliente/proveedor/producto en Nueva carga, D-129..):
+    // si el nombre no está en la lista filtrada, sigue siendo un valor válido — el backend
+    // (fn_capturar_mov) resuelve la contraparte por nombre; esta pantalla no bloquea el submit.
     comboBenef = ERP.crearCombo({
       contenedor: document.getElementById('gBenef'),
-      items: beneficiarios.map(b => ({ id: b.id, nombre: b.nombre, alias: b.alias || [] })),
+      items: beneficiariosParaTipo(beneficiariosCat, ''),
       placeholder: 'Busca por nombre o alias…',
-      permitirNuevo: false
+      permitirNuevo: true,
+      etiquetaNuevo: 'beneficiario'
     });
     comboCuentaG = ERP.crearCombo({
       contenedor: document.getElementById('gCuenta'),
@@ -430,6 +484,26 @@
       permitirNuevo: false,
       valorInicial: cuentas.some(c => c.id === 'JPM') ? 'JPM' : cuentas[0].id
     });
+
+    // Re-filtra el picker de Beneficiario cada vez que cambia el Tipo de gasto (PASO 3) y
+    // refresca la ayuda contextual + el aviso de "no aparece" (PASO 4).
+    function refrescarAyudaBenef() {
+      const el = document.getElementById('gBenefAyuda');
+      if (!el) return;
+      const tipo = document.getElementById('gTipo').value;
+      const texto = comboBenef.textoCrudo();
+      const t = norm(texto);
+      const listaActual = beneficiariosParaTipo(beneficiariosCat, tipo);
+      const hayMatch = !t || listaActual.some(b => norm(b.nombre).includes(t) || (b.alias || []).some(a => norm(a).includes(t)));
+      el.innerHTML = ayudaBenefTexto(tipo) +
+        (texto && !hayMatch ? ' <b>¿No aparece?</b> Márcalo "recibe pagos" en Directorio Comercial.' : '');
+    }
+    document.getElementById('gTipo').addEventListener('change', () => {
+      comboBenef.actualizarItems(beneficiariosParaTipo(beneficiariosCat, document.getElementById('gTipo').value));
+      refrescarAyudaBenef();
+    });
+    const benefInput = comboBenef.elemento.querySelector('.combo-input');
+    if (benefInput) benefInput.addEventListener('input', refrescarAyudaBenef);
 
     document.getElementById('gCancelar').addEventListener('click', ERP.cerrarPanel);
     document.getElementById('gGuardar').addEventListener('click', guardarGasto);
@@ -484,6 +558,163 @@
   }
 
   ERP.registrarGasto = formGasto;
+
+  /* ================= Puerta única "+ Registrar" (fase 1 rediseño de captura) =================
+     Antes había 4 botones sueltos en Tesorería (+ Movimiento / + Registrar gasto / + Anticipo a
+     productor / + Aportación de socio) sin correlación clara entre ellos. Se reemplazan por UN
+     botón que abre un chooser con intención explícita y enruta al panel que YA EXISTÍA — ninguna
+     de las 4 funciones cambió, solo el punto de entrada. Los accesos directos desde Cobranza/CxC
+     y Pagos/CxP (que llaman ERP.capturarMovimiento({modo,...}) con contexto precargado) NO se
+     tocaron: siguen siendo su propio atajo, fuera de este chooser. */
+  const OPCIONES_REGISTRO = [
+    { id: 'movimiento', icono: 'ti-arrows-left-right', titulo: 'Cobro o pago de una carga',
+      sub: 'Entra de un cliente / sale a un proveedor, ligado a un embarque (FIFO).' },
+    { id: 'gasto', icono: 'ti-receipt-2', titulo: 'Gasto de operación',
+      sub: 'Sueldo, viáticos, renta… no ligado a una carga.' },
+    { id: 'anticipo', icono: 'ti-plant-2', titulo: 'Anticipo a productor',
+      sub: 'Disposición de línea de proyecto.' },
+    { id: 'aportacion', icono: 'ti-users', titulo: 'Aportación de socio',
+      sub: 'Entra capital de un socio.' },
+    { id: 'traspaso', icono: 'ti-transfer', titulo: 'Traspaso entre cuentas',
+      sub: 'Mover dinero entre cuentas (JPM ↔ bolsas de socio).' }
+  ];
+
+  function abrirChooserRegistrar() {
+    ERP.abrirPanel('Registrar', '¿Qué vas a registrar?', `
+      <div class="chooser-registro">
+        ${OPCIONES_REGISTRO.map(o => `
+          <button type="button" class="chooser-opcion" data-opcion="${o.id}">
+            <i class="ti ${o.icono}"></i>
+            <span class="chooser-txt"><b>${esc(o.titulo)}</b><small>${esc(o.sub)}</small></span>
+            <i class="ti ti-chevron-right chooser-flecha"></i>
+          </button>`).join('')}
+      </div>`);
+
+    document.querySelectorAll('.chooser-opcion').forEach(b => b.addEventListener('click', () => {
+      const id = b.dataset.opcion;
+      if (id === 'movimiento') ERP.capturarMovimiento({});
+      else if (id === 'gasto') formGasto();
+      else if (id === 'anticipo') ERP.capturarAnticipoProductor({});
+      else if (id === 'aportacion') ERP.capturarAportacionSocio({});
+      else if (id === 'traspaso') formTraspaso();
+    }));
+  }
+
+  /* ================= Traspaso entre cuentas (RPC ya vivo, fase 1) =================
+     fn_traspaso(p_origen, p_destino, p_monto, p_fecha, p_nota) -> (folio_egreso, folio_ingreso).
+     No es gasto ni ingreso — mueve efectivo entre cuentas propias, no toca el P&L. Mismo patrón
+     de drawer que formGasto. */
+
+  let comboOrigenTr = null, comboDestinoTr = null;
+
+  function avisoTr(tipo, html) {
+    const el = document.getElementById('trAviso');
+    if (el) { el.className = 'aviso visible ' + tipo; el.innerHTML = html; }
+  }
+  function limpiarAvisoTr() {
+    const el = document.getElementById('trAviso');
+    if (el) { el.className = 'aviso'; el.innerHTML = ''; }
+  }
+
+  async function formTraspaso() {
+    ERP.abrirPanel('Traspaso entre cuentas', 'Mover efectivo entre cuentas propias — no es gasto ni ingreso',
+      '<div class="skel">Cargando cuentas…</div>');
+
+    let cuentas;
+    try {
+      cuentas = await q('v_catalogo_cuentas', '&order=id.asc');
+      if (!cuentas.length) throw new Error('no hay cuentas en el catálogo');
+    } catch (e) {
+      ERP.abrirPanel('Traspaso entre cuentas', '', `<div class="errbox">
+        No se pudieron leer las cuentas: ${esc(e.message)}<br>Intenta de nuevo.</div>`);
+      return;
+    }
+
+    ERP.abrirPanel('Traspaso entre cuentas', 'Mover efectivo entre cuentas propias — no es gasto ni ingreso', `
+      <div class="form-erp">
+        <div class="campos">
+          <div class="campo">
+            <label>Cuenta origen <span class="req">*</span></label>
+            <div id="trOrigen"></div>
+          </div>
+          <div class="campo">
+            <label>Cuenta destino <span class="req">*</span></label>
+            <div id="trDestino"></div>
+          </div>
+          <div class="campo">
+            <label>Fecha <span class="req">*</span></label>
+            <input id="trFecha" type="date" value="${hoyISO()}">
+          </div>
+          <div class="campo">
+            <label>Monto USD <span class="req">*</span></label>
+            <input id="trMonto" class="mono" type="number" step="0.01" min="0.01" placeholder="0.00">
+          </div>
+          <div class="campo ancho">
+            <label>Nota</label>
+            <input id="trNota" type="text" maxlength="200" placeholder="Opcional — motivo del traspaso">
+          </div>
+        </div>
+        <div class="acciones">
+          <button class="btn-mini" id="trGuardar">Registrar traspaso</button>
+          <button class="btn-mini gris" id="trCancelar">Cancelar</button>
+        </div>
+        <div class="aviso visible warn" id="trAviso">Mueve efectivo entre cuentas. No es gasto ni ingreso —
+          no afecta el P&amp;L. Si mueves a/desde una bolsa de socio (JEAMS/SAMUEL), ajusta la deuda con ese socio.</div>
+      </div>`);
+
+    const itemsCuentas = cuentas.map(c => ({ id: c.id, nombre: c.id, alias: [c.nombre, c.banco].filter(Boolean) }));
+    comboOrigenTr = ERP.crearCombo({
+      contenedor: document.getElementById('trOrigen'),
+      items: itemsCuentas,
+      placeholder: 'Busca por id, nombre o banco…',
+      permitirNuevo: false,
+      valorInicial: cuentas.some(c => c.id === 'JPM') ? 'JPM' : cuentas[0].id
+    });
+    comboDestinoTr = ERP.crearCombo({
+      contenedor: document.getElementById('trDestino'),
+      items: itemsCuentas,
+      placeholder: 'Busca por id, nombre o banco…',
+      permitirNuevo: false
+    });
+
+    document.getElementById('trCancelar').addEventListener('click', ERP.cerrarPanel);
+    document.getElementById('trGuardar').addEventListener('click', guardarTraspaso);
+  }
+
+  async function guardarTraspaso() {
+    const origen = comboOrigenTr.valor();
+    const destino = comboDestinoTr.valor();
+    const fecha = document.getElementById('trFecha').value;
+    const monto = Number(document.getElementById('trMonto').value);
+    const nota = document.getElementById('trNota').value.trim();
+    const btn = document.getElementById('trGuardar');
+    limpiarAvisoTr();
+
+    if (!origen) { avisoTr('err', 'Elige la cuenta de origen.'); return; }
+    if (!destino) { avisoTr('err', 'Elige la cuenta de destino.'); return; }
+    // El backend también lo rechaza con mensaje claro; esto solo evita el viaje redondo obvio.
+    if (origen === destino) { avisoTr('err', 'La cuenta de origen y destino no pueden ser la misma.'); return; }
+    if (!fecha) { avisoTr('err', 'La fecha es obligatoria.'); return; }
+    if (!(monto > 0)) { avisoTr('err', 'El monto debe ser mayor a cero.'); return; }
+
+    btn.disabled = true;
+    avisoTr('warn', 'Registrando traspaso…');
+    try {
+      const data = await rpc('fn_traspaso', {
+        p_origen: origen, p_destino: destino, p_monto: monto, p_fecha: fecha, p_nota: nota || null
+      });
+      const r = (data && data[0]) || {};
+      ERP.marcarDatosSucios();
+      avisoTr('ok', `Traspaso registrado — egreso <b>${esc(r.folio_egreso)}</b> en ${esc(origen)},
+        ingreso <b>${esc(r.folio_ingreso)}</b> en ${esc(destino)}.`);
+      document.getElementById('trMonto').value = '';
+      document.getElementById('trNota').value = '';
+    } catch (e) {
+      if (ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
+      avisoTr('err', `El ERP rechazó el traspaso: ${esc(e.message)}`);
+    }
+    btn.disabled = false;
+  }
 
   /* ================= Editar movimiento ================= */
 
@@ -578,17 +809,23 @@
     </table></div>`;
   }
 
-  function formAplicarHtml(hayCargas) {
+  function formAplicarHtml(opts) {
+    const { hayCatalogo, hayFiltradas, contraparteNombre, mostrandoTodas } = opts;
     return `<div class="form-erp" style="margin-top:10px">
       <div class="campos">
         <div class="campo ancho"><label>Carga <span class="req">*</span></label><div id="aplCarga"></div>
-          ${hayCargas ? '' : '<small style="color:var(--gris);font-size:11px">No se pudo cargar el catálogo de embarques; recarga el panel.</small>'}</div>
+          ${contraparteNombre ? `<label style="font-size:11px;font-weight:400;display:flex;align-items:center;gap:4px;margin-top:4px">
+            <input type="checkbox" id="aplVerTodas"${mostrandoTodas ? ' checked' : ''}> Ver todas las cargas (no solo las de ${esc(contraparteNombre)})</label>` : ''}
+          ${hayCatalogo && !hayFiltradas && contraparteNombre
+            ? `<small style="color:var(--gris);font-size:11px">Sin cargas de ${esc(contraparteNombre)} — mostrando todas.</small>`
+            : ''}
+          ${hayCatalogo ? '' : '<small style="color:var(--gris);font-size:11px">No se pudo cargar el catálogo de embarques; recarga el panel.</small>'}</div>
         <div class="campo"><label>Monto USD <span class="req">*</span></label>
           <input id="aplMonto" class="mono" type="number" step="0.01" min="0.01" placeholder="0.00"></div>
         <div class="campo ancho"><label>Nota <span class="req">*</span></label>
           <input id="aplNota" type="text" maxlength="200" placeholder="Motivo de la aplicación"></div>
       </div>
-      <div class="acciones"><button class="btn-mini" id="aplGuardar"${hayCargas ? '' : ' disabled'}>Aplicar a carga</button></div>
+      <div class="acciones"><button class="btn-mini" id="aplGuardar"${hayCatalogo ? '' : ' disabled'}>Aplicar a carga</button></div>
       <div class="aviso" id="aplAviso"></div>
     </div>`;
   }
@@ -672,6 +909,34 @@
     }
   }
 
+  /* Anular un movimiento (D-119). fn_anular_movimiento(p_folio, p_motivo) es reversible
+     (anulado=true) y desaplica sus aplicaciones. Si cae en un mes cerrado el backend lo rechaza
+     con instrucciones — su mensaje se muestra tal cual, sin interpretarlo aquí. */
+  async function anularMovimiento(mov) {
+    const ok = window.confirm(
+      `¿Anular el movimiento ${mov.folio}?\n\n` +
+      'Se revierten sus aplicaciones (cobros/pagos ligados a cargas) y el movimiento deja de contar ' +
+      'para saldos y reportes. Queda en el historial (es reversible desde backend).');
+    if (!ok) return;
+    const motivo = window.prompt('Motivo de la anulación (obligatorio):');
+    if (motivo === null) return;   // canceló el prompt
+    const m = motivo.trim();
+    if (!m) { ERP.toast('err', 'El motivo es obligatorio: no se anuló.'); return; }
+    try {
+      const data = await rpc('fn_anular_movimiento', { p_folio: mov.folio, p_motivo: m });
+      const r = (data && data[0]) || {};
+      ERP.marcarDatosSucios();
+      ERP.toast('ok', `Movimiento anulado · ${r.aplicaciones_revertidas ?? 0} aplicación(es) revertida(s)`);
+      // El movimiento quedó anulado: cierra el editor. cerrarPanel re-renderiza Tesorería de fondo
+      // (datosSucios) mostrando la fila ya con el estado ANULADO. No interrumpe otra captura: este
+      // es el propio drawer de edición, cerrado por acción explícita del usuario.
+      ERP.cerrarPanel();
+    } catch (e) {
+      if (ERP.avisarSiPermiso(e)) return;
+      ERP.toast('err', e.message);   // p.ej. mes cerrado: el backend ya explica cómo reabrir
+    }
+  }
+
   async function editarMovimiento(folio) {
     const mov = movimientos.find(m => String(m.folio) === String(folio));
     if (!mov) return;
@@ -697,7 +962,6 @@
     }
 
     const puedeEdApl = ERP.puede('editar');
-    const cargasItems = cargasComboItems(cargasCat);
 
     // Lista de tipos (columna `tipo`); asegura que el tipo actual esté presente aunque falte.
     const listaTipos = [...new Set(tipos.map(t => t.tipo).filter(Boolean))];
@@ -706,6 +970,18 @@
     const ing = num(mov.ingreso), egr = num(mov.egreso);
     const modoIngreso = ing > 0.009;               // si no hay ingreso, es egreso
     const montoInicial = modoIngreso ? ing : Math.abs(egr);
+
+    // "Aplicar a carga": el selector arranca filtrado a las cargas de la MISMA contraparte del
+    // movimiento (cliente si es Cobro/ingreso, proveedor si es Pago/egreso) — minimiza el riesgo
+    // de aplicar por error a la carga de otro cliente/proveedor. "Ver todas" (checkbox) muestra
+    // el catálogo completo cuando el capturista de verdad lo necesita.
+    const cargasItemsTodas = cargasComboItems(cargasCat);
+    const cargasFiltradas = mov.contraparte
+      ? (cargasCat || []).filter(c => !c.anulado &&
+          norm(modoIngreso ? c.cliente : c.proveedor) === norm(mov.contraparte))
+      : [];
+    const cargasItemsFiltradas = cargasComboItems(cargasFiltradas);
+    const cargasItems = (mov.contraparte && cargasItemsFiltradas.length) ? cargasItemsFiltradas : cargasItemsTodas;
 
     ERP.abrirPanel(`Editar movimiento ${esc(folio)}`, `Cuenta ${esc(mov.cuenta_id || '—')} · movimiento ${esc(folio)}`, `
       <div class="form-erp">
@@ -743,10 +1019,21 @@
 
         <h4>Aplicaciones</h4>
         <div id="edAplicaciones">${pintarAplicaciones(aplicaciones, puedeEdApl)}</div>
-        ${puedeEdApl ? formAplicarHtml(cargasItems.length > 0) : ''}
+        ${puedeEdApl ? formAplicarHtml({
+          hayCatalogo: cargasItemsTodas.length > 0,
+          hayFiltradas: cargasItemsFiltradas.length > 0,
+          contraparteNombre: mov.contraparte || null,
+          mostrandoTodas: cargasItems === cargasItemsTodas
+        }) : ''}
 
         <h4>Historial de cambios</h4>
         <div id="edBitacora">${pintarBitacora(bitacora)}</div>
+
+        ${(puedeEdApl && mov.anulado !== true) ? `
+        <div class="zona-peligro">
+          <span class="nota">Anular revierte las aplicaciones de este movimiento (cobros/pagos ligados a cargas) y lo saca de saldos y reportes. Queda en el historial y es reversible desde backend. Si el movimiento (o sus aplicaciones) cae en un mes cerrado, el ERP lo rechazará indicando cómo reabrir.</span>
+          <button class="btn-mini peligro" id="edAnular">Anular movimiento</button>
+        </div>` : ''}
       </div>`);
 
     // Selección inicial por id (v_estado_cuenta.contraparte_id): se localiza el item exacto
@@ -764,6 +1051,9 @@
     document.getElementById('edCancelar').addEventListener('click', ERP.cerrarPanel);
     document.getElementById('edGuardar').addEventListener('click', () => guardarMovimiento(mov));
 
+    const btnAnular = document.getElementById('edAnular');
+    if (btnAnular) btnAnular.addEventListener('click', () => anularMovimiento(mov));
+
     cablearAplicaciones(document.getElementById('edAplicaciones'), mov.folio, puedeEdApl);
     if (puedeEdApl) {
       comboCargaApl = ERP.crearCombo({
@@ -774,6 +1064,11 @@
       });
       const btnAplicar = document.getElementById('aplGuardar');
       if (btnAplicar) btnAplicar.addEventListener('click', () => guardarAplicacion(mov.folio, puedeEdApl));
+      const chkTodas = document.getElementById('aplVerTodas');
+      if (chkTodas) chkTodas.addEventListener('change', () => {
+        comboCargaApl.limpiar();
+        comboCargaApl.actualizarItems(chkTodas.checked ? cargasItemsTodas : cargasItemsFiltradas);
+      });
     }
   }
 
@@ -891,10 +1186,19 @@
       if (movObjetivo) { cuentaSel = movObjetivo.cuenta_id; desde = ''; hasta = ''; }
     }
 
+    // Tira de KPIs (E93): "saldo total de cuentas reales" — el mismo ejemplo que da la tarea,
+    // ya lo calculaba pintarCuentas() para su <tfoot>. JEAMS/virtual excluido (es el préstamo
+    // de socio, no efectivo real).
+    const kpistrip = `<div class="kpistrip"><div class="kpi">
+      <div class="k">Saldo total (cuentas reales)</div>
+      <div class="v${totalCuentasReales(cuentasSaldo) < 0 ? ' neg' : ''}">${usd(totalCuentasReales(cuentasSaldo))}</div>
+    </div></div>`;
+
     cont.innerHTML = `
+      <div class="pantalla-tesoreria">
+      ${kpistrip}
       ${ERP.puede('capturar') ? `<div class="filtros" style="justify-content:flex-end">
-        <button class="btn-mini" id="tesNuevoMov">+ Movimiento</button>
-        <button class="btn-mini gris" id="tesRegistrarGasto">+ Registrar gasto</button>
+        <button class="btn-mini" id="tesRegistrar">+ Registrar</button>
       </div>` : ''}
 
       <h2 class="sec">Saldo por cuenta</h2>
@@ -911,12 +1215,11 @@
       ${seccionEstadoCuenta()}
 
       <h2 class="sec">Historial de cambios</h2>
-      <div class="card" id="tesHistorial">${pintarBitacoraGeneral(bitacora)}</div>`;
+      <div class="card" id="tesHistorial">${pintarBitacoraGeneral(bitacora)}</div>
+      </div>`;
 
-    const btnGasto = document.getElementById('tesRegistrarGasto');
-    if (btnGasto) btnGasto.addEventListener('click', formGasto);
-    const btnMov = document.getElementById('tesNuevoMov');
-    if (btnMov) btnMov.addEventListener('click', () => ERP.capturarMovimiento({}));
+    const btnRegistrar = document.getElementById('tesRegistrar');
+    if (btnRegistrar) btnRegistrar.addEventListener('click', abrirChooserRegistrar);
 
     const histCont = document.getElementById('tesHistorial');
     if (histCont) histCont.querySelectorAll('tr.clic[data-hist]').forEach(el =>

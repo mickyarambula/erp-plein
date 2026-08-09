@@ -1,0 +1,17 @@
+/* ERP Plein — capa de tokens (E89, fundación del rediseño "Operador estilo Silo").
+   Enlazada ANTES de estilos.css. NO reemplaza el :root viejo de estilos.css (--tinta, --papel,
+   --verde, etc.) — esos siguen vivos y en uso en todo el resto de la app; estos son nombres
+   nuevos, aditivos, sin choque. Retokenizar pantalla por pantalla es el siguiente paso, no este. */
+
+:root{
+  color-scheme: light;
+  --bg:#F6F8F5;--pan:#FFFFFF;--ink:#14231A;--i2:#56655C;--i3:#8B968C;--bd:#E3E7E1;--hair:#EEF1EC;
+  --money:#1E7A3C;--brand:#1E531D;--btn:#14231A;--btnT:#FFFFFF;--amb:#B26B12;--amb-bg:#FBF0DB;
+  --red:#B3402E;--red-bg:#FBEAE7;--tabG:#1E7A3C;--tabO:#C98A2D;--gtint:#F0F6EE;
+}
+[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#0F1512;--pan:#151B17;--ink:#EAF0EB;--i2:#93A197;--i3:#66736B;--bd:#232B26;--hair:#1B221D;
+  --money:#57C06A;--brand:#5FB255;--btn:#EAF0EB;--btnT:#0F1512;--amb:#D69A3C;--amb-bg:#2A2213;
+  --red:#E5675A;--red-bg:#2A1613;--tabG:#57C06A;--tabO:#D69A3C;--gtint:#141E15;
+}

@@ -116,9 +116,9 @@
     flash = null;
 
     if (!flags.length) {
-      cont.innerHTML = flashHtml + `<div class="card"><div class="vacio">
+      cont.innerHTML = `<div class="pantalla-flags">` + flashHtml + `<div class="card"><div class="vacio">
         Sin flags 🎉<br><span style="font-size:12px">No hay dudas parqueadas.</span>
-      </div></div>`;
+      </div></div></div>`;
       return;
     }
 
@@ -129,13 +129,13 @@
       else { resp.push(f); idxResp.push(i); }
     });
 
-    cont.innerHTML = flashHtml +
+    cont.innerHTML = `<div class="pantalla-flags">` + flashHtml +
       seccion('Pendientes de respuesta', sin, idxSin, 'Nada pendiente de responder.') +
       seccion('Respondidos — pendientes de cierre', resp, idxResp, 'Nada respondido en espera de cierre.') +
       `<div class="leyenda">Una flag es una duda parqueada: la carga no se modifica hasta resolverla.
         <b>Responder</b> registra la respuesta (no cierra el flag).
         ${ERP.puede('editar') ? '<b>Cerrar flag</b> lo resuelve y re-habilita FIFO en la carga.' : ''}
-        Toca el folio para abrir la ficha de la carga.</div>`;
+        Toca el folio para abrir la ficha de la carga.</div></div>`;
   }
 
   async function refrescar() {

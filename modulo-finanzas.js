@@ -1,8 +1,24 @@
-/* Módulo Finanzas — P&L con drill-down por mes, balance, KPIs y presupuesto vs real. */
+/* Módulo Finanzas — P&L con drill-down por mes, balance, KPIs y presupuesto vs real.
+
+   E96: vestida con la gramática "Operador estilo Silo" (ver REPORTE-FRONTEND.md, E90-E95;
+   SISTEMA-DISENO.md). SCOPE = .pantalla-finanzas, wrapper nuevo alrededor de TODO lo que pinta
+   render() (mismo patrón que las 6 pantallas anteriores). verMes()/verGastos() (drill-down por
+   mes) abren en el panel/drawer global #panelBody y quedan FUERA del wrapper, misma frontera de
+   siempre. Sin pastillas de modalidad (.pill.m/.g/.c): este módulo no las genera (verificado por
+   grep — ningún renglón muestra modalidad de carga), nada que construir ahí. */
 
 (function () {
   'use strict';
-  const { q, esc, usd, usd0, num, fmt, fmt0, pct, semaforo } = ERP;
+  const { q, esc, usd, usd0, num, fmt, fmt0, pct } = ERP;
+
+  /* Punto de margen (reemplaza el semáforo emoji 🟢🟡🔴 SOLO en esta pantalla — ERP.semaforo
+     sigue devolviendo emoji para los módulos que aún lo usan; no se toca el helper compartido).
+     Mismo patrón que puntoMargen() en Embarques (E90): >10% bien, 3–10% medio, <3% mal. */
+  function puntoMargen(mp) {
+    if (mp === null || mp === undefined) return '';
+    const clase = Number(mp) > 10 ? 'bien' : Number(mp) >= 3 ? 'medio' : 'mal';
+    return `<i class="ti ti-circle-filled pmargen ${clase}" title="Margen ${pct(mp)}"></i>`;
+  }
 
   /* ---------- Drill-down: cargas de un mes ----------
      v_pl_mes_detalle: mes, folio, po, cliente, origen, ingreso, costo */
@@ -181,8 +197,8 @@
       const info = seccion === 'Informativo';
       if (seccion !== seccionActual) {
         seccionActual = seccion;
-        const estiloHead = 'font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--gris);font-weight:700;padding-top:12px'
-          + (info ? ';border-top:2px solid var(--linea)' : '');
+        const estiloHead = 'font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--i2);font-weight:700;padding-top:12px'
+          + (info ? ';border-top:2px solid var(--bd)' : '');
         filas += `<tr><td colspan="2" style="${estiloHead}">${esc(seccion)}${info ? ' <span style="font-weight:400;text-transform:none">· contexto, no entra en la suma</span>' : ''}</td></tr>`;
       }
       const c = String(r.concepto || '');
@@ -190,11 +206,11 @@
       const esPosNeta = !info && c.startsWith('POSICION');
       const m = num(r.monto);
       const nota = r.nota
-        ? ` <span class="info-nota" data-nota="${esc(r.nota)}" title="${esc(r.nota)}" role="button" tabindex="0" style="cursor:help;color:var(--gris)">ⓘ</span>`
+        ? ` <span class="info-nota" data-nota="${esc(r.nota)}" title="${esc(r.nota)}" role="button" tabindex="0" style="cursor:help;color:var(--i2)">ⓘ</span>`
         : '';
       const estilo = [
-        esPosNeta ? `color:${m >= 0 ? 'var(--verde)' : 'var(--rojo)'}` : '',
-        info ? 'color:var(--gris)' : ''
+        esPosNeta ? `color:${m >= 0 ? 'var(--money)' : 'var(--red)'}` : '',
+        info ? 'color:var(--i2)' : ''
       ].filter(Boolean).join(';');
       const st = estilo ? ` style="${estilo}"` : '';
       filas += `<tr class="${esTotal ? 'total' : ''}"><td${st}>${esc(c)}${nota}</td>
@@ -217,7 +233,7 @@
       const m = num(r.monto);
       // Nota explicativa: ícono ⓘ con tooltip (hover) y tap (móvil) — se cablea en render().
       const info = r.nota
-        ? ` <span class="info-nota" data-nota="${esc(r.nota)}" title="${esc(r.nota)}" role="button" tabindex="0" style="cursor:help;color:var(--gris)">ⓘ</span>`
+        ? ` <span class="info-nota" data-nota="${esc(r.nota)}" title="${esc(r.nota)}" role="button" tabindex="0" style="cursor:help;color:var(--i2)">ⓘ</span>`
         : '';
       return `<tr class="${esTotal ? 'total' : ''}"><td>${esc(r.concepto)}${info}</td>
         <td class="num ${m < 0 ? 'neg' : ''}">${usd(m)}</td></tr>`;
@@ -228,11 +244,11 @@
     const cuadre = cuadreRow ? num(cuadreRow.monto) : 0;
     const cuadraOK = Math.abs(cuadre) < 0.005;
     const cuadreBar = `<div style="margin-top:12px;padding:11px 15px;border-radius:8px;font-weight:700;
-      background:${cuadraOK ? '#e4efe7' : '#fbe4e4'};color:${cuadraOK ? 'var(--verde)' : 'var(--rojo)'}">
-      ${cuadraOK ? '✅ Balance cuadrado' : `⚠️ DESCUADRE DE ${usd(Math.abs(cuadre))} — avisar a Miguel`}</div>`;
+      background:${cuadraOK ? 'var(--gtint)' : 'var(--red-bg)'};color:${cuadraOK ? 'var(--money)' : 'var(--red)'}">
+      ${cuadraOK ? '<i class="ti ti-circle-check-filled"></i> Balance cuadrado' : `<i class="ti ti-alert-triangle-filled"></i> DESCUADRE DE ${usd(Math.abs(cuadre))} — avisar a Miguel`}</div>`;
     // Renglón de cuadre al final de la tabla: complementa a la barra y ES el que viaja en el export
     // (la barra es un <div> y no se raspa). Negritas + mismo color que la barra.
-    const colorCuadre = cuadraOK ? 'var(--verde)' : 'var(--rojo)';
+    const colorCuadre = cuadraOK ? 'var(--money)' : 'var(--red)';
     const cuadreFila = `<tr class="total"><td style="color:${colorCuadre}">CUADRE (Activo - Pasivo - Patrimonio)</td>
       <td class="num" style="color:${colorCuadre}">${usd(cuadre)}</td></tr>`;
 
@@ -247,8 +263,8 @@
             // Solo "Por aplicar a un embarque" es un pendiente (rojo si negativo). Cualquier otro
             // destino (Inventario, Neutro, y valores futuros) va en gris: no es un pendiente.
             const pendiente = p.destino === 'Por aplicar a un embarque';
-            return `<tr${pendiente ? '' : ' style="color:var(--gris)"'}>
-            <td>${esc(p.tipo)}${p.grupo ? ` <span style="color:var(--gris)">· ${esc(p.grupo)}</span>` : ''}</td>
+            return `<tr${pendiente ? '' : ' style="color:var(--i2)"'}>
+            <td>${esc(p.tipo)}${p.grupo ? ` <span style="color:var(--i2)">· ${esc(p.grupo)}</span>` : ''}</td>
             <td class="num">${esc(p.movimientos)}</td>
             <td class="num">${usd(p.monto_movido)}</td>
             <td class="num">${usd(p.aplicado)}</td>
@@ -256,7 +272,7 @@
             <td>${esc(p.destino || '—')}</td></tr>`;
           }).join('')}</tbody>
         </table></div>`
-      : '<div class="vacio">Sin partidas pendientes ✅</div>';
+      : '<div class="vacio">Sin partidas pendientes <i class="ti ti-circle-check-filled"></i></div>';
 
     return `<div class="tabla-wrap"><table id="tblBalance" data-exp-seccion="Balance general">
       <thead><tr><th>Concepto</th><th class="num">Monto</th></tr></thead>
@@ -285,8 +301,8 @@
       <thead><tr><th></th><th>${esc(etiquetaCol)}</th><th class="num">Cargas</th>
         <th class="num">Venta</th><th class="num">Costo</th><th class="num">Margen</th><th class="num">%</th></tr></thead>
       <tbody>${conVenta.map(r => `<tr>
-        <td>${semaforo(r.margen_pct == null ? null : num(r.margen_pct))}</td>
-        <td>${esc(String(r.cliente ?? r.producto ?? '—').split(' ').slice(0, 3).join(' '))}</td>
+        <td>${puntoMargen(r.margen_pct == null ? null : num(r.margen_pct))}</td>
+        <td class="ent">${esc(String(r.cliente ?? r.producto ?? '—').split(' ').slice(0, 3).join(' '))}</td>
         <td class="num">${esc(r.cargas)}</td>
         <td class="num">${usd0(r.venta)}</td>
         <td class="num">${usd0(r.costo)}</td>
@@ -324,7 +340,7 @@
     });
     const filas = [...grupos.values()].sort((a, b) => b.cargas - a.cargas);
     const cel = (val, motivo, neg) => val == null
-      ? `<td class="num" style="color:var(--gris)" title="${esc(motivo || 'Dato deliberadamente ausente')}">—</td>`
+      ? `<td class="num" style="color:var(--i2)" title="${esc(motivo || 'Dato deliberadamente ausente')}">—</td>`
       : `<td class="num ${neg && val < 0 ? 'neg' : ''}">${usd(val)}</td>`;
 
     return `<div class="tabla-wrap"><table id="tblMargenCaja">
@@ -336,9 +352,9 @@
         const cpc = fiab ? g.costo / g.cajasFiab : null;
         const mpc = fiab ? g.margen / g.cajasFiab : null;
         return `<tr>
-          <td>${esc(String(g.producto).split(' ').slice(0, 3).join(' '))}</td>
+          <td class="ent">${esc(String(g.producto).split(' ').slice(0, 3).join(' '))}</td>
           <td class="num">${g.cargas}</td>
-          <td class="num">${g.tieneCajas ? fmt0(g.cajasTot) : '<span style="color:var(--gris)">—</span>'}</td>
+          <td class="num">${g.tieneCajas ? fmt0(g.cajasTot) : '<span style="color:var(--i2)">—</span>'}</td>
           ${cel(vpc, g.motivo, false)}
           ${cel(cpc, g.motivo, false)}
           ${cel(mpc, g.motivo, true)}</tr>`;
@@ -356,7 +372,7 @@
 
     return conVenta.map(r => {
       const pv = num(r.pct_venta), pc = num(r.pct_cxc);
-      const color = pc > 50 ? 'var(--rojo)' : pc > 25 ? '#C98A2D' : '#1E5B3A';
+      const color = pc > 50 ? 'var(--red)' : pc > 25 ? 'var(--amb)' : 'var(--money)';
       return `<div class="barra-row">
         <div class="barra-top">
           <span>${esc(String(r.cliente).split(' ').slice(0, 2).join(' '))}</span>
@@ -428,8 +444,8 @@
       <tbody>${conSaldo.map(r => {
         const v = ERP.venc(r.dias_vencido);
         return `<tr class="${r.vencida ? 'vencido-alto' : ''}">
-          <td class="mono">${esc(r.folio)}${r.po ? `<div style="font-size:11px;color:var(--gris)">${esc(r.po)}</div>` : ''}</td>
-          <td>${esc(String(r.cliente || '—').split(' ').slice(0, 2).join(' '))}</td>
+          <td class="mono">${esc(r.folio)}${r.po ? `<div style="font-size:11px;color:var(--i2)">${esc(r.po)}</div>` : ''}</td>
+          <td class="ent">${esc(String(r.cliente || '—').split(' ').slice(0, 2).join(' '))}</td>
           <td>${ERP.badgeEstado(r.estado)}</td>
           <td>${r.f_vencimiento ? esc(ERP.fecha(r.f_vencimiento)) : '—'}</td>
           <td class="${v.cls}">${esc(v.txt)}</td>
@@ -448,8 +464,8 @@
       <tbody>${conSaldo.map(r => {
         const v = ERP.venc(r.dias_vencido);
         return `<tr class="${r.vencida ? 'vencido-alto' : ''}">
-          <td class="mono">${esc(r.folio)}${r.po ? `<div style="font-size:11px;color:var(--gris)">${esc(r.po)}</div>` : ''}</td>
-          <td>${esc(String(r.proveedor || '—').split(' ').slice(0, 2).join(' '))}</td>
+          <td class="mono">${esc(r.folio)}${r.po ? `<div style="font-size:11px;color:var(--i2)">${esc(r.po)}</div>` : ''}</td>
+          <td class="ent">${esc(String(r.proveedor || '—').split(' ').slice(0, 2).join(' '))}</td>
           <td>${ERP.badgeEstado(r.estado)}</td>
           <td>${r.f_vencimiento ? esc(ERP.fecha(r.f_vencimiento)) : '—'}</td>
           <td class="${v.cls}">${esc(v.txt)}</td>
@@ -472,7 +488,7 @@
     // Ya viene ordenada por pct_cxc desc (mayor peso en la CxC viva primero).
     const top = rows[0];
     const callout = gapClaseFin(num(top.gap)) === 'rojo'
-      ? `<div style="margin:0 0 10px;padding:11px 15px;border-radius:8px;font-weight:700;background:var(--rojo-bg);color:var(--rojo)">
+      ? `<div style="margin:0 0 10px;padding:11px 15px;border-radius:8px;font-weight:700;background:var(--red-bg);color:var(--red)">
           ${esc(top.cliente)} concentra ${pct1Fin(top.pct_cxc)} de la CxC viva y paga a ${Math.round(num(top.dias_prom))} d (contratado ${Math.round(num(top.dias_contratado))} d).
         </div>`
       : '';
@@ -485,7 +501,7 @@
       <tbody>${rows.map(r => {
         const g = num(r.gap);
         return `<tr>
-          <td>${esc(r.cliente || '—')}</td>
+          <td class="ent">${esc(r.cliente || '—')}</td>
           <td class="num">${r.n_embarques ?? '—'}</td>
           <td class="num">${Math.round(num(r.dias_contratado))} d</td>
           <td class="num">${Math.round(num(r.dias_prom))} / ${Math.round(num(r.dias_mediana))}</td>
@@ -504,16 +520,17 @@
       <thead><tr><th></th><th>Carga</th><th>Producto</th><th>Cliente</th>
         <th class="num">Venta</th><th class="num">Costo</th><th class="num">Margen</th><th class="num">%</th></tr></thead>
       <tbody>${conV.map(r => `<tr>
-        <td>${semaforo(r.margen_pct == null ? null : num(r.margen_pct))}</td>
+        <td>${puntoMargen(r.margen_pct == null ? null : num(r.margen_pct))}</td>
         <td class="mono">${esc(r.folio)}</td>
-        <td>${esc(r.producto || '—')}</td>
-        <td>${esc(String(r.cliente || '—').split(' ').slice(0, 2).join(' '))}</td>
+        <td class="ent">${esc(r.producto || '—')}</td>
+        <td class="ent">${esc(String(r.cliente || '—').split(' ').slice(0, 2).join(' '))}</td>
         <td class="num">${usd(r.ingreso_venta)}</td>
         <td class="num">${usd(r.costo_total)}</td>
         <td class="num ${num(r.margen) < 0 ? 'neg' : ''}">${usd(r.margen)}</td>
         <td class="num">${r.margen_pct == null ? '—' : pct(r.margen_pct)}</td></tr>`).join('')}</tbody>
     </table></div>
-    <div class="leyenda">Semáforo de margen: 🟢 &gt;10% · 🟡 3–10% · 🔴 &lt;3%.</div>`;
+    <div class="leyenda">Punto de margen: <i class="ti ti-circle-filled pmargen bien"></i> &gt;10% ·
+      <i class="ti ti-circle-filled pmargen medio"></i> 3–10% · <i class="ti ti-circle-filled pmargen mal"></i> &lt;3%.</div>`;
   }
 
   /* ---------- Módulo ---------- */
@@ -539,6 +556,7 @@
     ]);
 
     cont.innerHTML = `
+      <div class="pantalla-finanzas">
       <h2 class="sec">Estado de resultados</h2>
       ${ERP.botonesExportar ? ERP.botonesExportar('EstadoResultados', 'Estado de Resultados', '') : ''}
       <div class="card">${pintarPL(pl)}</div>
@@ -585,7 +603,8 @@
 
       <h2 class="sec">Rentabilidad por embarque</h2>
       ${ERP.botonesExportar ? ERP.botonesExportar('Rentabilidad', 'Rentabilidad por Embarque', '#tblRentab') : ''}
-      <div class="card">${pintarRentabFin(rentab)}</div>`;
+      <div class="card">${pintarRentabFin(rentab)}</div>
+      </div>`;
 
     cont.querySelectorAll('.celda-clic').forEach(td =>
       td.addEventListener('click', () => {
