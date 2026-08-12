@@ -192,3 +192,5 @@ _Frontend E90-E101 (rediseño "Operador estilo Silo") sigue documentado aparte e
 - **Backlog de liquidación actualizado** (ver sección "Liquidación PACA" arriba): $54,224.70/11 cargas → **$44,224.70/10 cargas** (Cornejos P-043 $10,000 ya liquidado).
 
 **Anclas al cierre de esta sesión:** Cuadre 0.00 · seg 0/0/0 · CxC 565,985.13 · CxP 526,469.78 · JPM 46,808.54 · cargas 85 · folio_max 400.
+
+**Próximo horizonte (2026-08-10):** 🔵 Rediseño de arquitectura: Operación (OP) como hilo conductor — ver `ARQUITECTURA-OPERACION.md`. Modelo aprobado, Fase 0 pendiente. Obra grande por fases con GATE+ENSAYO.
