@@ -4093,3 +4093,27 @@ para ver el caso "fantasma" en producción, buscar una OP cuya carga tenga un pr
 servicio (flete/comisión/reempaque) distinto del proveedor/cliente del encabezado.
 
 **NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
+
+## E112 (2026-08-12) — Fix: "VENTA (SO)" mostraba "$NaN" en el drawer de Operaciones (OP)
+_`venta_so` de `v_operacion` es un **folio de texto** (ej. `SO-0003`, o `null` si la OP no tiene
+venta declarada) — `modulo-operaciones.js` lo pasaba por `usd()` (formateador de moneda), que
+con un string no numérico devolvía "$NaN"._
+
+**Fix (`modulo-operaciones.js`, `verOperacion()`):**
+- `Venta (SO)` ahora se pinta como texto plano con `esc()` (el folio tal cual), no con `usd()`.
+- `null`/vacío → `"—"`, nunca `"$NaN"` ni `"$0.00"`.
+
+**Opcional (aplicado, trivial):** la tarjeta "Margen" de la tira de KPIs es el margen sobre
+operaciones **reconocidas** (excluye consignación sin liquidar, `margen_bruto` NULL) — no
+coincide con "(Ingreso−Costo)/Ingreso" de todas las tarjetas visibles. Se renombró a **"Margen
+(reconocido)"** + `title` explicando la exclusión, para que no se preste a una resta a mano mal
+comparada.
+
+**Verificación EN VIVO (harness local + Chrome DevTools MCP, `comun.js`/`modulo-operaciones.js`
+reales, red stubbeada):** OP-0011 (`venta_so='SO-0003'`) → drawer muestra `"SO-0003"`. OP-0085
+(`venta_so=null`) → drawer muestra `"—"`. Ningún `$NaN` en pantalla. Tira de KPIs: etiqueta
+"Margen (reconocido)" + tooltip presentes. Harness borrado, servidor detenido al terminar.
+
+**node --check:** ✅ limpio en `modulo-operaciones.js`.
+
+**NO DESPLEGADO** (Miguel corre `npx vercel --prod`).

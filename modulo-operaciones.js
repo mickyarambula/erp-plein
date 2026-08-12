@@ -88,12 +88,13 @@
     const tvM = conMargen.reduce((s, r) => s + num(r.ingreso_venta), 0);
     const tm = conMargen.reduce((s, r) => s + num(r.margen_bruto), 0);
     const mp = tvM > 0.009 ? tm / tvM * 100 : null;
-    const tile = (etiqueta, valor, clase) => `<div class="kpi"><div class="k">${esc(etiqueta)}</div><div class="v${clase ? ' ' + clase : ''}">${valor}</div></div>`;
+    const tile = (etiqueta, valor, clase, titulo) => `<div class="kpi"${titulo ? ` title="${esc(titulo)}"` : ''}><div class="k">${esc(etiqueta)}</div><div class="v${clase ? ' ' + clase : ''}">${valor}</div></div>`;
     cont.innerHTML =
       tile('Operaciones', fmt0(operaciones.length), 'ink') +
       tile('Ingreso', usd(tv)) +
       tile('Costo', usd(tc), 'ink') +
-      tile('Margen', mp == null ? '—' : pct(mp), mp == null ? 'ink' : (mp < 0 ? 'neg' : ''));
+      tile('Margen (reconocido)', mp == null ? '—' : pct(mp), mp == null ? 'ink' : (mp < 0 ? 'neg' : ''),
+        'Margen sobre operaciones ya reconocidas: excluye consignación sin liquidar (margen_bruto NULL). No es (Ingreso−Costo)/Ingreso de todas las tarjetas mostradas arriba.');
   }
 
   function pintarLista() {
@@ -197,7 +198,7 @@
         <div class="det"><div class="l">Cajas</div><div class="v mono">${op.cajas == null ? '—' : fmt0(op.cajas)}</div></div>
         <div class="det"><div class="l">Ingreso (venta)</div><div class="v mono">${usd(op.ingreso_venta)}</div></div>
         <div class="det"><div class="l">Costo total</div><div class="v mono">${usd(op.costo_total)}</div></div>
-        <div class="det"><div class="l">Venta (SO)</div><div class="v mono">${op.venta_so == null ? '—' : usd(op.venta_so)}</div></div>
+        <div class="det"><div class="l">Venta (SO)</div><div class="v mono">${op.venta_so ? esc(op.venta_so) : '—'}</div></div>
       </div>
       ${op.proyecto_id ? `<div class="leyenda">Ligada al proyecto <span class="mono">${esc(op.proyecto_id)}</span>.</div>` : ''}
 
