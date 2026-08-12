@@ -4117,3 +4117,81 @@ reales, red stubbeada):** OP-0011 (`venta_so='SO-0003'`) → drawer muestra `"SO
 **node --check:** ✅ limpio en `modulo-operaciones.js`.
 
 **NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
+
+## E113 (2026-08-12) — Slice 1 del rediseño OP: "+ Nueva operación" (crea OP + primera venta, backend D-147..D-149)
+_Backend cerró Fase 3a/3b del rediseño OP: `fn_abrir_operacion(p_proyecto_id, p_nota)` (reserva
+folio OP-XXXX, `seq_operaciones_num` arranca en 86) y `fn_op_agregar_venta(p_folio_op, ...)`
+(cuelga una venta de la OP reusando los parámetros de `fn_crear_so` + setea `operacion_id`).
+Tarea: la puerta de captura — botón "+ Nueva operación" en la pantalla Operaciones (OP)._
+
+**`modulo-operaciones.js` — nueva sección "Nueva operación (Slice 1)":**
+- Botón **"+ Nueva operación"** (negro, `var(--btn)` = `#14231A`, ícono `ti-plus`) en la barra
+  de filtros de la pantalla, gateado por `ERP.puede('capturar')` — mismo patrón que "+ Nuevo
+  embarque" en `modulo-cargas.js`.
+- Abre el drawer compartido (`ERP.abrirPanel`) con un `.form-erp` (mismos componentes legacy que
+  usa el resto de la app en drawers de captura — Registrar traspaso, Registrar gasto, Crear
+  embarque): Cliente\* (combo de `v_directorio_contrapartes` filtrado `es_cliente=true`, SIN
+  "+ Nuevo" — este slice no da de alta clientes, eso es Directorio Comercial), Modalidad\*
+  (`<select>` con las 4 modalidades fijas: Comisión pura=1, Margen fijo=2, Consignación=3, Buy &
+  Resell=4), PO del cliente, Días de crédito, Incoterm (texto libre — no hay fuente de datos
+  para un catálogo, no se inventó una lista), Proyecto (opcional, `<select>` de
+  `proyectos_productor`), Nota.
+- **Campos de precio/comisión dinámicos por modalidad** (`CAMPOS_MODALIDAD`/`MODALIDADES_OP`):
+  cambiar el `<select>` de Modalidad muestra/oculta Comisión por caja + Cuota fija (modalidad 1),
+  Precio de compra + Precio de venta por caja (modalidad 2 y 4), % de comisión (modalidad 3). Al
+  guardar, **solo se leen del DOM los campos de la modalidad activa** — los demás viajan `null`
+  aunque el usuario haya escrito algo antes de cambiar de modalidad (evita mandar un precio
+  "fantasma" de una modalidad que ya no aplica).
+- Producto y cajas **NO se capturan aquí** (por diseño — viven en compra/embarque, Slice 2/3, por
+  herencia sin recaptura) — nota fija en el formulario para que no se busquen esos campos.
+- **Encadenado no-atómico, con protección contra duplicados**: `guardarNuevaOperacion()` llama
+  `fn_abrir_operacion` y guarda el `folio_op` devuelto en una variable de módulo
+  (`opEnProgreso.folioOp`) ANTES de intentar `fn_op_agregar_venta`. Si la venta falla, el aviso
+  dice explícitamente que la OP ya existe y por qué falló la venta (mensaje del RAISE del
+  backend, tal cual, sin traducir), el botón cambia a **"Reintentar venta"**, y un reintento
+  **reusa el mismo `folio_op`** — nunca vuelve a llamar `fn_abrir_operacion` (no crea una segunda
+  OP huérfana por reintentar). Si el usuario intenta cerrar el drawer con una OP creada pero sin
+  venta, se le avisa con un `confirm()` antes de dejarlo cerrar.
+- Éxito: `ERP.marcarDatosSucios()` + `ERP.toast('ok', 'Operación <OP-XXXX> creada con venta
+  <SO-XXXX>.')` + `ERP.cerrarPanel()` — cerrar el panel re-ejecuta `despachar()` (la lista de
+  Operaciones se re-lee de `v_operacion_resumen`, mismo mecanismo que usa toda la app).
+- **CSS**: `.btn-mini` remapeado dentro del scope `.pantalla-operaciones` (no existía todavía —
+  el botón de la lista vive en el scope nuevo; el botón "Crear operación" dentro del drawer usa
+  el `.btn-mini` legacy sin scope, igual que TODOS los demás formularios de captura de la app).
+
+**Verificación EN VIVO (harness local + Chrome DevTools MCP; `comun.js`/`modulo-operaciones.js`
+reales; se mockeó `sb.rpc`/`sb.from('v_mi_perfil')`/`fetch` — no se tocó backend real):**
+- ✅ El botón "+ Nueva operación" aparece (perfil mock con `puede_capturar=true`).
+- ✅ Al abrir, modalidad por defecto (Comisión pura) muestra Comisión por caja + Cuota fija;
+  cambiar a Margen fijo oculta esos 2 y muestra Precio de compra + Precio de venta.
+- ✅ **Camino feliz**: cliente elegido por el combo (id real, no texto), modalidad Margen fijo,
+  precios capturados → `fn_abrir_operacion({p_proyecto_id:null, p_nota:null})` seguido de
+  `fn_op_agregar_venta({..., p_cliente_id:501, p_revenue_model_id:2, p_precio_compra_caja:5,
+  p_precio_venta_caja:8.5, p_comision_por_caja:null, p_pct_comision:null,
+  p_cuota_fija_embarque:null, ...})` — confirmado que los campos de las OTRAS modalidades viajan
+  `null`. Toast `"Operación OP-0086 creada con venta SO-0086."`, drawer se cierra.
+- ✅ **Falla parcial**: `fn_abrir_operacion` ok, `fn_op_agregar_venta` rechaza (RAISE simulado) →
+  aviso inline muestra el mensaje del backend tal cual + "la operación ya se creó", botón pasa a
+  "Reintentar venta", el drawer **sigue abierto**.
+- ✅ **Reintento**: al corregir y volver a guardar, `fn_abrir_operacion` **NO se vuelve a llamar**
+  (mismo `folio_op` reusado) — solo `fn_op_agregar_venta` se reintenta. Éxito → toast + cierre.
+- ✅ **Cancelar con OP huérfana**: cerrar el drawer tras una falla parcial dispara un `confirm()`
+  de advertencia; "Cancelar" (dismiss) deja el drawer abierto, "Aceptar" lo cierra.
+- ✅ Visual: botón "+ Nueva operación" negro (`#14231A`) en la lista; formulario dentro del
+  drawer con la gramática `.form-erp` habitual (mismo aspecto que Registrar traspaso/gasto).
+- Harness temporal creado y **borrado** al terminar; servidor local detenido.
+
+**node --check:** ✅ limpio en `modulo-operaciones.js`. `estilos.css`: llaves balanceadas.
+
+**Cómo probar (para Miguel, después de `npx vercel --prod`):**
+1. Operaciones (OP) → botón negro "+ Nueva operación" (arriba a la derecha de los chips).
+2. Cliente (ej. "Crystal Fresh") + Modalidad **Margen fijo** → aparecen Precio de compra/venta
+   por caja → llénalos → "Crear operación".
+3. Debe salir un toast verde: "Operación OP-XXXX creada con venta SO-XXXX." y el drawer se cierra.
+4. La OP nueva debe aparecer en la lista (folio OP-0086 en adelante).
+5. Repite eligiendo Modalidad **Comisión pura** — el formulario debe mostrar Comisión por
+   caja/Cuota fija en vez de precios de compra/venta, confirmando que el form cambia con la
+   modalidad.
+
+**NO DESPLEGADO** (Miguel corre `npx vercel --prod`). Slices 2 ("Agregar compra") y 3
+("Registrar embarque") llegan en tareas posteriores — no se tocó nada de esas fases aquí.
