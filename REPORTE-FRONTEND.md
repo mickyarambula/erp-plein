@@ -4274,3 +4274,50 @@ reales; se mockeó `sb.rpc`/`sb.from('v_mi_perfil')`/`fetch`):**
 
 **NO DESPLEGADO** (Miguel corre `npx vercel --prod`). Slice 3 ("Registrar embarque", D-151,
 la de más cuidado — toca costos) queda para una tarea posterior, no se tocó aquí.
+
+## E115 (2026-08-12) — Slice 2.1: sección "Compras (OC)" en el detalle de la OP (backend D-152)
+_Cierra la nota abierta de E114: la compra que agrega el Slice 2 ("Agregar compra") no se veía
+en ningún lado del detalle de la OP porque `v_operacion_costos`/`v_operacion_cxp` se arman de
+`carga_costos`, que nace en el embarque (Slice 3), no en la compra. El backend creó una vista de
+lectura nueva y dedicada, `v_operacion_compras` (D-152), para exponer las OCs colgadas de una OP
+directamente — sin esperar a que exista un embarque._
+
+**`modulo-operaciones.js` — `verOperacion()`:**
+- Se agregó `q('v_operacion_compras', '&folio_op=eq.<OP>&order=oc_folio.asc')` al mismo
+  `Promise.all()` de siempre (junto a `v_operacion`/`v_operacion_costos`/`v_operacion_cxp`) —
+  un solo viaje redondo adicional, no un fetch aparte.
+- Nueva sección **"Compras (OC)"** en el hilo del detalle, en el orden correcto: encabezado →
+  botón "Agregar compra" → **Compras (OC)** → Costos por línea (embarque) → CxP. Tabla
+  `.fact-lineas` (misma gramática que el resto del detalle): OC, Proveedor, Núm. oficial
+  (`numero_proveedor` o "—"), Moneda, Total, Estado (pill gris), Ítems (`n_items`), Entrega
+  estimada (`f_entrega_est` o "—", formateada con `ERP.fecha`).
+- Sin compras: `<div class="vacio">Sin compras registradas todavía.</div>` — mismo componente
+  "vacío" que ya usan "Costos por línea"/CxP cuando no hay datos, no se inventó uno nuevo.
+- El refresh que ya hacía `guardarCompra()` (vuelve a llamar `verOperacion(folioOp)` tras un
+  alta exitosa) automáticamente trae la OC nueva en esta sección — no hizo falta tocar
+  `guardarCompra()`, el fetch adicional ya viaja en cada `verOperacion()`.
+
+**Verificación EN VIVO (harness local + Chrome DevTools MCP; `comun.js`/`modulo-operaciones.js`
+reales; se mockeó `sb.rpc`/`fetch`, incluida una versión del mock que agrega la OC recién creada
+a la respuesta de `v_operacion_compras` para simular el refetch real):**
+- ✅ **Orden de secciones**: `["Compras (OC)", "Costos por línea", "Costo por contraparte real (CxP)"]` — Compras va justo después del botón de acción, antes de Costos.
+- ✅ **OP con compra existente** (OC-0003, LAS BRISAS FARMS, PROV-99, USD, $1,250.00, Borrador,
+  2 ítems, 20 ago 26): fila pintada con todos los campos correctos.
+- ✅ **OP sin compras**: muestra "Sin compras registradas todavía." (clase `.vacio`).
+- ✅ **Agregar una compra y verla aparecer sin recargar manualmente**: tras guardar en el form de
+  "Agregar compra", el drawer vuelve a `verOperacion()` y la OC nueva (OC-0007, $60.00, 1 ítem)
+  aparece de inmediato en la sección "Compras (OC)" — confirmado que NO hace falta cerrar y
+  reabrir el panel.
+- Harness temporal creado y **borrado** al terminar; servidor local detenido.
+
+**node --check:** ✅ limpio en `modulo-operaciones.js`.
+
+**Cómo probar (para Miguel, después de `npx vercel --prod`):**
+1. Abre una OP que ya tenga una compra agregada (o agrégale una con "Agregar compra") → debe
+   verse la sección "Compras (OC)" con folio, proveedor, total, estado e ítems.
+2. Agrega una compra nueva → sin cerrar el panel, debe aparecer en la lista de "Compras (OC)"
+   de inmediato.
+3. Abre una OP sin compras → debe decir "Sin compras registradas todavía."
+
+**NO DESPLEGADO** (Miguel corre `npx vercel --prod`). Slice 3 ("Registrar embarque", D-151)
+sigue pendiente, no se tocó aquí.
