@@ -4006,3 +4006,90 @@ debe mostrar P-076 directo, sin necesitar "Ver todas". Confirmar que un pago a u
 se sigue filtrando igual que siempre.
 
 **NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
+
+## E111 (2026-08-12) — Pantalla nueva "Operaciones (OP)": lectura del hilo conductor (backend D-140..D-146)
+_Backend construyó el modelo-OP (hilo conductor `OP-XXXX` — ver `ARQUITECTURA-OPERACION.md`) y
+4 vistas nuevas de solo lectura, legibles por `authenticated`: `v_operacion` (1 fila por OP,
+encabezado completo), `v_operacion_resumen` (folio_op/carga/po/modalidad/cliente/estado_carga/
+ingreso_venta/costo_total/margen_bruto), `v_operacion_costos` (detalle por línea con
+`contraparte_real` vs `proveedor_encabezado` y `sin_contraparte`), `v_operacion_cxp` (costo por
+contraparte real). Tarea SOLO FRONTEND: pantalla de lectura nueva, sin mutaciones, sin tocar
+backend, sin escribir SQL._
+
+**Archivo nuevo `modulo-operaciones.js`** — módulo `operaciones` registrado con `ERP.registrar`:
+- **Lista maestra**: un solo fetch de `v_operacion_resumen` (sin refetch por filtro), pintado
+  como **tarjetas** (reusa la gramática `.group`/`.ghead`/`.gtag`/`.gsub`/`.kv-row`/`.kv` que ya
+  vistió Embarques en E99 — "reusar el componente que ya cumple el rol", SISTEMA-DISENO.md §12),
+  una tarjeta por OP en vez de tabla plana, SIN `.glotes` anidado porque aquí una tarjeta = una
+  operación (no un grupo de varias). Cada tarjeta: folio_op, carga/PO/cliente como subtítulo,
+  pill de modalidad (mismo contrato que `pillModalidad()` de `modulo-cargas.js`: margen=verde,
+  consignación=verde, comisión=ámbar — nunca rojo), e Ingreso/Costo/Margen como KPIs inline.
+  Filtro por modalidad (chips Todas/Margen/Consignación/Comisión, sin refetch, toggle de
+  `.activo` sin re-render de los chips — mismo patrón que `pintarFiltros()` en `modulo-cargas.js`)
+  + buscador client-side (folio_op/carga/po/cliente, `ERP.norm` acento-insensible, debounce
+  150ms). Tira de KPIs arriba (Operaciones/Ingreso/Costo/Margen%) — el % excluye del promedio las
+  OPs con `margen_bruto` NULL (consignación sin liquidar), para no mezclar peras con manzanas.
+- **Margen en consignación**: `margen_bruto` llega `NULL` mientras no se liquida (el ingreso se
+  reconoce al cobro, no al embarque — D-04) → se pinta **"— al liquidar"**, NUNCA `$0.00`
+  (verificado explícitamente, ver Pruebas abajo).
+- **Detalle (drawer, `verOperacion(folioOp)`)**: encabezado desde `v_operacion` en un
+  `.det-grid` (mismo componente legacy que usa la ficha de carga en `modulo-cargas.js` —
+  drawers viven FUERA del scope `.pantalla-operaciones`, con los tokens legacy de siempre) +
+  tabla de costos desde `v_operacion_costos`, resaltando con fondo ámbar y un `<span class="pill
+  ambar">fantasma</span>` cada línea donde `contraparte_real` (comparado con `ERP.norm`,
+  insensible a acentos/mayúsculas) es DISTINTO del `proveedor_encabezado` — el caso real es un
+  proveedor de SERVICIO (flete/comisión/reempaque) que cobra la línea aunque el encabezado
+  muestre otro nombre. Las líneas con `sin_contraparte=true` se marcan **"(interno /
+  pendiente)"** y NUNCA se cuentan como fantasma (son un caso aparte: no hay contraparte
+  capturada todavía, no es que sea distinta). Debajo, resumen de `v_operacion_cxp` (costo real
+  agrupado por contraparte, con fila `total`).
+- **Navegación**: nuevo ítem "Operaciones (OP)" al inicio del grupo "Operación" en `index.html`
+  (antes de "Embarques" — es el hilo que los une a todos), `<script src="modulo-operaciones.js">`
+  cargado junto a `modulo-cargas.js`.
+- **CSS nuevo**: bloque `.pantalla-operaciones` en `estilos.css` (mismo patrón SCOPE que los
+  demás — kpistrip/filtros/chip/busca/group/ghead/kv-row/kv/pill, todo con tokens de
+  `tokens.css`, cero hex nuevo).
+
+**⚠️ Hueco real encontrado — requiere backend, NO se puede cerrar desde este chat:** el menú
+dinámico (`app.js` → `aplicarMenuDinamico()`, D-105) oculta cualquier ítem cuya clave no esté en
+`ERP.perfil.modulos` (backend, tabla `modulos_erp` + `rol_modulos`/`usuario_modulos`). La clave
+`'operaciones'` es NUEVA y **no existe todavía en ese catálogo** — el ítem de menú quedará oculto
+para TODOS los usuarios (incluido Miguel) aun después de desplegar, hasta que el chat de backend
+dé de alta `'operaciones'` en `modulos_erp` y lo conceda al menos al rol admin/operación. Pasado
+a `PENDIENTES-BACKEND.md`.
+
+**Verificación EN VIVO (harness local + Chrome DevTools MCP; `comun.js` y `modulo-operaciones.js`
+REALES, con `tokens.css`/`estilos.css` reales cargados; solo la red — `fetch`/`supabase.createClient`
+— stubbeada con 85 OPs sintéticas y el caso testigo OP-0011 descrito en la tarea):**
+- ✅ **La lista trae 85 OPs** (`"85 de 85 operaciones"`, tira de KPIs con la suma correcta).
+- ✅ **Filtro Consignación**: 30 OPs, las "sin liquidar" muestran `Margen = "— al liquidar"` —
+  nunca `$0.00` (el `$0.00` que sí aparece es el de `Ingreso`, correcto: D-04, ingreso_venta=0
+  mientras no se liquida).
+- ✅ **OP-0011 (caso testigo)**: encabezado muestra Proveedor=AGROFEPAC S.A., pero las 4 líneas de
+  costo (Flete/Comisión/Reempaque/Refrigeración) están coloreadas ámbar con el tag `fantasma`,
+  cada una con su contraparte real (Las Brisas Transport/BBA Brokerage/Suarez Brokerage/
+  Agricooling LLC) — distinta del encabezado. La línea "Materia prima" (`sin_contraparte=true`)
+  se muestra "(interno / pendiente)", SIN el tag fantasma. El resumen CxP desglosa el mismo costo
+  por las 4 contrapartes reales + total.
+- ✅ **Comisión (caso Alpine-like)**: costo `$0.00`, margen = ingreso completo (100%), pill ámbar
+  "Comisión" con el tooltip de siempre — correcto por diseño, nunca se marca como error.
+- ✅ **Regresión**: una OP normal (proveedor de línea = proveedor de encabezado) NO muestra
+  ningún tag fantasma.
+- ✅ **Buscador**: "OP-0011" aísla exactamente esa tarjeta entre las 85.
+- ✅ Visual claro/oscuro: la lista (`.pantalla-operaciones`, tokens nuevos) se adapta
+  correctamente a `data-theme="dark"`. El drawer de detalle usa tokens legacy sin variante
+  oscura — **mismo comportamiento que TODOS los demás drawers de la app hoy** (Embarques,
+  Cobranza, etc.), no es una regresión de esta pantalla; sigue siendo el pendiente menor ya
+  anotado en SISTEMA-DISENO.md, no se amplía su alcance en esta tarea.
+- Harness temporal creado y **borrado** al terminar; servidor local detenido; no queda basura
+  en el repo.
+
+**node --check:** ✅ limpio en `modulo-operaciones.js`.
+
+**Cómo probar (para Miguel, después de que backend dé de alta `'operaciones'` en `modulos_erp` Y
+de `npx vercel --prod`):** menú lateral → grupo Operación → "Operaciones (OP)" (primer ítem) →
+debe traer 85 tarjetas, chips de modalidad arriba, buscador. Tocar cualquiera abre el detalle;
+para ver el caso "fantasma" en producción, buscar una OP cuya carga tenga un proveedor de
+servicio (flete/comisión/reempaque) distinto del proveedor/cliente del encabezado.
+
+**NO DESPLEGADO** (Miguel corre `npx vercel --prod`).

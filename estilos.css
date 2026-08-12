@@ -1880,3 +1880,48 @@ tr.anulada td:nth-child(2) .enlace{text-decoration:line-through;text-decoration-
 .pantalla-tareas .form-erp .campos,.pantalla-flags .form-erp .campos,.pantalla-datos-faltantes .form-erp .campos,.pantalla-bitacora .form-erp .campos,.pantalla-usuarios .form-erp .campos,.pantalla-ventas .form-erp .campos{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
 .pantalla-tareas .form-erp .campo,.pantalla-flags .form-erp .campo,.pantalla-datos-faltantes .form-erp .campo,.pantalla-bitacora .form-erp .campo,.pantalla-usuarios .form-erp .campo,.pantalla-ventas .form-erp .campo{display:flex;flex-direction:column;min-width:0}
 .pantalla-tareas .campo-fijo,.pantalla-flags .campo-fijo,.pantalla-datos-faltantes .campo-fijo,.pantalla-bitacora .campo-fijo,.pantalla-usuarios .campo-fijo,.pantalla-ventas .campo-fijo{background:var(--bg);border:1px dashed var(--bd);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--ink)}
+
+/* SCOPE = .pantalla-operaciones (wrapper nuevo alrededor de TODO lo que pinta render() en
+   modulo-operaciones.js, mismo patrón que .pantalla-embarques/.pantalla-cxc). Pantalla nueva
+   de lectura del modelo-OP (D-140..D-146): reusa la gramática .group/.ghead/.kv-row/.kv que ya
+   vistió Embarques en E99 (una tarjeta por OP en vez de tabla plana), sin .glotes anidado
+   porque aquí una tarjeta = una operación, no un grupo de varias. */
+.pantalla-operaciones .kpistrip{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.pantalla-operaciones .kpi{background:var(--pan);border:1px solid var(--bd);border-radius:10px;padding:11px 16px;flex:1;min-width:130px}
+.pantalla-operaciones .kpi .k{font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--i2)}
+.pantalla-operaciones .kpi .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:20px;color:var(--money);margin-top:4px}
+.pantalla-operaciones .kpi .v.ink{color:var(--ink)}
+.pantalla-operaciones .kpi .v.neg{color:var(--red)}
+
+.pantalla-operaciones .filtros{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.pantalla-operaciones .filtros input.busca{background:var(--pan);border:1px solid var(--bd);color:var(--ink);padding:8px 12px;border-radius:6px;font-size:13px;flex:1;min-width:220px}
+.pantalla-operaciones .filtros input.busca:focus{outline:none;border-color:var(--brand)}
+.pantalla-operaciones .chip{font-size:11.5px;font-weight:600;color:var(--i2);background:var(--pan);border:1px solid var(--bd);border-radius:16px;padding:5px 12px;cursor:pointer}
+.pantalla-operaciones .chip:hover{border-color:var(--brand);color:var(--brand)}
+.pantalla-operaciones .chip.activo{background:var(--brand);color:#fff;border-color:var(--brand)}
+.pantalla-operaciones .chip .chip-n{opacity:.85;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;margin-left:4px}
+.pantalla-operaciones .conteo{font-size:11px;color:var(--i3);opacity:.8}
+
+.pantalla-operaciones .group{background:var(--pan);border:1px solid var(--bd);border-radius:10px;overflow:hidden;margin-bottom:10px}
+.pantalla-operaciones .op-card{cursor:pointer;transition:border-color .12s}
+.pantalla-operaciones .op-card:hover{border-color:var(--brand)}
+.pantalla-operaciones .ghead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border-left:4px solid var(--tabG);background:var(--gtint)}
+.pantalla-operaciones .gicon{color:var(--brand)}
+.pantalla-operaciones .gtag{font-family:'Archivo',sans-serif;font-weight:700;font-size:14px;color:var(--ink)}
+.pantalla-operaciones .gsub{font-size:11.5px;color:var(--i2);margin-top:2px}
+.pantalla-operaciones .op-modalidad{margin-left:auto}
+.pantalla-operaciones .kv-row{display:flex;gap:18px;flex-wrap:wrap}
+.pantalla-operaciones .kv{display:flex;flex-direction:column;min-width:64px}
+.pantalla-operaciones .kv .k{font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--i3)}
+.pantalla-operaciones .kv .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:14px;color:var(--money);margin-top:2px}
+.pantalla-operaciones .kv .v.ink{color:var(--ink)}
+.pantalla-operaciones .kv .v.neg{color:var(--red)}
+
+.pantalla-operaciones .pill{font-size:10px;font-weight:600;border-radius:13px;padding:2px 8px}
+.pantalla-operaciones .pill.m{background:color-mix(in srgb,var(--brand) 13%,transparent);color:var(--brand)}
+.pantalla-operaciones .pill.g{background:color-mix(in srgb,var(--brand) 13%,transparent);color:var(--brand)}
+.pantalla-operaciones .pill.c{background:var(--amb-bg);color:var(--amb)}
+.pantalla-operaciones .pill.gris{background:var(--hair);color:var(--i2)}
+
+.pantalla-operaciones .vacio{padding:20px;text-align:center;color:var(--i2);font-style:italic}
+.pantalla-operaciones .leyenda{font-size:11px;color:var(--i2);padding:12px 2px;font-style:italic}

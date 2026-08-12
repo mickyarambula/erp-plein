@@ -23,6 +23,7 @@ _Última actualización: cierre post-autosuficiencia (2026-08-09) — Fase 2c co
 ## Backend — activos / por hacer
 
 ### 🟠 Prioridad media
+- **Alta de `'operaciones'` en `modulos_erp` (E111, bloquea la pantalla nueva):** Fase 0 del modelo-OP (D-140..D-146) + pantalla frontend "Operaciones (OP)" (`modulo-operaciones.js`) ya están listas, pero la clave de módulo `'operaciones'` no existe todavía en el catálogo `modulos_erp` (D-105) — `aplicarMenuDinamico()` oculta cualquier ítem de menú cuya clave no esté ahí, así que el ítem queda invisible para TODOS los usuarios (incluido Miguel) aun después de desplegar. Falta: dar de alta `'operaciones'` en `modulos_erp` y concederlo al menos al rol admin/operación (RPC `fn_admin_*` de D-105).
 - **Liga única de venta:** unificar `sales_order_cargas`/`lote_ventas` + jalar cajas del lote (matar doble registro). GATE+ENSAYO.
 - **F2:** diferencia ~1,494 del total CxP (Drive 497,861.64 vs directo 496,368.03).
 - **Liquidar backlog** (4 productores, **10 cargas, $44,224.70** — bajó de $54,224.70/11 cargas: **Cornejos P-043 ($10,000) ya se liquidó**): Carrifoods 6 cargas $20,329.50 · Akambarhu P-073/075 $11,874 · Cornejos P-047 $11,571.20 · Agrofepac P-071 $450. Lo hace Miguel en la UI.
