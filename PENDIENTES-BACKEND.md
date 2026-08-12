@@ -1,5 +1,5 @@
 # PENDIENTES-BACKEND.md
-_Última actualización: cierre post-autosuficiencia (2026-08-09) — Fase 2c confirmada en producción + Tema 1 (D-138) + consolidación fn_alta_producto (D-139). Dueño por defecto: backend, salvo que diga otro._
+_Última actualización: 2026-08-12 — rediseño OP en marcha: Fase 0/1a/2/alta-módulo/3a/3b cerradas (D-140..D-149), Fase 3c/3d y saneamiento CxP (1b) pendientes. Dueño por defecto: backend, salvo que diga otro._
 
 ## Cerrado en E102–E106 (sesión de autosuficiencia, ver BITACORA D-120..D-137)
 - ✅ **Tema 2 — Línea de proyecto + socios (D-120..D-124):** `fn_ajustar_linea_proyecto` (sola, money-neutral, candado ≥ dispuesto), `fn_registrar_aportacion_socio` (genérica, 3 naturalezas), origen de fondeo en `fn_anticipo_productor` (opcional, retrocompatible), balance "Deuda a socios" generalizado + `v_deuda_socios`. Frontend: 3 botones cableados (Ajustar línea en Proyecto, + Aportación de socio en Tesorería/Proyecto, selector Origen en Anticipo). **Miguel ya opera esto solo** (folio 397, PRJ-005).
@@ -22,8 +22,18 @@ _Última actualización: cierre post-autosuficiencia (2026-08-09) — Fase 2c co
 
 ## Backend — activos / por hacer
 
+### 🧵 Rediseño OP (modelo-OP, hilo conductor — ver `ARQUITECTURA-OPERACION.md`)
+- ✅ **Fase 0 (D-140):** tabla `operaciones` vacía + columnas `operacion_id` nullable en `cargas`/`sales_orders`/`ordenes_compra`. Andamiaje reversible, RLS+REVOKE, seg 0/0/0.
+- ✅ **Fase 1a (D-141/D-142):** `operacion_id` en la lista blanca de `fn_chk_periodo_cerrado` (columna de puro enlace); backfill de 85 operaciones (OP-0001..OP-0085, orden `f_embarque`, `folio_carga_v1`=folio histórico, `proyecto_id` heredado), 85 cargas + 81 ventas enlazadas. Money-neutral.
+- ✅ **Fase 2 — vistas de lectura (D-143/144/145/146):** `v_operacion`, `v_operacion_costos`, `v_operacion_cxp`, `v_operacion_resumen`. Consumidas por la pantalla frontend "Operaciones (OP)" (`modulo-operaciones.js`, E111/E112).
+- ✅ **Alta de módulo:** `'operaciones'` dado de alta en `modulos_erp` (orden 26, icono 🧵) + concedido a los 4 roles en `rol_modulos` — el ítem de menú ya no debería estar oculto (cierra el hueco que había anotado E111 aquí mismo).
+- ✅ **Fase 3a/3b (D-147/D-148/D-149):** diseño del flujo "+ Nueva operación" (D-147: OC siempre formal cuando hay compra, venta se confirma antes del embarque, 1-a-muchos); `fn_abrir_operacion` (reserva folio OP-XXXX, `seq_operaciones_num` arranca en 86); `fn_op_agregar_venta` (cuelga una SO de una OP, reusa `fn_crear_so`). Money-neutral. Sin frontend de captura todavía — solo backend.
+- ⬜ **Fase 3c:** `fn_op_agregar_compra` (envuelve `fn_crear_orden_compra`: folio interno OC-XXXX + número oficial; se salta en comisión pura). Money-neutral.
+- ⬜ **Fase 3d — LA DE MÁS CUIDADO:** `fn_op_agregar_embarque` (envuelve `fn_crear_carga`: embarque + lote + costos, con herencia de venta/compra). **TOCA COSTOS → GATE+ENSAYO fila por fila.**
+- ⬜ **Fase 1b (saneamiento CxP):** 30 líneas de `carga_costos` sin contraparte = **$108,264.01**, en 4 buckets: **A** cartón interno Plein $32,262.24 · **B** comisión derivada $7,661.02 · **C** comisión venta PAMPAS $720.00 · **D** En Camino pendiente Samuel $67,620.75 (NGM248545, PX-72306, PX-72715). **Decisiones de Miguel pausadas:** tratamiento de cartón interno (A+B ≈$40K, ¿es CxP o no?) + proveedores reales del bucket D.
+- ⬜ **Hacer oficial el CxP atribuido** (bloqueado por Fase 1b): al cambiar, el ancla CxP baja ~$45,244.39 (brecha fantasma vs real) — es legítima (cartón interno + En Camino), pero no se cambia el ancla oficial hasta cerrar 1b.
+
 ### 🟠 Prioridad media
-- **Alta de `'operaciones'` en `modulos_erp` (E111, bloquea la pantalla nueva):** Fase 0 del modelo-OP (D-140..D-146) + pantalla frontend "Operaciones (OP)" (`modulo-operaciones.js`) ya están listas, pero la clave de módulo `'operaciones'` no existe todavía en el catálogo `modulos_erp` (D-105) — `aplicarMenuDinamico()` oculta cualquier ítem de menú cuya clave no esté ahí, así que el ítem queda invisible para TODOS los usuarios (incluido Miguel) aun después de desplegar. Falta: dar de alta `'operaciones'` en `modulos_erp` y concederlo al menos al rol admin/operación (RPC `fn_admin_*` de D-105).
 - **Liga única de venta:** unificar `sales_order_cargas`/`lote_ventas` + jalar cajas del lote (matar doble registro). GATE+ENSAYO.
 - **F2:** diferencia ~1,494 del total CxP (Drive 497,861.64 vs directo 496,368.03).
 - **Liquidar backlog** (4 productores, **10 cargas, $44,224.70** — bajó de $54,224.70/11 cargas: **Cornejos P-043 ($10,000) ya se liquidó**): Carrifoods 6 cargas $20,329.50 · Akambarhu P-073/075 $11,874 · Cornejos P-047 $11,571.20 · Agrofepac P-071 $450. Lo hace Miguel en la UI.

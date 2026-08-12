@@ -2100,3 +2100,14 @@ DESPLEGADO. Detalle vivo en `PENDIENTES-BACKEND.md`/`MAPA-CAPTURA.md`.
 - **Hueco encontrado (pasa a `PENDIENTES-BACKEND.md`):** la clave de módulo `'operaciones'` es nueva y no existe todavía en el catálogo `modulos_erp` (D-105) — el ítem de menú "Operaciones (OP)" queda oculto para todos los usuarios hasta que el chat de backend lo dé de alta y lo conceda al menos al rol admin/operación.
 
 **ANCLAS:** sin cambio reportado por backend tras Fase 0 (Cuadre 0.00 · seg 0/0/0 · CxC/CxP intactas) — este chat es frontend y no tiene acceso a Supabase para reverificar en vivo; confirmar en el chat de backend antes de cerrar Fase 0 formalmente.
+
+## Sesión E113 (2026-08-12) — Rediseño OP: Fase 1a backfill cerrado, alta de módulo, diseño + Fase 3a/3b (D-147..D-149)
+_Precisión adicional sobre D-140/D-141 (Sesión E111 arriba, sin duplicar): D-140 — la tabla `operaciones` se creó **vacía**, más columnas `operacion_id` **nullable** en `cargas`, `sales_orders` y `ordenes_compra` (andamiaje reversible, Fase 0). RLS habilitado + REVOKE ALL/GRANT explícito (seg 0/0/0). D-141 — `operacion_id` se agregó a la lista blanca de **`fn_chk_periodo_cerrado`**: es una columna de puro enlace (no toca dinero), así que no debilita la inmutabilidad de meses cerrados que esa función protege._
+
+- D-142 — Backfill Fase 1a (cerrado): 85 operaciones (OP-0001..OP-0085), numeradas en orden de `f_embarque`, `folio_carga_v1` = folio histórico P-XXX, `proyecto_id` heredado de la carga origen. Enlazadas 85 cargas + 81 ventas (sales_orders). Money-neutral: CxC/CxP idénticos antes/después.
+- **Alta de módulo 'operaciones'** en `modulos_erp` (orden 26, icono 🧵) + concedido a los 4 roles en `rol_modulos` — **desbloquea la pantalla "Operaciones (OP)"** (cierra el hueco anotado en la Sesión E111 arriba y en `PENDIENTES-BACKEND.md`: el ítem de menú ya no debería estar oculto tras el próximo deploy).
+- D-147 — Diseño del flujo "+ Nueva operación" (el "deber ser", sin código todavía): la OC es **siempre** documento formal cuando hay compra (folio interno + número oficial); la venta se confirma **antes** del embarque (hueco soportado por diseño, no un error); relación **1-a-muchos** disponible — una OP puede tener varias ventas/compras/embarques.
+- D-148 — `fn_abrir_operacion(p_proyecto_id, p_nota)` → reserva folio OP-XXXX nuevo (secuencia `seq_operaciones_num`, arranca en 86 — sigue después del backfill de 85). SECURITY DEFINER, permiso `capturar`, REVOKE anon/GRANT authenticated. Money-neutral.
+- D-149 — `fn_op_agregar_venta(p_folio_op, ...)` → cuelga una venta (SO) de una OP existente, reusando `fn_crear_so` (mismos parámetros) + setea `operacion_id`. Money-neutral.
+
+**ANCLAS:** sin cambio reportado por backend tras Fase 1a/2/3a/3b (Cuadre 0.00 · seg 0/0/0 · CxC/CxP idénticos) — este chat es de documentación y no tiene acceso a Supabase para reverificar en vivo; confirmar en el chat de backend.

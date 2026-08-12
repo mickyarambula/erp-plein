@@ -193,4 +193,4 @@ _Frontend E90-E101 (rediseño "Operador estilo Silo") sigue documentado aparte e
 
 **Anclas al cierre de esta sesión:** Cuadre 0.00 · seg 0/0/0 · CxC 565,985.13 · CxP 526,469.78 · JPM 46,808.54 · cargas 85 · folio_max 400.
 
-**Próximo horizonte (2026-08-10):** 🔵 Rediseño de arquitectura: Operación (OP) como hilo conductor — ver `ARQUITECTURA-OPERACION.md`. Modelo aprobado, Fase 0 pendiente. Obra grande por fases con GATE+ENSAYO.
+**Próximo horizonte (actualizado 2026-08-12):** 🔵 Rediseño de arquitectura: Operación (OP) como hilo conductor — ver `ARQUITECTURA-OPERACION.md`. Modelo aprobado. **Fase 0/1a/2/alta-módulo/3a/3b cerradas** (D-140..D-149: tabla `operaciones` + backfill 85 OPs + vistas de lectura + pantalla "Operaciones (OP)" en producción + `fn_abrir_operacion`/`fn_op_agregar_venta`). **Faltan Fase 3c** (`fn_op_agregar_compra`) **y Fase 3d** (`fn_op_agregar_embarque` — toca costos, la de más cuidado) — ver `PENDIENTES-BACKEND.md`. Obra grande por fases con GATE+ENSAYO.
