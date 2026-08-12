@@ -4195,3 +4195,82 @@ reales; se mockeó `sb.rpc`/`sb.from('v_mi_perfil')`/`fetch` — no se tocó bac
 
 **NO DESPLEGADO** (Miguel corre `npx vercel --prod`). Slices 2 ("Agregar compra") y 3
 ("Registrar embarque") llegan en tareas posteriores — no se tocó nada de esas fases aquí.
+
+## E114 (2026-08-12) — Slice 2 del rediseño OP: "Agregar compra" (backend D-150)
+_PASO 0 de esta sesión: se corrigió una desincronización de docs — el backend ya había cerrado
+Fase 3c (D-150, `fn_op_agregar_compra`) y Fase 3d (D-151, `fn_op_agregar_embarque`, cierra Fase 3
+completa) pero `BITACORA-DECISIONES.md`/`PENDIENTES-BACKEND.md`/`NORTE.md` seguían diciendo
+"pendiente". Se registraron D-150/D-151 en la bitácora (sesión E114 de BITACORA), se marcaron
+✅ backend en `PENDIENTES-BACKEND.md`/`NORTE.md` (dejando claro que lo único ⬜ es el FRONTEND:
+Slice 2 y 3), y se refrescaron las anclas donde este chat las había dejado viejas. Detalle
+completo en esas 3 páginas — no se repite aquí._
+
+**`modulo-operaciones.js` — nueva sección "Agregar compra" (Slice 2, D-150):**
+- Botón **"Agregar compra"** en el detalle de una OP (`verOperacion()`, drawer), gateado por
+  `ERP.puede('capturar')`, arriba de "Costos por línea".
+- Editor de líneas **reusado tal cual** del patrón ya probado en `modulo-ordenes.js`
+  (`nuevaOrden()`/`montarLineas()`/`itemsPayload()` — mismos nombres de campo, misma tabla
+  `.fact-lineas`, mismo botón "+ Línea" y "✕" para quitar): cada línea es Producto (combo del
+  catálogo `v_catalogo_productos`) O Descripción libre, + Cantidad/Unidad/Precio unitario,
+  Importe calculado en vivo, Total = Σ(cantidad×precio) recalculado en cada tecla. No se
+  reinventó el componente — SISTEMA-DISENO.md §12 ("reusar el que ya cumple el rol").
+- Form: Proveedor\* (combo de `v_directorio_contrapartes` filtrado `es_proveedor=true` +
+  `clase='comercial'` — mismo filtro exacto que ya usa `modulo-ordenes.js`), Número oficial de
+  OC del proveedor, Moneda (`ERP.MONEDAS`), Fecha de entrega estimada, Condiciones, Notas — todos
+  opcionales salvo Proveedor y ≥1 línea con producto o descripción.
+- Al guardar: `fn_op_agregar_compra({p_folio_op, p_proveedor_id, p_items, p_numero_proveedor,
+  p_moneda, p_f_entrega_est, p_condiciones, p_notas, p_carga_folio:null})`. Éxito → toast "Compra
+  <OC-XXXX> agregada a <OP-XXXX>" + refresca el detalle de la OP (vuelve a `verOperacion()`, que
+  releva `v_operacion`/`v_operacion_costos`/`v_operacion_cxp`) + `ERP.marcarDatosSucios()`
+  (refresca también la lista de fondo). Si la RPC hace RAISE, el mensaje se muestra tal cual, sin
+  traducir, y el formulario **queda abierto** para corregir.
+- **Comisión pura:** no se implementó el `confirm()` suave opcional (nice-to-have de la tarea) —
+  el backend YA decide permitir la compra igual y solo emite un `RAISE NOTICE` que
+  `supabase-js` no expone; replicarlo habría requerido leer `sales_orders` directo (tabla base,
+  no vista) solo para una advertencia cosmética no bloqueante. Se dejó fuera por prudencia (regla
+  de la casa: frontend lee vistas/RPCs, no tablas base, salvo necesidad real) — la decisión de
+  negocio ya vive 100% en el backend, que es la autoridad.
+- **Nota honesta para la verificación de Miguel:** `v_operacion_costos`/`v_operacion_cxp` se
+  arman de `carga_costos` (documentado en D-143..146) — una compra (OC) recién agregada puede
+  **no verse todavía** en esas tablas del detalle hasta que exista un embarque (Slice 3) que la
+  herede. El toast y el folio OC-XXXX SÍ confirman que la compra se creó; si Miguel espera verla
+  reflejada en el desglose de costos y no aparece, es comportamiento esperado del modelo, no un
+  bug de esta pantalla — a confirmar visualmente con él antes de dar el slice por cerrado del
+  todo.
+
+**Verificación EN VIVO (harness local + Chrome DevTools MCP; `comun.js`/`modulo-operaciones.js`
+reales; se mockeó `sb.rpc`/`sb.from('v_mi_perfil')`/`fetch`):**
+- ✅ Botón "Agregar compra" visible en el detalle de OP-0011 (perfil mock `puede_capturar=true`).
+- ✅ **Camino feliz**: proveedor elegido por combo (id real 601), 2 líneas de producto (JACK
+  FRUIT 10×$5, KABOCHA 4×$8) + 1 de descripción libre ("Flete refrigerado" 2×$15) → Total en vivo
+  `$112.00` (50+32+30) → `fn_op_agregar_compra` recibe el payload exacto (3 líneas bien formadas,
+  `p_carga_folio:null`, número de OC del proveedor y condiciones capturados) → toast "Compra
+  OC-0006 agregada a OP-0011." → drawer vuelve a mostrar el detalle de OP-0011 (no se cierra).
+- ✅ **Validación sin proveedor**: "Elige un proveedor comercial de la lista."
+- ✅ **Validación sin líneas** (proveedor elegido, única línea vacía): "Agrega al menos una línea
+  (producto o descripción)."
+- ✅ **Falla del backend (RAISE simulado)**: mensaje mostrado tal cual (`PROVEEDOR_NO_COMERCIAL:
+  ...`), formulario sigue abierto para corregir.
+- ✅ **Quitar línea**: el botón "✕" por fila reduce las líneas correctamente (nunca deja el
+  editor en cero filas — repone una vacía si se queda sin ninguna, igual que en
+  `modulo-ordenes.js`).
+- ✅ Visual: formulario con la gramática `.form-erp`/`.fact-lineas` habitual, botón "Agregar
+  compra" verde legacy (drawer, fuera del scope de tokens nuevos — igual que todos los demás
+  formularios de captura).
+- Harness temporal creado y **borrado** al terminar; servidor local detenido.
+
+**node --check:** ✅ limpio en `modulo-operaciones.js`.
+
+**Cómo probar (para Miguel, después de `npx vercel --prod`):**
+1. Operaciones (OP) → abre cualquier OP → botón "Agregar compra".
+2. Elige un proveedor comercial, agrega 2 líneas de producto del catálogo (cantidad y precio) +
+   1 línea con descripción libre (sin producto) — confirma que el Total se actualiza en vivo.
+3. Guarda → debe salir un toast verde "Compra OC-XXXX agregada a OP-XXXX." y el detalle de la OP
+   se vuelve a mostrar (sin cerrar el panel).
+4. Repite eligiendo un proveedor que NO sea comercial (si existe alguno en el catálogo) para
+   confirmar que el backend lo rechaza con un mensaje claro.
+5. Revisa si la compra recién agregada aparece reflejada en "Costos por línea"/CxP del detalle de
+   la OP — si NO aparece todavía, es esperado (ver nota arriba), avísame para documentarlo.
+
+**NO DESPLEGADO** (Miguel corre `npx vercel --prod`). Slice 3 ("Registrar embarque", D-151,
+la de más cuidado — toca costos) queda para una tarea posterior, no se tocó aquí.
