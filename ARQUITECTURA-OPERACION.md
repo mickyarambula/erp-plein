@@ -140,3 +140,23 @@ Solo cuando TODO el frontend lee del modelo OP y las anclas cuadran por semanas,
 **Próximo paso: GATE de Fase 0** (tabla `operaciones` vacía + columnas `operacion_id` nullable, reversible, anclas idénticas). Modelo recomendado: **Opus 4.8**.
 
 _Numeración de decisiones backend en curso: última D-139. La primera decisión de esta arquitectura será D-140 (creación de tabla `operaciones`, Fase 0), cuando se apruebe._
+
+---
+
+## 10. CAMINO C · Fase O1 — Customer PO + Sales Order (2026-08-13, D-160/161/162)
+
+El reinicio operativo "Camino C" (ver `PLAN-REINICIO-OPERATIVO-CAMINO-C.md`) arranca el Order-to-Cash reconstruido en un **namespace `op` nuevo**, aislado del histórico. **O1** entrega las dos primeras entidades y sus pantallas.
+
+**Entidades (esquema `op`, cerrado fuera del API — D-160):** `op.customer_po`, `op.operaciones`, `op.sales_orders`, `op.so_lineas`. El esquema NO expone `USAGE` a `authenticated`/`anon` ni entra a `PGRST_DB_SCHEMAS`.
+
+**Superficie pública (lo único que el frontend toca):**
+- **Vistas (`public`, lectura):** `v_op_customer_po`, `v_op_sales_orders`, `v_op_so_lineas`, `v_op_so_tablero`.
+- **RPCs (`public`, `SECURITY DEFINER`, escritura, capacidad `capturar`):** `fn_op_cpo_alta`, `fn_op_so_crear_desde_cpo`, `fn_op_so_confirmar`, `fn_op_so_set_estado`.
+
+**Reglas de grain / folios:**
+- La **OP nace con el Sales Order** (dentro de `fn_op_so_crear_desde_cpo`), no con el CPO — un CPO cancelado no deja OP huérfana (D-161). Grain **1 OP / 1 SO** en v1; se revisa en O3 con el fan-out multi-SO/PO. `op.operaciones` sin columna `modalidad` (el Sales Type vive en el SO).
+- **Folios por secuencias** `op.fn_next_folio` (D-162): `CPO-2026-#####`, `SO-2026-#####`, `OP-2026-#####`, numérico continuo, año = etiqueta, independiente de `OP-0001…0088`. Adjunto del CPO = **referencia a Storage** (texto), no archivo en tabla.
+
+**Frontend (E121, solo frontend):** `modulo-o1-cpo.js` (pantalla Customer PO, scope `.pantalla-o1-cpo`) y `modulo-o1-so.js` (pantalla Sales Orders + tablero Required/Allocated/Purchased/Open, scope `.pantalla-o1-so`), agrupados en un MARCO nuevo **"Camino C"** (riel `ti-route`). Allocated/Purchased se muestran en 0 y en gris ("llegan en O2/O3"). Detalle fino en `REPORTE-FRONTEND.md` (E121).
+
+**Estado O1:** entregado a Miguel para prueba de aceptación (DoD: registrar un Customer PO real → generar y confirmar su Sales Order → verificar que se creó la OP y que el CPO pasó a "Convertido" → tablero con Required = Open).

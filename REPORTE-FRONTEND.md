@@ -4507,3 +4507,55 @@ reales; se mockeó `sb.rpc`/`fetch`, con los 3 escenarios exactos que pedían la
    Materia prima como siempre — captúralos a mano y confirma que la carga no queda sin costo.
 
 **NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
+
+## E121 (2026-08-13) — CAMINO C · Fase O1: pantallas Customer PO + Sales Orders (backend D-160/161/162)
+_Arranque del reinicio operativo "Camino C". Dos pantallas NUEVAS (módulos nuevos, separados de lo
+viejo) contra el namespace `op` recién aplicado por el chat de backend. SOLO FRONTEND, money-neutral._
+
+**Contrato consumido (vistas `public` en lectura, RPCs `public` en escritura):**
+- Vistas: `v_op_customer_po`, `v_op_sales_orders`, `v_op_so_lineas`, `v_op_so_tablero`.
+- RPCs: `fn_op_cpo_alta`, `fn_op_so_crear_desde_cpo`, `fn_op_so_confirmar`, `fn_op_so_set_estado`.
+- Catálogos reusados (vistas ya vivas del ERP, NO se inventaron nombres): `v_catalogo_clientes`
+  (clientes), `v_catalogo_productos` (productos), `v_revenue_models` (Sales Type). `p_actor` =
+  `ERP.perfil.socio_codigo` (o null).
+
+**Archivos nuevos:**
+- `modulo-o1-cpo.js` — ruta `o1-cpo`, scope `.pantalla-o1-cpo`. Tira de KPIs (CPOs Abiertos /
+  Convertidos / del mes), tabla densa desde `v_op_customer_po` (folio mono, cliente, N° cliente,
+  fecha, moneda, estado en pastilla, adjunto como enlace `--brand` si es URL). Botón negro
+  "Nuevo Customer PO" → form en `#panelBody` (cliente vía combo `v_catalogo_clientes`, N° cliente,
+  fecha, moneda, **referencia de adjunto en texto — NO sube archivo**, nota) → `fn_op_cpo_alta`.
+  En filas "Abierto": acción "Generar Sales Order" → llama `ERP.o1CrearSODesde(id, folio)`. Ficha
+  del CPO en el drawer.
+- `modulo-o1-so.js` — ruta `o1-so`, scope `.pantalla-o1-so`. Alta desde un CPO (Sales Type =
+  `v_revenue_models`; líneas producto/cantidad/uom `CAJA` por defecto/precio opcional) →
+  `fn_op_so_crear_desde_cpo` (muestra el `op_folio` creado). Tabla desde `v_op_sales_orders`
+  (folio SO, CPO, cliente, Sales Type en pastilla, estado, OP). Ficha con **tablero**
+  `v_op_so_tablero`: Required / Allocated / Purchased / Open — Allocated y Purchased en 0 y en
+  gris con nota "llegan en O2/O3"; **Open resaltado** (`--money`). Botón negro **"Confirmar"** si
+  estado `Draft` (`fn_op_so_confirmar`); cambios de estado por `fn_op_so_set_estado` (siguientes
+  legales calculados en el front para no ofrecer saltos ilegales; el backend es la autoridad).
+
+**Diseño:** pastillas de Sales Type — Margen/Consignación verde, **Comisión ámbar** (comisión pura
+NO es error). Pastillas mapeadas a clases GLOBALES (`.pill.verde/.ambar`) para pintar igual en la
+lista (scoped) y en la ficha (`#panelBody`, fuera del scope). Bloques CSS anidados bajo cada scope
+en `estilos.css` (KPIs/tabla/pills/botones remapeados a tokens, theme-aware); solo tokens, cero hex.
+
+**MARCO:** grupo nuevo **"Camino C"** — ícono de riel `ti-route` (entre Operación y Dinero),
+eyebrow + 2 ítems en `nav.lateral`, entrada en `GRUPO_META` de `app.js`, `<script>` de ambos
+módulos en `index.html` antes de `app.js`. Respeta D-105 (`ERP.perfil.modulos`): si el backend aún
+no registró las claves `o1-cpo`/`o1-so` en `modulos_erp`, los ítems del menú se ocultan, pero el
+router permite entrar por URL (`#/o1-cpo`, `#/o1-so`).
+
+**Verificación:** `node --check` limpio en `modulo-o1-cpo.js`, `modulo-o1-so.js`, `app.js`.
+**NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
+
+**Qué probar (DoD O1):**
+1. Registrar un Customer PO real (cliente + referencia de adjunto) → aparece con folio
+   `CPO-2026-#####`, estado "Abierto".
+2. Desde ese CPO, "Generar Sales Order" → elige Sales Type + líneas → Crear → la SO nace en
+   "Draft" y muestra su OP (`OP-2026-#####`). Confirmar → la SO pasa a "Confirmed" y el CPO pasa a
+   "Convertido".
+3. Abrir la SO → el tablero muestra Required = lo capturado, Open = igual; Allocated y Purchased
+   en 0 y en gris.
+4. Verificar en claro Y oscuro; confirmar que 2-3 pantallas viejas no cambiaron.
