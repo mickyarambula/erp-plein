@@ -4442,3 +4442,68 @@ movimiento" ya estaba probado desde D-119 y solo se tocó un fallback de una lí
 **node --check:** limpio (ya verificado en la sesión que escribió el código).
 
 **NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
+
+## E120 (2026-08-13) — "Registrar embarque" hereda proveedor + materia prima de la(s) OC de la OP (backend D-157/158/159)
+_Cierra el ajuste A del backlog del flujo OP (E118): antes se recapturaba proveedor y materia
+prima a mano en el embarque aunque la OP ya tuviera una compra (OC) con ese dato — doble captura
+del mismo costo. El backend ahora hereda de la(s) OC(s) viva(s) cuando existen._
+
+**`modulo-operaciones.js` — `abrirRegistrarEmbarque()`:**
+- Se agregó `q('v_operacion_compras', '&folio_op=eq.<OP>&order=total.desc')` al `Promise.all()`
+  de catálogos del form (junto a clientes/proveedores/productos). "OC viva" = `estado !==
+  'Cancelada'` (mismo criterio que `estadoDe()` en `modulo-ordenes.js`, donde una OC anulada se
+  muestra como "Cancelada").
+- **Con ≥1 OC viva**: el form deja de pedir "Proveedor de materia prima" y "Materia prima" —
+  en su lugar:
+  - El campo Proveedor se reemplaza por un bloque read-only (`.campo-fijo`, mismo componente
+    "campo fijo" que ya usa el resto de la app): *"Heredado de: **OC-0005** $1,000.00
+    (AGRICOLA EL SAGRADO), **OC-0006** $400.00 (AGROFEPAC S.A.)"* + una aclaración con el
+    encabezado calculado (la OC de **mayor total**) y una nota de que el backend ignora
+    cualquier proveedor que se capture ahí.
+  - El campo "Materia prima" del grid de costos se reemplaza por otro `.campo-fijo` mostrando
+    el total heredado (Σ de las OCs vivas) con la leyenda "Heredado de la(s) OC — ver arriba".
+  - `p_proveedor`/`p_materia_prima` viajan `null` **por construcción**, no por una rama de código
+    aparte: el combo (`comboProveedorEmb`) ni se instancia y el `<input>` de materia prima ni se
+    renderiza, así que las lecturas ya defensivas del código existente
+    (`comboProveedorEmb && comboProveedorEmb.valor()`, `(document.getElementById(id) ||
+    {}).value`) resuelven solas a `null` — cero lógica condicional nueva en `guardarEmbarque()`.
+  - Los demás 6 conceptos de costo (comisión/aduanas/QC/fletes/cartón/otro) se siguen capturando
+    exactamente igual, con o sin OC.
+- **Sin OC viva (0 OCs, o todas canceladas)**: el form queda EXACTAMENTE como en E116 — Proveedor
+  (combo) + Materia prima (input) editables, sin cambios.
+- El aviso de herencia que trae `data[0].advertencias` (ej. *"Materia prima ($1,000.00) y
+  proveedor heredados de 1 OC(s): OC-0005."*) ya se mostraba de forma prominente desde E116 —
+  no hizo falta tocar esa parte, el mecanismo genérico de avisos ya lo cubre tal cual.
+
+**Verificación EN VIVO (harness local + Chrome DevTools MCP; `comun.js`/`modulo-operaciones.js`
+reales; se mockeó `sb.rpc`/`fetch`, con los 3 escenarios exactos que pedían las pruebas):**
+- ✅ **Escenario A (1 OC viva)**: form sin combo de Proveedor ni input de Materia prima; bloque
+  "Heredado de: OC-0005 $1,000.00 (AGRICOLA EL SAGRADO)". Capturando solo Fletes=50 y guardando,
+  el payload real a `fn_op_agregar_embarque` confirmó `p_proveedor:null`,
+  `p_materia_prima:null`, `p_fletes:50` — el resto de conceptos null. El aviso de herencia se
+  mostró tal cual antes de refrescar el detalle de la OP.
+- ✅ **Escenario B (2 OC vivas + 1 cancelada)**: el bloque muestra **solo** las 2 vivas
+  (OC-0006 $1,000/AGRICOLA, OC-0007 $400/AGROFEPAC) — la cancelada (OC-0008 $5,000/CANDY FRESH)
+  queda excluida correctamente pese a tener el total más alto. Encabezado calculado =
+  AGRICOLA EL SAGRADO (mayor total **entre las vivas**). "Materia prima" muestra $1,400.00
+  (1,000+400) heredado.
+- ✅ **Escenario C (0 OC vivas, regresión)**: el form vuelve a pedir Proveedor (combo) y Materia
+  prima (input) exactamente como antes de este cambio. Eligiendo proveedor + capturando
+  materia prima=800 a mano, el payload confirmó `p_proveedor:"AGRICOLA EL SAGRADO"` y
+  `p_materia_prima:800` — sin regresión al flujo previo (E116).
+- Harness temporal creado y **borrado** al terminar; servidor local detenido.
+
+**node --check:** ✅ limpio en `modulo-operaciones.js`.
+
+**Cómo probar (para Miguel, después de `npx vercel --prod`):**
+1. Abre una OP con una compra (OC) ya agregada → "Registrar embarque". El form NO debe pedir
+   Proveedor ni Materia prima — debe mostrar "Heredado de: OC-XXXX $monto (proveedor)".
+2. Captura solo Fletes (o cualquier otro concepto) y guarda. Espera: la carga se crea SIN
+   bandera roja de "falta costo"; en su detalle, materia prima = el total de la OC, atribuida a
+   ese proveedor (entra a CxP); el encabezado de la carga = ese proveedor; se ve el aviso de
+   herencia.
+3. Si la OP tiene 2+ compras, confirma que el encabezado quedó en la de mayor total.
+4. Abre una OP SIN ninguna compra registrada → "Registrar embarque" debe pedir Proveedor y
+   Materia prima como siempre — captúralos a mano y confirma que la carga no queda sin costo.
+
+**NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
