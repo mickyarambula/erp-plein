@@ -4559,3 +4559,37 @@ router permite entrar por URL (`#/o1-cpo`, `#/o1-so`).
 3. Abrir la SO → el tablero muestra Required = lo capturado, Open = igual; Allocated y Purchased
    en 0 y en gris.
 4. Verificar en claro Y oscuro; confirmar que 2-3 pantallas viejas no cambiaron.
+
+## E122 (2026-08-13) — Incremento A: subir el archivo del Customer PO a Storage (bucket privado)
+_Solo frontend. Backend ya tenía el bucket privado `cpo-adjuntos` (20 MB; pdf/png/jpeg/webp) + policies
+(subir=`capturar`, leer=`ver`). El bucket NO es público → se ve/descarga por URL firmada temporal._
+
+**En `modulo-o1-cpo.js`:**
+- **Alta (drawer "Nuevo Customer PO"):** junto al campo "Adjunto del PO" (que sigue aceptando pegar
+  una URL) se agregó un **input de archivo** "o subir archivo (PDF/imagen)". Es alternativa: se sube
+  **O** se pega, ninguna obligatoria.
+  - Al elegir archivo: valida mime (pdf/png/jpeg/webp) y tamaño (≤20 MB) en cliente, luego sube a
+    `cpo-adjuntos` con ruta única `${año}/${crypto.randomUUID()}-${nombreSaneado}` (contentType =
+    `file.type`, `upsert:false`) vía `ERP.sb.storage.from(...).upload(...)`.
+  - Al éxito: `adjuntoSubido = "storage:cpo-adjuntos/<ruta>"`, se muestra el nombre del archivo + un
+    enlace **"quitar"** (limpia el campo y reactiva el input de URL). El archivo manda sobre la URL
+    pegada (se limpia/bloquea el texto para no ambiguar). Errores (tamaño/mime/permiso) van al
+    `.aviso` del form, sin romper.
+  - Al **Crear**: `p_adjunto_ref = adjuntoSubido || URL pegada || null` → `fn_op_cpo_alta` (RPC sin
+    cambios).
+- **Ficha/lista (`adjuntoHTML`):** si `adjunto_ref` empieza con `storage:` → se parsea `bucket/ruta`
+  y se pinta un botón **"Ver adjunto"** que al click genera `createSignedUrl(ruta, 3600)` y abre en
+  pestaña nueva. Si es `http(s)` → enlace directo (como antes). Otro → texto plano. Los botones se
+  cablean tanto en la tabla (con `stopPropagation`, no abre la ficha) como en el drawer.
+- **Cliente Supabase:** se reusó `ERP.sb.storage` (cliente ya autenticado, mismo patrón que
+  `modulo-comercial.js`) — NO hizo falta agregar helpers a `comun.js`.
+
+**Diseño:** input de archivo con la gramática del form (`.btn-file` punteado, tokens; estado con
+"quitar" en `--red`). Reglas globales nuevas en `estilos.css` (`.adjunto-sube/.btn-file/.adjunto-estado`)
+porque el form vive en `#panelBody` (fuera del scope). Solo tokens.
+
+**Verificación:** `node --check` limpio en `modulo-o1-cpo.js`. **NO DESPLEGADO.**
+
+**Qué probar:** en "Nuevo Customer PO" → subir un PDF (aparece el nombre + "quitar") → Crear →
+abrir la ficha del CPO → **"Ver adjunto"** abre el PDF por URL firmada en pestaña nueva. Probar en
+claro y oscuro. Verificar también que pegar una URL `http(s)` sigue funcionando como enlace directo.
