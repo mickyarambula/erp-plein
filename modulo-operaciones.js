@@ -694,6 +694,9 @@
      que haga falta tocar el helper compartido. */
 
   let comboClienteEmb = null, comboProveedorEmb = null, comboProductoEmb = null;
+  // D-157/158/159: si la OP tiene OC(s) viva(s), proveedor + materia prima se heredan de ellas
+  // — el form deja de pedirlos y guardarEmbarque() manda p_proveedor/p_materia_prima en null.
+  let ocsHerenciaEmb = [];
 
   function avisoEmb(tipo, html) {
     const el = document.getElementById('opeAviso');
@@ -738,17 +741,47 @@
     const folioOp = op.folio_op;
     ERP.abrirPanel('Registrar embarque', `Crea la carga física de ${esc(folioOp)}`, '<div class="skel">Cargando catálogos…</div>');
 
-    let clientes, proveedores, productos;
+    let clientes, proveedores, productos, compras;
     try {
-      [clientes, proveedores, productos] = await Promise.all([
+      [clientes, proveedores, productos, compras] = await Promise.all([
         q('v_directorio_contrapartes', '&es_cliente=eq.true&order=nombre.asc'),
         q('v_directorio_contrapartes', '&es_proveedor=eq.true&order=nombre.asc'),
-        q('v_catalogo_productos', '&order=nombre.asc')
+        q('v_catalogo_productos', '&order=nombre.asc'),
+        q('v_operacion_compras', `&folio_op=${ERP.eq(folioOp)}&order=total.desc`)
       ]);
     } catch (e) {
       ERP.abrirPanel('Registrar embarque', '', `<div class="errbox">No se pudieron cargar los catálogos: ${esc(e.message)}</div>`);
       return;
     }
+
+    // D-157/158/159: OC "viva" = no cancelada (mismo criterio que estadoDe() en modulo-ordenes.js,
+    // donde una OC anulada se muestra con estado 'Cancelada'). Con >=1 OC viva, el backend hereda
+    // proveedor + materia prima de ellas e ignora lo que se capture aquí — el form deja de pedirlo.
+    ocsHerenciaEmb = (compras || []).filter(c => c.estado !== 'Cancelada');
+    const hayOcViva = ocsHerenciaEmb.length > 0;
+    const proveedorEncabezadoOc = hayOcViva ? (ocsHerenciaEmb[0].proveedor || '—') : null;
+    const totalMateriaPrimaOc = ocsHerenciaEmb.reduce((s, c) => s + num(c.total), 0);
+
+    const bloqueProveedor = hayOcViva
+      ? `<div class="campo ancho">
+          <label>Proveedor de materia prima</label>
+          <div class="campo-fijo">
+            Heredado de: ${ocsHerenciaEmb.map(c => `<b>${esc(c.oc_folio)}</b> ${usd(c.total)} (${esc(c.proveedor || '—')})`).join(', ')}
+            <div class="aclara">Encabezado de la carga: <b>${esc(proveedorEncabezadoOc)}</b> (OC de mayor total). El backend ignora cualquier proveedor que se capture aquí.</div>
+          </div>
+        </div>`
+      : `<div class="campo ancho">
+          <label>Proveedor de materia prima <span style="color:var(--ambar);text-transform:none">(muy recomendado)</span></label>
+          <div id="opeProveedor"></div>
+          <div class="alias-ayuda">Sin proveedor, los costos NO entran a Cuentas por Pagar y el embarque queda con flag.</div>
+        </div>`;
+
+    const campoMateriaPrima = hayOcViva
+      ? `<div class="campo">
+          <label>Materia prima</label>
+          <div class="campo-fijo">${usd(totalMateriaPrimaOc)}<div class="aclara">Heredado de la(s) OC — ver arriba</div></div>
+        </div>`
+      : `<div class="campo"><label>Materia prima</label><input id="opeMateriaPrima" class="mono opec" type="number" step="0.01" min="0" placeholder="0.00"></div>`;
 
     ERP.abrirPanel('Registrar embarque', `Crea la carga física de ${esc(folioOp)}`, `
       <div class="form-erp">
@@ -776,11 +809,7 @@
 
         <div class="grupo-form">Embarque</div>
         <div class="campos">
-          <div class="campo ancho">
-            <label>Proveedor de materia prima <span style="color:var(--ambar);text-transform:none">(muy recomendado)</span></label>
-            <div id="opeProveedor"></div>
-            <div class="alias-ayuda">Sin proveedor, los costos NO entran a Cuentas por Pagar y el embarque queda con flag.</div>
-          </div>
+          ${bloqueProveedor}
           <div class="campo">
             <label>Producto</label>
             <div id="opeProducto"></div>
@@ -808,9 +837,9 @@
           </div>
         </div>
 
-        <div class="grupo-form">Costos por concepto (opcionales)</div>
+        <div class="grupo-form">Costos por concepto${hayOcViva ? ' (materia prima heredada; el resto sigue siendo opcional)' : ' (opcionales)'}</div>
         <div class="campos">
-          <div class="campo"><label>Materia prima</label><input id="opeMateriaPrima" class="mono opec" type="number" step="0.01" min="0" placeholder="0.00"></div>
+          ${campoMateriaPrima}
           <div class="campo"><label>Comisión</label><input id="opeComision" class="mono opec" type="number" step="0.01" min="0" placeholder="0.00"></div>
           <div class="campo"><label>Aduanas</label><input id="opeAduanas" class="mono opec" type="number" step="0.01" min="0" placeholder="0.00"></div>
           <div class="campo"><label>In &amp; Out QC</label><input id="opeQc" class="mono opec" type="number" step="0.01" min="0" placeholder="0.00"></div>
@@ -843,7 +872,10 @@
       placeholder: op.cliente ? `Heredar (actual: ${op.cliente})` : 'Heredar de la venta',
       permitirNuevo: true, etiquetaNuevo: 'cliente'
     });
-    comboProveedorEmb = ERP.crearCombo({
+    // Sin OC viva: combo normal de proveedor. Con OC viva, el bloque #opeProveedor ni existe en
+    // el DOM (se reemplazó por el bloque "Heredado de…" read-only) — comboProveedorEmb queda
+    // null y guardarEmbarque() manda p_proveedor en null a propósito.
+    comboProveedorEmb = hayOcViva ? null : ERP.crearCombo({
       contenedor: document.getElementById('opeProveedor'),
       items: proveedores.map(p => ({ id: p.id, nombre: p.nombre })),
       placeholder: 'Busca por nombre…',
