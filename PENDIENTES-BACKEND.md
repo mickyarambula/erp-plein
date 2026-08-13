@@ -1,5 +1,5 @@
 # PENDIENTES-BACKEND.md
-_Última actualización: 2026-08-12 — rediseño OP: backend COMPLETO y PROBADO END-TO-END EN PRODUCCIÓN (Fase 0→3d + fixes de lectura y de la función de embarque, D-140..D-154; Slices 1→2→3 de captura, E113-E116). El flujo "+ Nueva operación" ya funciona de punta a punta con Miguel operándolo. Falta: backlog de ajustes detectados en las pruebas (ver bloque abajo) + saneamiento CxP (1b). Dueño por defecto: backend, salvo que diga otro._
+_Última actualización: 2026-08-12 — rediseño OP: backend COMPLETO y PROBADO END-TO-END EN PRODUCCIÓN (Fase 0→3d + fixes de lectura y de la función de embarque + anular operación, D-140..D-156; Slices 1→2→3 de captura, E113-E116). El flujo "+ Nueva operación" ya funciona de punta a punta con Miguel operándolo, y ahora también se puede anular (D-156) desde el detalle de la OP. Falta: backlog de ajustes detectados en las pruebas (ver bloque abajo) + saneamiento CxP (1b). Dueño por defecto: backend, salvo que diga otro._
 
 **Anclas vigentes (2026-08-12, post D-154):** Cuadre 0.00 · seg 0/0/0 · cargas 85 · CxC 565,985.13 · CxP 504,869.78 · JPM 43,308.54 · seq_operaciones_num 86.
 

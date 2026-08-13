@@ -4408,3 +4408,37 @@ probar a conciencia:**
 operación" queda completo end-to-end**: Slice 1 (venta) → Slice 2 (compra, + Slice 2.1 lectura)
 → Slice 3 (embarque, este). Los 4 pasos del hilo (`fn_abrir_operacion`, `fn_op_agregar_venta`,
 `fn_op_agregar_compra`, `fn_op_agregar_embarque`) tienen su puerta de captura en el frontend.
+
+## E117 (2026-08-12) — "Anular operación" y "Anular movimiento" desde la UI (backend D-155/D-156)
+_Poder deshacer errores desde la pantalla en vez de depender del chat de backend para cada
+anulación. El backend ya trae el motor blindado (D-156, ENSAYO real: creó una OP completa y la
+anuló de punta a punta, anclas de vuelta exactas); este cierre es solo cablear botones._
+
+- **"Anular operación"** (nuevo) — botón rojo/peligro en zona-peligro al final del detalle de
+  la OP (`verOperacion()`, `modulo-operaciones.js`), visible solo con `ERP.puede('administrar')`.
+  Confirm explícito + `prompt` de motivo obligatorio (bloquea si se manda vacío) → llama
+  `fn_anular_operacion(p_folio_op, p_motivo)`, lee `data[0]` → toast con `data[0].resultado` tal
+  cual lo arma el backend (ej. "Operación OP-XXXX anulada: 1 carga(s), 1 compra(s), 1 venta(s).")
+  → cierra el drawer y refresca la lista (la OP anulada desaparece sola, ya filtrada por D-155).
+  Cualquier RAISE (ej. cobros/pagos ya aplicados a alguna carga del hilo) se muestra tal cual,
+  sin traducir, y el drawer se queda abierto.
+- **"Anular movimiento"** (Tesorería) — ya existía desde D-119 (sesión muy anterior): botón
+  `#edAnular` en `editarMovimiento()`, gateado por `ERP.puede('editar')`, mismo patrón
+  confirm+prompt+motivo obligatorio → `fn_anular_movimiento(p_folio, p_motivo)`. Se ajustó una
+  sola línea para que el toast use `data[0].resultado` del contrato actual, con fallback al
+  mensaje anterior (armado con `aplicaciones_revertidas`) si `resultado` no viniera.
+- Ambos botones leen `data[0]` de su RPC (ambas `RETURNS TABLE`) — mismo patrón ya establecido
+  para `fn_traspaso`/`fn_crear_carga`/`fn_op_agregar_embarque` en este mismo módulo y en
+  `modulo-tesoreria.js`.
+
+**Verificado en vivo (harness + Chrome DevTools MCP, para "Anular operación"; "Anular
+movimiento" ya estaba probado desde D-119 y solo se tocó un fallback de una línea):**
+- ✅ Botón visible solo con `puede_administrar=true`; oculto sin el permiso.
+- ✅ Camino feliz: motivo capturado, `fn_anular_operacion` recibe `{p_folio_op, p_motivo}`
+  exactos, toast muestra el `resultado` tal cual, drawer se cierra.
+- ✅ Motivo vacío bloquea la llamada (toast de error, sin tocar el backend).
+- ✅ RAISE simulado (cobros aplicados): mensaje tal cual, drawer sigue abierto.
+
+**node --check:** limpio (ya verificado en la sesión que escribió el código).
+
+**NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
