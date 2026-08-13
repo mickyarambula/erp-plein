@@ -4321,3 +4321,90 @@ a la respuesta de `v_operacion_compras` para simular el refetch real):**
 
 **NO DESPLEGADO** (Miguel corre `npx vercel --prod`). Slice 3 ("Registrar embarque", D-151)
 sigue pendiente, no se tocó aquí.
+
+## E116 (2026-08-12) — Slice 3 del rediseño OP: "Registrar embarque" (backend D-151) — flujo "+ Nueva operación" COMPLETO end-to-end
+_Último eslabón del hilo: desde el detalle de una OP, "Registrar embarque" crea la carga física
+(`fn_op_agregar_embarque`, D-151) con herencia sin recaptura desde la venta única de la OP. A
+diferencia de venta/compra, esta RPC SÍ mueve dinero (ingreso→CxC, costos→CxP) — el backend ya
+está blindado (ENSAYO OK), este slice es "un form claro que muestre bien la herencia y las
+advertencias", sin agregar validación de cosecha propia más allá de lo que pide la tarea._
+
+**`modulo-operaciones.js` — nueva sección "Registrar embarque":**
+- Botón **"Registrar embarque"** junto a "Agregar compra" en el detalle de la OP (gate
+  `ERP.puede('capturar')`).
+- **⚠️ Manejo de TABLE vs escalar verificado**: `fn_op_agregar_embarque` (a diferencia de las
+  otras 3 RPCs del hilo, que son escalares) `RETURNS TABLE`. `ERP.rpc()` en `comun.js` ya
+  funciona para ambos casos (`return data` tal cual llega de `sb.rpc()` — un string para
+  escalar, un array de filas para TABLE) — no hizo falta tocar el helper compartido. Se lee
+  `data[0] = {folio, con_flag, advertencias, ligada_a_so}`, mismo patrón que ya usan
+  `fn_traspaso`/`fn_crear_carga` en otros módulos.
+- **3 secciones del form**: "Heredado de la venta (opcional)" (PO, Cliente, Modalidad — los 3
+  con placeholder que muestra el valor actual de la venta, ej. "Heredar (actual: PO-2001)"; dejar
+  vacío = hereda, con nota explícita bajo el bloque); "Embarque" (Proveedor de materia prima —
+  marcado "(muy recomendado)" en ámbar con la advertencia de que sin proveedor los costos no
+  entran a CxP —, Producto, fechas, Cajas, Pallets, Ingreso de venta); "Costos por concepto"
+  (7 numéricos opcionales — Materia prima/Comisión/Aduanas/In & Out QC/Fletes/Cartón/Otro — con
+  Total en vivo de solo referencia, no se manda al backend como campo aparte).
+- **Regla de consignación aplicada proactivamente**: `actualizarIngresoEmbarque()` calcula la
+  modalidad EFECTIVA (la elegida en el `<select>`, o si se deja vacía, la ya conocida
+  `op.modalidad` heredada de la venta — el dato YA está cargado en `verOperacion()`, no hace
+  falta adivinar). Si la efectiva es consignación, el campo Ingreso se fuerza a 0, se deshabilita,
+  y aparece la nota "Consignación nace sin liquidar; el ingreso se reconoce al cobro (A-07/D-11)"
+  — funciona tanto si el usuario elige Consignación explícitamente como si la hereda en silencio.
+  Si aun así el backend recibe consignación con ingreso>0 (caso raro), su RAISE se muestra tal
+  cual, sin intentar traducirlo.
+- **Combos de Cliente/Proveedor/Producto con `permitirNuevo:true`**: a diferencia de los combos
+  por ID de los Slices 1/2, aquí los 3 campos son **texto** (`p_cliente`/`p_proveedor`/
+  `p_producto` — la RPC envuelve `fn_crear_carga`, que acepta nombre y puede dar de alta uno
+  nuevo sobre la marcha), mismo comportamiento que ya tiene `comboCli`/`comboProv`/`comboProd`
+  en `nuevaCarga()` de `modulo-cargas.js` — no se restringió una capacidad que la RPC ya soporta.
+- **Éxito**: toast `"Embarque <folio> registrado en <OP-XXXX>"` (+ `"· ligado a <SO-folio>"` si
+  `ligada_a_so`, usando el `venta_so` ya cargado de `v_operacion` para mostrar el folio real, no
+  solo un booleano) + `ERP.marcarDatosSucios()`.
+- **Advertencias (`con_flag`/`advertencias`) mostradas de forma PROMINENTE**: si vienen, se pinta
+  un aviso ámbar inline "Embarque creado CON avisos: ..." (concatenando el aviso de flag activa
+  y el texto de `advertencias` si ambos vienen) y el drawer espera **1.8s** antes de refrescar a
+  `verOperacion()` — mismo patrón exacto que ya usa `guardarNuevaCarga()` en `modulo-cargas.js`
+  para el mismo tipo de situación (creación con avisos). Sin avisos, refresca de inmediato.
+- Cualquier RAISE del backend (PO duplicado, consignación con ingreso, etc.) se muestra tal cual
+  en un aviso rojo inline; el formulario queda abierto para corregir sin perder lo capturado.
+
+**Verificación EN VIVO (harness local + Chrome DevTools MCP; `comun.js`/`modulo-operaciones.js`
+reales; se mockeó `sb.rpc`/`fetch` — la prueba REAL que mueve dinero la hará Miguel a
+conciencia, como pidió la tarea):**
+- ✅ **OP con venta margen_fijo**: Ingreso habilitado por defecto; placeholders muestran PO/
+  modalidad heredados correctos.
+- ✅ **OP con venta consignación (heredada, SIN elegir modalidad en el form)**: Ingreso se
+  auto-deshabilita en 0 y aparece la nota de consignación, solo por herencia silenciosa.
+- ✅ **Toggle manual del `<select>` Modalidad**: elegir Margen fijo habilita el Ingreso; elegir
+  Consignación lo vuelve a deshabilitar — en ambas direcciones.
+- ✅ **Total de costos en vivo**: 1000+300+50 → `$1,350.00`, recalculado en cada tecla.
+- ✅ **Camino feliz**: proveedor y producto elegidos por combo (texto), cajas=100, ingreso=5000,
+  3 de 7 costos capturados → payload exacto a `fn_op_agregar_embarque` (heredables en `null`,
+  costos no capturados en `null`, `p_estado:'Programada'`, `p_auto_ligar_venta:true`) → toast
+  `"Embarque P-086 registrado en OP-0086 · ligado a SO-0086."` → drawer refresca a `verOperacion`
+  (confirma que `data[0]` de la respuesta TABLE se leyó bien).
+- ✅ **Con avisos** (`con_flag:true`, `advertencias:"sin costo desglosado…"`): aviso ámbar
+  inline con AMBOS mensajes concatenados, drawer sigue en el form ~1.8s, luego refresca solo.
+- ✅ **RAISE simulado** (`CONSIGNACION_CON_INGRESO: ...`): mensaje tal cual en aviso rojo,
+  formulario sigue abierto.
+- Harness temporal creado y **borrado** al terminar; servidor local detenido.
+
+**node --check:** ✅ limpio en `modulo-operaciones.js`.
+
+**Cómo probar (para Miguel, después de `npx vercel --prod`) — ⚠️ ESTA RPC SÍ MUEVE DINERO,
+probar a conciencia:**
+1. Abre una OP sin embarque todavía → "Registrar embarque".
+2. Deja PO/Cliente/Modalidad vacíos (para que hereden de la venta) → elige un proveedor de
+   materia prima, captura cajas y al menos un costo → "Registrar embarque".
+3. Debe salir un toast con el folio del embarque (P-XXX) y, si estaba ligado, el folio de la SO.
+4. El detalle de la OP debe refrescar mostrando ya "Costos por línea" con lo capturado.
+5. Prueba una OP con venta en **Consignación**: el Ingreso debe estar en 0 y bloqueado — intenta
+   forzarlo (si el campo no se deja escribir, es el bloqueo del frontend funcionando).
+6. Si alguna prueba dispara una advertencia (ej. sin proveedor), confirma que se ve clara en
+   ámbar antes de que la pantalla se refresque sola.
+
+**NO DESPLEGADO** (Miguel corre `npx vercel --prod`). **Con este slice, el flujo "+ Nueva
+operación" queda completo end-to-end**: Slice 1 (venta) → Slice 2 (compra, + Slice 2.1 lectura)
+→ Slice 3 (embarque, este). Los 4 pasos del hilo (`fn_abrir_operacion`, `fn_op_agregar_venta`,
+`fn_op_agregar_compra`, `fn_op_agregar_embarque`) tienen su puerta de captura en el frontend.
