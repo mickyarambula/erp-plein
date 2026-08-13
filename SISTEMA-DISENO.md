@@ -133,6 +133,20 @@ Hoy son ~25 módulos en lista plana. Agrupar así (con eyebrow por grupo):
   futura, no solo a pantallas nuevas — un fix que solo se ve "a ojo" en el navegador puede estar
   resolviendo el síntoma equivocado (ver E123: el primer intento de fix pasó "a ojo" pero medido
   con contraste real seguía roto por un empate de especificidad).
+- **Los CONTROLES de formulario (`input`/`select`/`textarea`) y los dropdowns/autocompletes
+  (`crearCombo`) son dark-aware por defecto EN LA BASE (regla permanente, E124)** — nunca fondo
+  blanco/hardcodeado (`#fff`) ni un token legacy claro-only. Fondo `var(--pan)`, texto `var(--ink)`,
+  placeholder `var(--i3)`, borde `var(--bd)`, borde en foco `var(--brand)`; el ítem resaltado/hover
+  de un dropdown usa `var(--gtint)` (nunca gris genérico). Esto se arregla UNA VEZ en la base
+  (`.form-erp input,select,textarea`, `.combo-input`, `.combo-lista`, `.combo-item`), NO por
+  pantalla — cualquier drawer/formulario nuevo lo hereda gratis. Para un control nativo (`input[type=
+  date]`, `select`) que necesite forzar su propio `color-scheme` (el ícono del calendario o el caret
+  del select no siguen el tema), usa `color-scheme:inherit` en la regla del control, no en `:root`
+  (ya está ahí) — verificado por SCREENSHOT en ambos temas, no solo por color computado (el ícono
+  nativo del date-picker y el caret del select no son medibles con `getComputedStyle`).
+- **Toda pantalla, panel, ficha Y formulario (incluido el dropdown ABIERTO y con opción
+  SELECCIONADA) se prueba en claro y oscuro antes de darse por hecho** — no solo el estado
+  "vacío"/cerrado del control.
 
 ## 11. Archivos de referencia (mockups)
 - `escena-silo-plein.html` — **escena ancla APROBADA** (Embarques, formato final, claro/oscuro).

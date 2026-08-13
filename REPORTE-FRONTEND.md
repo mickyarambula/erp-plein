@@ -4665,3 +4665,66 @@ nuevo, texto de valores con color explícito, especificidad `html[data-theme="da
 verificación por color computado siempre en ambos temas — ver el archivo para el texto completo).
 
 **NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
+
+## E124 (2026-08-13) — Fix global de modo oscuro: CONTROLES de formulario + dropdown (crearCombo)
+_Solo CSS. Continúa E123 (panel/fichas) — faltaban los CONTROLES de formulario en sí. Verificado en
+navegador (Chrome DevTools MCP): color computado (WCAG) para texto, y SCREENSHOT en ambos temas para
+lo que no es medible por color (ícono nativo del date-picker, caret del `<select>`)._
+
+**Síntoma.** En el drawer "Nuevo Customer PO" (y cualquier otro drawer/formulario), en oscuro: los
+`input`/`select`/`textarea` salían con fondo BLANCO fijo, y el dropdown de `crearCombo` (buscador de
+cliente/proveedor/producto) tenía la lista y los ítems casi invisibles.
+
+**Causa.** El CSS base de controles (`.form-erp input,select,textarea` y `.combo-input`/
+`.combo-lista`/`.combo-item`) usaba `background:#fff` y `border:1px solid #CFCDBF` **hardcodeados**
+(ni siquiera un token legacy — un hex suelto sin variable), sin `color` explícito. Nunca se tocó en
+E89–E123 porque no era una "pantalla" sino la BASE compartida de formularios/dropdown.
+
+**Fix — base global, sin scope de pantalla (para que todo drawer/formulario nuevo lo herede gratis):**
+- `.form-erp input,.form-erp select,.form-erp textarea`: `background:var(--pan)`, `color:var(--ink)`,
+  `border-color:var(--bd)`, foco `border-color:var(--brand)`, `::placeholder{color:var(--i3)}`.
+- `.combo .combo-input` (buscador del dropdown): mismo patrón + `.combo.elegido` (fondo `var(--gtint)`,
+  antes `#FCFEFC` hardcoded) y `.combo.elegido.es-nuevo` (tokens nuevos `--amb`/`--amb-bg` directos).
+- `.combo-lista` (panel del dropdown): `background:var(--pan)`, borde `var(--bd)`.
+- `.combo-item`: `color:var(--ink)` explícito, borde `var(--bd)`; `.sel`/`:hover` → `var(--gtint)`
+  (antes `var(--verde-claro)`, legacy); `.alias` → `var(--i2)`; `.nuevo`/`.nuevo:hover` → tokens
+  nuevos directos (el hover de "nuevo" usaba `#F5E6C8` hardcoded, ahora `color-mix(in srgb, var(--amb)
+  22%, var(--amb-bg))`, dark-aware automático).
+- `color-scheme:inherit` explícito en los controles (input/select/textarea/combo-input) — algunos
+  navegadores no propagan el `color-scheme` del `:root` a los form controls por defecto; con esto el
+  ícono del date-picker y el caret del `<select>` se pintan en blanco/claro en oscuro (confirmado por
+  screenshot, no por color computado — un `::-webkit-calendar-picker-indicator` no es inspeccionable
+  con `getComputedStyle` de forma útil).
+- Se incluyeron también otros controles de formulario reales fuera de `.form-erp`/`.combo` que tenían
+  el MISMO patrón hardcodeado: `.login-card`/`.login-card input` (pantalla de login — si Miguel tiene
+  el tema oscuro guardado, la ve ANTES de entrar), `.linea-doc input`/`.combo-input` (líneas de
+  factura/documento), `.chk-lista` (contenedor de checklist), `.alias-editor`/`.alias-editor input`
+  (editor de alias en Directorio Comercial).
+
+**Detalle honesto (no un bug, transparencia):** el borde de estos controles pasó de un hex huérfano
+`#CFCDBF` (sin token, nunca tokenizado) a `var(--bd)` = `#E3E7E1` en claro — un gris casi idéntico
+(diferencia imperceptible a simple vista) y además YA es el valor que usan las 2 pantallas que ya
+tenían su propio override dark-aware de formulario (Facturación, Liquidaciones) — es decir, este fix
+alinea al resto de la app con lo que esas 2 pantallas ya hacían, no introduce una inconsistencia
+nueva.
+
+**Verificación (Chrome DevTools MCP):**
+- Screenshot real del drawer (vía `ERP.crearCombo` real, no markup aproximado) en OSCURO: cliente
+  (dropdown abierto, 3 opciones + hover del primer match), N° cliente, FECHA (ícono de calendario
+  blanco visible), MONEDA (caret del select blanco visible), NOTA (placeholder legible) — y de paso
+  la pantalla de LOGIN en oscuro (inputs Correo/Contraseña legibles, botón "Entrar" correcto).
+- Mismo drawer en CLARO: comparado antes/después — inputs blancos, texto negro, ícono/caret nativos
+  en negro — visualmente sin cambio (salvo el borde `#CFCDBF→#E3E7E1` documentado arriba).
+- Contraste (WCAG) de 7 controles reales en oscuro: **14.81–18.16:1** (muy por encima de AA 4.5:1).
+- Confirmado que `.pantalla-facturas`/`.pantalla-liquidaciones` (con su propio override previo) y
+  `.pantalla-embarques .filtros input.busca` (ya cubierto por el alias de E123) **no cambiaron**
+  (15.12–15.98:1, idéntico a antes de este fix).
+
+**Archivos tocados:** solo `estilos.css` (ningún `.js`, ningún `tokens.css`). Ningún selector
+scopeado a `.pantalla-XXX` — el fix vive en la base, por diseño (regla del pedido: "no por pantalla").
+
+**Regla permanente extendida en `SISTEMA-DISENO.md` §10:** controles de formulario y dropdowns
+dark-aware por defecto en la base; `color-scheme:inherit` en controles nativos cuando haga falta;
+probar también el dropdown ABIERTO y con opción SELECCIONADA, no solo el estado vacío.
+
+**NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
