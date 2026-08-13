@@ -4593,3 +4593,75 @@ porque el form vive en `#panelBody` (fuera del scope). Solo tokens.
 **Qué probar:** en "Nuevo Customer PO" → subir un PDF (aparece el nombre + "quitar") → Crear →
 abrir la ficha del CPO → **"Ver adjunto"** abre el PDF por URL firmada en pestaña nueva. Probar en
 claro y oscuro. Verificar también que pegar una URL `http(s)` sigue funcionando como enlace directo.
+
+## E123 (2026-08-13) — Fix global de modo oscuro: panel/fichas y ~40 superficies compartidas invisibles
+_Solo CSS/diseño. Causa raíz encontrada y corregida en `tokens.css` + `estilos.css`. Verificado en
+navegador (Chrome DevTools MCP) por COLOR COMPUTADO en ambos temas, no a ojo — ver método abajo._
+
+**Causa raíz.** El panel (`.panel`/`.det`), fichas (`.ficha-val`), y ~40 superficies más compartidas
+(`.card`, `.form-erp`, `.toast`, `.campo-fijo`, `.login-ov`, `.flag-card`, `.conc-card`,
+`.aging-hero`…) usan tokens **legacy** del `:root` de `estilos.css` (`--tarjeta`, `--papel`,
+`--tinta`, `--gris`, `--gris-claro`, `--linea`, `--verde`, `--ambar`, `--rojo`, `--lima`…) que solo
+existían en el `:root` **claro** — nunca se redefinieron en `[data-theme="dark"]`. En oscuro, el
+panel se quedaba con fondo blanco fijo (`--tarjeta`/`--papel` sin redefinir) mientras el texto sí
+heredaba el `--ink` nuevo (dark-aware, claro) del `body` → texto claro sobre fondo blanco, invisible;
+y donde el texto usaba `--tinta` explícito (fijo, oscuro) sobre ese mismo panel ahora "atrapado"
+blanco, quedaba una isla blanca chocante en medio de la app oscura.
+
+**Fix — alias dark-aware en `tokens.css`.** Dentro del bloque de tema oscuro se agregó:
+`--tinta:var(--ink); --papel:var(--pan); --tarjeta:var(--pan); --verde:var(--brand);
+--verde-claro:var(--gtint); --ambar:var(--amb); --ambar-bg:var(--amb-bg); --rojo:var(--red);
+--rojo-bg:var(--red-bg); --gris:var(--i2); --gris-claro:var(--i3); --linea:var(--bd);` — SOLO dentro
+del bloque oscuro, el `:root` claro no se tocó (modo claro pixel-idéntico, verificado por color
+computado). Esto resuelve el panel/fichas Y las ~40 superficies compartidas de un jalón (mismo
+mecanismo de alias, sin tocar cada regla una por una).
+
+**Gotcha 1 — empate de especificidad.** `[data-theme="dark"]` y `:root` tienen la MISMA especificidad
+(0-0-1-0); como `estilos.css` carga DESPUÉS de `tokens.css`, su `:root{--tarjeta:#FFFFFF...}` ganaba
+el empate por orden de archivo — los alias no tenían ningún efecto, pese a estar "bien escritos".
+Se detectó verificando por color computado (`getComputedStyle`) en vez de fiarse del CSS a simple
+vista. Fix: subir la especificidad del selector a `html[data-theme="dark"]` (0-0-1-1, agrega el tipo
+`html`) — gana siempre sin importar el orden de los `<link>`.
+
+**Gotcha 2 — ese mismo selector reforzado rompía las pantallas YA vestidas.** `html[data-theme=
+"dark"] .btn-mini{...}` (0-0-2-1) tiene MÁS especificidad que `.pantalla-embarques .btn-mini{...}`
+(0-0-2-0) — un primer intento de forzar el fondo de `.btn-mini` con ese selector habría hecho que
+las 18 pantallas ya vestidas (Embarques, CxC, CxP, Tesorería, Camino C…), que YA usan correctamente
+`--btn`/`--btnT` dark-aware, perdieran su fondo correcto. Se descartó ese enfoque.
+
+**Gotcha 3 — pares "fondo brillante + texto fijo" que el alias rompía.** ~6 usos legacy emparejan
+un fondo `--verde`/`--lima` con texto `#fff`/`--tinta` FIJO (no pensado para aclararse):
+`.btn.verde`, `.btn-mini` (botón primario de todo panel/drawer legacy), `.chip.activo`,
+`.login-card button`, `.pres-botones button:hover`, `.etapa.hecha .bolita` (fondo `--verde` +
+blanco) y `.btn.lima`/`.etapa.actual .bolita` (fondo `--lima` + texto oscuro, stepper de estado de
+embarque). Aliasear `--verde` a `--brand` (correcto para el 90%+ de sus ~65 usos, que son
+TEXTO/acento: pills, enlaces, bordes) bajaba el contraste de estos 6 casos a ~2.6:1 (por debajo de
+WCAG AA 4.5:1) porque `--brand`/`--money` están pensados para texto sobre fondo oscuro, no para
+fondo sólido con texto blanco encima. Fix limpio (sin pelear especificidad): token nuevo
+`--verde-solido`/`--verde-solido-hover` (`estilos.css :root`, mismo valor `#1E5B3A`/`#27714A` en
+ambos temas, nunca redefinido en oscuro) para esos 6 usos; `.btn.lima`/`.etapa.actual .bolita`
+cambiaron su texto a un literal `#14261C` (el valor EXACTO original de `--tinta` claro, no una
+aproximación) en vez de `var(--tinta)`. `.etapa.actual .nombre` (etiqueta HERMANA que vive sobre el
+fondo del panel, no sobre el lima) se dejó con el alias normal `--tinta→--ink` — si se le hubiera
+forzado el mismo literal oscuro habría quedado invisible sobre el panel ahora oscuro.
+
+**Refuerzo puntual:** `.det .v` y `.ficha-cp .ficha-val` fijan `color:var(--ink)` explícito (ya no
+dependen de heredar por cascada).
+
+**Verificación (Chrome DevTools MCP, por color computado):**
+- Barrido de contraste WCAG sobre ~26 selectores legacy (`.card`, `.form-erp`, `.toast`, pills,
+  badges, avisos, estados…) en oscuro: **0 casos por debajo de 3:1**, todos entre 5.25:1 y 18.16:1.
+- `.btn-mini` dentro de `.pantalla-embarques`/`.pantalla-o1-cpo` (scopeadas): confirmado que sigue
+  resolviendo a `--btn`/`--btnT` (15.98:1) — **las 18 pantallas ya vestidas no se tocaron**.
+- Modo claro: comparado ANTES/DESPUÉS de todos los cambios — **valores computados idénticos**
+  (incluido el fix de precisión de `.btn.lima`/`.etapa.actual .bolita` al hex exacto original).
+
+**Archivos tocados:** `tokens.css` (alias dark-aware + selector reforzado), `estilos.css` (token
+`--verde-solido`/`-hover` nuevo + 6 reglas redirigidas a él + 2 literales de texto fijo +
+`.det .v`/`.ficha-val` con color explícito). Ningún `.js` tocado.
+
+**Regla permanente agregada a `SISTEMA-DISENO.md` §10** (tokens dark-aware obligatorios en trabajo
+nuevo, texto de valores con color explícito, especificidad `html[data-theme="dark"]` vs `:root`, y
+verificación por color computado siempre en ambos temas — ver el archivo para el texto completo).
+
+**NO DESPLEGADO** (Miguel corre `npx vercel --prod`).

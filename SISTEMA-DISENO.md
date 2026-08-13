@@ -108,6 +108,31 @@ Hoy son ~25 módulos en lista plana. Agrupar así (con eyebrow por grupo):
 - Verificar columnas/vistas/RPCs **en vivo** antes de programar; verificar que exista el call-site antes de envolver.
 - `node --check` limpio. **NO desplegar** (lo hace Miguel).
 - Instrucciones a Miguel SIEMPRE como bloque copy-paste para Terminal, paso a paso (no es programador). Nunca archivo descargable salvo que lo pida.
+- **Todo color sale de tokens DARK-AWARE (regla permanente, E123).** Los tokens nuevos de `tokens.css`
+  (`--bg/--pan/--ink/--i2/--i3/--bd/--money/--brand/--red/--amb`) YA son dark-aware (redefinidos en
+  `html[data-theme="dark"]`) — úsalos siempre en pantallas y componentes nuevos. Los tokens viejos
+  del `:root` de `estilos.css` (`--papel/--tarjeta/--tinta/--gris/--gris-claro/--linea/--verde/
+  --ambar/--rojo/--lima…) son **legacy claro-only**: no los uses en trabajo nuevo. (E123 les agregó
+  alias dark-aware en `tokens.css` para arreglar el panel/fichas globales que ya los usaban, pero
+  eso es un parche de compatibilidad — no una invitación a seguir usándolos.)
+- **El texto de valores fija color explícito dark-aware**, nunca "a ver qué cae" por herencia — ej.
+  `.det .v`, `.ficha-val` (`color:var(--ink)`).
+- **Especificidad de `html[data-theme="dark"]` vs `:root`:** si necesitas que un override de tema
+  oscuro gane pase lo que pase sobre un `:root{}` que se cargue DESPUÉS en el `<link>` (como el
+  `:root` legacy de `estilos.css`, que carga después de `tokens.css`), el selector `[data-theme="dark"]`
+  a secas NO alcanza — tiene la MISMA especificidad que `:root` (0-0-1-0) y pierde el empate por
+  orden de archivo. Usa `html[data-theme="dark"]` (0-0-1-1, con el tipo `html`), que gana siempre
+  sin importar el orden de los `<link>`. Pero ojo: eso también sube su especificidad por encima de
+  cualquier `.pantalla-XXX .algo{}` scopeado (0-0-2-0) — si el override es para un token o clase que
+  también tienen reglas scopeadas correctas (ej. `.btn-mini`), NO lo apliques con `html[data-theme=
+  "dark"] .btn-mini{...}` (rompería las pantallas ya vestidas): usa en su lugar un token dedicado sin
+  alias (ver `--verde-solido` en `estilos.css` — mismo valor en ambos temas, cero pelea de cascada)
+  o edita el literal directo en la regla fuente.
+- **Toda pantalla y todo panel/ficha se prueba en CLARO y OSCURO antes de darse por hecho, por
+  color computado (`getComputedStyle`), no a ojo.** Aplica también a cualquier tarea de frontend
+  futura, no solo a pantallas nuevas — un fix que solo se ve "a ojo" en el navegador puede estar
+  resolviendo el síntoma equivocado (ver E123: el primer intento de fix pasó "a ojo" pero medido
+  con contraste real seguía roto por un empate de especificidad).
 
 ## 11. Archivos de referencia (mockups)
 - `escena-silo-plein.html` — **escena ancla APROBADA** (Embarques, formato final, claro/oscuro).
