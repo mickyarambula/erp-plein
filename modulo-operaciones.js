@@ -248,7 +248,12 @@
         <thead><tr><th>Contraparte</th><th class="num">Líneas</th><th class="num">Costo</th></tr></thead>
         <tbody>${cxp.map(filaCxp).join('')}</tbody>
         <tfoot><tr class="total"><td>Total</td><td class="num">${totalLineasCxp}</td><td class="num">${usd(totalCxp)}</td></tr></tfoot>
-      </table></div>` : '<div class="vacio">Sin costos por contraparte.</div>'}`;
+      </table></div>` : '<div class="vacio">Sin costos por contraparte.</div>'}
+
+      ${ERP.puede('administrar') ? `<div class="zona-peligro">
+        <span class="nota">Anular retira TODO el hilo de esta operación (venta, compra y embarque) de saldos y reportes de un jalón. Si alguna carga ya tiene cobros/pagos aplicados, el ERP lo rechaza — hay que desaplicar primero.</span>
+        <button class="btn-mini peligro" id="opBtnAnular">Anular operación</button>
+      </div>` : ''}`;
 
     ERP.abrirPanel(
       `${esc(op.folio_op)}${op.carga ? ` <span style="font-weight:400;color:var(--gris)">· ${esc(op.carga)}</span>` : ''}`,
@@ -260,6 +265,8 @@
     if (btnCompra) btnCompra.addEventListener('click', () => abrirAgregarCompra(op.folio_op));
     const btnEmbarque = document.getElementById('opBtnRegistrarEmbarque');
     if (btnEmbarque) btnEmbarque.addEventListener('click', () => abrirRegistrarEmbarque(op));
+    const btnAnular = document.getElementById('opBtnAnular');
+    if (btnAnular) btnAnular.addEventListener('click', () => anularOperacion(op));
   }
 
   /* ================= "+ Nueva operación" (Slice 1 del rediseño OP, D-147..D-149) =================
@@ -914,6 +921,37 @@
       if (ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
       avisoEmb('err', `El ERP rechazó el embarque: ${esc(e.message)}`);
       btn.disabled = false;
+    }
+  }
+
+  /* ================= "Anular operación" (D-156) =================
+     Orquestador atómico: anula TODO el hilo de la OP (carga(s)+compra(s)+venta(s)) de un jalón,
+     reusando fn_anular_carga/fn_anular_orden/fn_cancelar_so. Si alguna carga ya tiene cobros/
+     pagos aplicados, el backend hace RAISE y NO se puede anular desde la web — ese mensaje se
+     muestra tal cual, sin intentar desaplicar nada desde aquí (fuera de alcance). Mismo patrón
+     confirm+prompt que ya usa anularMovimiento() en modulo-tesoreria.js (D-119) — nada de
+     formulario nuevo para una acción de una sola vez con motivo obligatorio. */
+  async function anularOperacion(op) {
+    const ok = window.confirm(
+      `¿Anular la operación ${op.folio_op}?\n\n` +
+      'Esto anula la venta, la compra y el embarque de esta operación de un jalón — deja de contar ' +
+      'para saldos y reportes. Es un movimiento fuerte, no tiene deshacer desde la pantalla.');
+    if (!ok) return;
+    const motivo = window.prompt('Motivo de la anulación (obligatorio):');
+    if (motivo === null) return;   // canceló el prompt
+    const m = motivo.trim();
+    if (!m) { ERP.toast('err', 'El motivo es obligatorio: no se anuló.'); return; }
+    try {
+      const data = await rpc('fn_anular_operacion', { p_folio_op: op.folio_op, p_motivo: m });
+      const r = (data && data[0]) || {};
+      ERP.marcarDatosSucios();
+      ERP.toast('ok', r.resultado || `Operación ${op.folio_op} anulada.`);
+      // La OP anulada desaparece sola de la lista (v_operacion_resumen ya la filtra, D-155) —
+      // cerrarPanel() re-renderiza Operaciones de fondo (datosSucios), no hace falta forzar nada.
+      ERP.cerrarPanel();
+    } catch (e) {
+      if (ERP.avisarSiPermiso(e)) return;
+      ERP.toast('err', e.message);   // p.ej. cobros/pagos aplicados: el backend ya explica qué hacer
     }
   }
 

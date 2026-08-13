@@ -928,7 +928,7 @@
       const data = await rpc('fn_anular_movimiento', { p_folio: mov.folio, p_motivo: m });
       const r = (data && data[0]) || {};
       ERP.marcarDatosSucios();
-      ERP.toast('ok', `Movimiento anulado · ${r.aplicaciones_revertidas ?? 0} aplicación(es) revertida(s)`);
+      ERP.toast('ok', r.resultado || `Movimiento anulado · ${r.aplicaciones_revertidas ?? 0} aplicación(es) revertida(s)`);
       // El movimiento quedó anulado: cierra el editor. cerrarPanel re-renderiza Tesorería de fondo
       // (datosSucios) mostrando la fila ya con el estado ANULADO. No interrumpe otra captura: este
       // es el propio drawer de edición, cerrado por acción explícita del usuario.
@@ -945,9 +945,9 @@
 
     ERP.abrirPanel(`Editar movimiento ${esc(folio)}`, esc(mov.cuenta_id || ''), '<div class="skel">Cargando…</div>');
 
-    let tipos, contrapartes, bitacora, aplicaciones, cargasCat;
+    let tipos, contrapartes, bitacora, aplicaciones, cargasCat, cargaContrapartesCat;
     try {
-      [tipos, contrapartes, bitacora, aplicaciones, cargasCat] = await Promise.all([
+      [tipos, contrapartes, bitacora, aplicaciones, cargasCat, cargaContrapartesCat] = await Promise.all([
         q('v_cat_tipos', '&order=tipo.asc').catch(() => []),   // E50: vista (antes leía la tabla base tipos_movimiento, que 401 a authenticated → el select de tipo salía vacío)
         q('v_catalogo_admin', '&order=nombre.asc'),
         cargarBitacora(mov.folio),
@@ -956,7 +956,16 @@
         q('v_movimiento_aplicaciones', `&mov_folio=${ERP.eq(mov.folio)}&order=aplicacion_fecha.asc`).catch(e => ({ __error: e.message })),
         // Catálogo para el combo de "Aplicar a carga": si falla, el form queda con el aviso ya
         // escrito en formAplicarHtml (nunca se enmascara con un combo vacío sin explicación).
-        q('v_carga_detalle').catch(() => [])
+        q('v_carga_detalle').catch(() => []),
+        // D-138 (Tema 1): v_carga_contrapartes — una fila por carga↔contraparte↔rol, cubre lo que
+        // v_carga_detalle (solo encabezado cliente_id/proveedor_id) se perdía: proveedores de
+        // SERVICIO (flete/comisión/reempaque) que solo viven en carga_costos.contraparte_id. Se
+        // pide filtrada por contraparte_id (si el movimiento no tiene una asignada, ni se pide —
+        // cae al fallback de "mostrar todas" de siempre, sin gastar el viaje redondo).
+        (mov.contraparte_id != null
+          ? q('v_carga_contrapartes', `&contraparte_id=${ERP.eq(mov.contraparte_id)}`)
+          : Promise.resolve([])
+        ).catch(() => [])
       ]);
     } catch (e) {
       ERP.abrirPanel(`Editar movimiento ${esc(folio)}`, '', `<div class="errbox">No se pudieron leer los catálogos: ${esc(e.message)}</div>`);
@@ -973,17 +982,20 @@
     const modoIngreso = ing > 0.009;               // si no hay ingreso, es egreso
     const montoInicial = modoIngreso ? ing : Math.abs(egr);
 
-    // "Aplicar a carga": el selector arranca filtrado a las cargas de la MISMA contraparte del
-    // movimiento (cliente si es Cobro/ingreso, proveedor si es Pago/egreso) — minimiza el riesgo
-    // de aplicar por error a la carga de otro cliente/proveedor. "Ver todas" (checkbox) muestra
-    // el catálogo completo cuando el capturista de verdad lo necesita.
+    // "Aplicar a carga": el selector arranca filtrado a las cargas donde esta contraparte tiene
+    // una línea — sin importar el rol (cliente, proveedor de producto, o proveedor de SERVICIO
+    // como flete/comisión/reempaque que solo vive en carga_costos, D-138/Tema 1). Antes se
+    // comparaba por NOMBRE contra el encabezado (v_carga_detalle.cliente/proveedor), lo que
+    // dejaba fuera a los proveedores de servicio; ahora se compara por ID contra
+    // v_carga_contrapartes, que ya trae los 3 roles. "Ver todas" (checkbox) sigue disponible
+    // para cuando el capturista de verdad lo necesita.
     const cargasItemsTodas = cargasComboItems(cargasCat);
-    const cargasFiltradas = mov.contraparte
-      ? (cargasCat || []).filter(c => !c.anulado &&
-          norm(modoIngreso ? c.cliente : c.proveedor) === norm(mov.contraparte))
+    const foliosConContraparte = new Set((cargaContrapartesCat || []).map(r => r.folio_carga));
+    const cargasFiltradas = mov.contraparte_id != null
+      ? (cargasCat || []).filter(c => !c.anulado && foliosConContraparte.has(c.folio))
       : [];
     const cargasItemsFiltradas = cargasComboItems(cargasFiltradas);
-    const cargasItems = (mov.contraparte && cargasItemsFiltradas.length) ? cargasItemsFiltradas : cargasItemsTodas;
+    const cargasItems = (mov.contraparte_id != null && cargasItemsFiltradas.length) ? cargasItemsFiltradas : cargasItemsTodas;
 
     ERP.abrirPanel(`Editar movimiento ${esc(folio)}`, `Cuenta ${esc(mov.cuenta_id || '—')} · movimiento ${esc(folio)}`, `
       <div class="form-erp">
