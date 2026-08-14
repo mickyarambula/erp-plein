@@ -3,13 +3,13 @@
    modelo SKU del schema cat.* (ver SPEC-CATALOGOS-BACKEND.md — lo aplica el chat de backend).
    Portado de catalogos-completo.html a los tokens reales del proyecto (tokens.css, dark-aware).
 
-   SOLO FRONTEND. Lee por vistas public.v_cat_*, escribe por RPCs public.fn_cat_* (SECURITY DEFINER).
+   SOLO FRONTEND. Lee por vistas public.v_catc_*, escribe por RPCs public.fn_cat_* (SECURITY DEFINER).
    NO toca el modulo-catalogos.js viejo (Directorio Comercial) ni sus tablas vivas.
 
    Contrato consumido (SPEC-CATALOGOS-BACKEND.md §7):
-     Lectura: v_cat_productos, v_cat_variedades, v_cat_skus, v_cat_sku_etiqueta,
-       v_cat_producto_proveedores, v_cat_sku_clientes, v_cat_contrapartes, v_cat_contactos,
-       v_cat_contraparte_skus, v_cat_listas_valores, v_cat_papelera.
+     Lectura: v_catc_productos, v_catc_variedades, v_catc_skus, v_catc_sku_etiqueta,
+       v_catc_producto_proveedores, v_catc_sku_clientes, v_catc_contrapartes, v_catc_contactos,
+       v_catc_contraparte_skus, v_catc_listas_valores, v_catc_papelera.
      Escritura: fn_cat_* (alta/editar/eliminar/restaurar, vincular/desvincular, lista_valor, import). */
 
 (function () {
@@ -45,7 +45,7 @@
   /* ================= Carga de datos ================= */
   async function cargarListas() {
     if (listas) return listas;
-    const filas = await q('v_cat_listas_valores', '&order=tipo.asc,orden.asc,valor.asc').catch(() => []);
+    const filas = await q('v_catc_listas_valores', '&order=tipo.asc,orden.asc,valor.asc').catch(() => []);
     const l = { empaque: [], calibre: [], grado: [], unidad: [], categoria: [] };
     (filas || []).filter(v => v.activo !== false).forEach(v => { if (l[v.tipo]) l[v.tipo].push(v.valor); });
     listas = l;
@@ -53,27 +53,27 @@
   }
 
   async function cargarLista() {
-    if (esProd()) return q('v_cat_productos', '&order=nombre.asc');
+    if (esProd()) return q('v_catc_productos', '&order=nombre.asc');
     const filtro = tab === 'prov' ? '&es_proveedor=eq.true' : '&es_cliente=eq.true';
-    return q('v_cat_contrapartes', filtro + '&order=nombre.asc');
+    return q('v_catc_contrapartes', filtro + '&order=nombre.asc');
   }
 
   async function cargarDetalleProducto(id) {
     const [variedades, skus, proveedores] = await Promise.all([
-      q('v_cat_variedades', `&producto_id=eq.${id}&order=nombre.asc`).catch(() => []),
-      q('v_cat_skus', `&producto_id=eq.${id}&order=id.asc`).catch(() => []),
-      q('v_cat_producto_proveedores', `&producto_id=eq.${id}`).catch(() => [])
+      q('v_catc_variedades', `&producto_id=eq.${id}&order=nombre.asc`).catch(() => []),
+      q('v_catc_skus', `&producto_id=eq.${id}&order=id.asc`).catch(() => []),
+      q('v_catc_producto_proveedores', `&producto_id=eq.${id}`).catch(() => [])
     ]);
     let skuClientes = [];
     const ids = (skus || []).map(s => s.id);
-    if (ids.length) skuClientes = await q('v_cat_sku_clientes', `&sku_id=in.(${ids.join(',')})`).catch(() => []);
+    if (ids.length) skuClientes = await q('v_catc_sku_clientes', `&sku_id=in.(${ids.join(',')})`).catch(() => []);
     return { variedades: variedades || [], skus: skus || [], proveedores: proveedores || [], skuClientes: skuClientes || [] };
   }
 
   async function cargarDetalleContraparte(id) {
     const [contactos, skus] = await Promise.all([
-      q('v_cat_contactos', `&contraparte_id=eq.${id}&order=id.asc`).catch(() => []),
-      q('v_cat_contraparte_skus', `&contraparte_id=eq.${id}`).catch(() => [])
+      q('v_catc_contactos', `&contraparte_id=eq.${id}&order=id.asc`).catch(() => []),
+      q('v_catc_contraparte_skus', `&contraparte_id=eq.${id}`).catch(() => [])
     ]);
     return { contactos: contactos || [], skus: skus || [] };
   }
@@ -100,16 +100,19 @@
         <button data-tab="prov" class="${tab === 'prov' ? 'on' : ''}"><i class="ti ti-tractor"></i>Proveedores</button>
         <button data-tab="cli" class="${tab === 'cli' ? 'on' : ''}"><i class="ti ti-building-store"></i>Clientes</button>
         <span class="grow"></span>
-        <button class="catc-ic" id="catcListas" title="Listas de valores"><i class="ti ti-list-details"></i></button>
-        <button class="catc-ic" id="catcPapelera" title="Papelera"><i class="ti ti-trash"></i></button>
+        <button class="catc-ic" id="catcListas" title="Listas de valores (empaque, calibre, grado…)"><i class="ti ti-list-details"></i><span>Listas</span></button>
+        <button class="catc-ic" id="catcPapelera" title="Ver eliminados y restaurar"><i class="ti ti-trash"></i><span>Papelera</span></button>
       </div>
       <div class="catc-split">
         <div class="catc-list">
           <div class="catc-lh">
             <div class="catc-sb"><i class="ti ti-search"></i><input id="catcBuscar" type="search" placeholder="Buscar" value="${esc(fTexto)}"></div>
             <div class="catc-lh-btns">
-              ${puedeCap() ? `<button class="btn-primary" id="catcNuevo"><i class="ti ti-plus"></i><span>${esc(nuevoLabel())}</span></button>
-              <button id="catcImportar"><i class="ti ti-file-spreadsheet"></i>Importar</button>` : ''}
+              ${puedeCap() ? `<button class="btn-primary catc-nuevo" id="catcNuevo"><i class="ti ti-plus"></i><span>${esc(nuevoLabel())}</span></button>` : ''}
+              <div class="catc-lh-secondary">
+                ${puedeCap() ? `<button class="catc-sec-btn" id="catcImportar"><i class="ti ti-file-spreadsheet"></i>Importar</button>` : ''}
+                <button class="catc-sec-btn" id="catcExportar" title="Bajar este catálogo en .xlsx"><i class="ti ti-file-export"></i>Exportar</button>
+              </div>
             </div>
           </div>
           <div class="catc-rows" id="catcRows"></div>
@@ -126,6 +129,7 @@
     if (bNuevo) bNuevo.addEventListener('click', crearNuevo);
     const bImp = document.getElementById('catcImportar');
     if (bImp) bImp.addEventListener('click', () => vistaImportar());
+    document.getElementById('catcExportar').addEventListener('click', exportarExcel);
 
     pintarRows();
     abrirDetalle(selId);
@@ -226,7 +230,7 @@
         </div>
         <div class="catc-actions" style="margin-bottom:10px">
           ${puedeCap() ? `<button class="catc-act" data-savesku="${esc(s.id)}"><i class="ti ti-check"></i>Guardar SKU</button>
-          <button class="catc-act del" data-delsku="${esc(s.id)}"><i class="ti ti-trash"></i></button>` : ''}
+          <button class="catc-act del" data-delsku="${esc(s.id)}" title="Eliminar SKU"><i class="ti ti-trash"></i></button>` : ''}
         </div>
         <div class="catc-hint" style="margin-bottom:7px">Clientes de este SKU con su <b>código de item</b>. El precio se define en cada pedido — aquí solo el de contrato/ref. Pallets → cajas = pallets × ${esc(cxt)}.</div>
         ${cli.map(c => `<div class="catc-linkline"><div style="flex:1"><div class="cn">${esc(c.contraparte_nombre || '—')}</div>
@@ -254,7 +258,7 @@
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:7px">
           ${pillEstado(p.estado)}
-          ${puedeCap() ? `<div style="display:flex;gap:7px"><button class="catc-act del" data-del><i class="ti ti-trash"></i></button><button class="btn-primary catc-act" data-save>Guardar</button></div>` : ''}
+          ${puedeCap() ? `<div style="display:flex;gap:7px"><button class="catc-act del" data-del title="Eliminar producto"><i class="ti ti-trash"></i>Eliminar</button><button class="btn-primary catc-act" data-save>Guardar</button></div>` : ''}
         </div>
       </div>
 
@@ -274,7 +278,7 @@
 
       <div class="catc-card"><h4>Variedades ${puedeCap() ? '<span class="catc-add" data-addvar><i class="ti ti-plus"></i>Agregar</span>' : ''}</h4>
         <div style="display:flex;flex-wrap:wrap;gap:8px">${det.variedades.length
-          ? det.variedades.map(v => `<span class="catc-chip">${esc(v.nombre)}${puedeCap() ? `<i class="ti ti-x" data-delvar="${esc(v.id)}"></i>` : ''}</span>`).join('')
+          ? det.variedades.map(v => `<span class="catc-chip">${esc(v.nombre)}${puedeCap() ? `<i class="ti ti-x" data-delvar="${esc(v.id)}" title="Quitar variedad"></i>` : ''}</span>`).join('')
           : '<span class="catc-hint">Sin variedades.</span>'}</div>
       </div>
 
@@ -290,7 +294,7 @@
 
       <div class="catc-card"><h4>Proveedores que lo surten ${puedeCap() ? '<span class="catc-add" data-vprov><i class="ti ti-plus"></i>Vincular</span>' : ''}</h4>
         <div style="display:flex;flex-wrap:wrap;gap:7px">${det.proveedores.length
-          ? det.proveedores.map(v => `<span class="catc-chip">${esc(v.contraparte_nombre)}${puedeCap() ? `<i class="ti ti-x" data-unlinkprov="${esc(v.contraparte_id)}"></i>` : ''}</span>`).join('')
+          ? det.proveedores.map(v => `<span class="catc-chip">${esc(v.contraparte_nombre)}${puedeCap() ? `<i class="ti ti-x" data-unlinkprov="${esc(v.contraparte_id)}" title="Desvincular proveedor"></i>` : ''}</span>`).join('')
           : '<span class="catc-hint">Sin proveedores vinculados.</span>'}</div>
       </div>
 
@@ -301,14 +305,20 @@
     $det().querySelectorAll('.catc-sku-top').forEach(t => t.addEventListener('click', () => t.parentElement.classList.toggle('open')));
     $det().querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => { skuMode = b.dataset.mode; detProducto(); }));
     const bSave = $det().querySelector('[data-save]'); if (bSave) bSave.addEventListener('click', guardarProducto);
-    const bDel = $det().querySelector('[data-del]'); if (bDel) bDel.addEventListener('click', () => eliminar('producto', p.id, p.nombre));
+    const bDel = $det().querySelector('[data-del]'); if (bDel) bDel.addEventListener('click', () => eliminar('producto', p.id, 'el producto "' + (p.nombre || '') + '"'));
     const bAddVar = $det().querySelector('[data-addvar]'); if (bAddVar) bAddVar.addEventListener('click', () => agregarVariedad(p.id));
-    $det().querySelectorAll('[data-delvar]').forEach(el => el.addEventListener('click', () => eliminar('variedad', el.dataset.delvar, 'variedad', true)));
+    $det().querySelectorAll('[data-delvar]').forEach(el => el.addEventListener('click', () => {
+      const vv = det.variedades.find(x => String(x.id) === String(el.dataset.delvar));
+      eliminar('variedad', el.dataset.delvar, 'la variedad "' + (vv ? vv.nombre : '') + '"', true);
+    }));
     const bNewSku = $det().querySelector('[data-newsku]'); if (bNewSku) bNewSku.addEventListener('click', () => armadorSku(p));
     const bVprov = $det().querySelector('[data-vprov]'); if (bVprov) bVprov.addEventListener('click', () => vincularProveedor(p));
     $det().querySelectorAll('[data-unlinkprov]').forEach(el => el.addEventListener('click', () => desvincularProveedor(p.id, el.dataset.unlinkprov)));
     $det().querySelectorAll('[data-savesku]').forEach(el => el.addEventListener('click', () => guardarSku(el.dataset.savesku)));
-    $det().querySelectorAll('[data-delsku]').forEach(el => el.addEventListener('click', () => eliminar('sku', el.dataset.delsku, 'SKU', true)));
+    $det().querySelectorAll('[data-delsku]').forEach(el => el.addEventListener('click', () => {
+      const sk = det.skus.find(x => String(x.id) === String(el.dataset.delsku));
+      eliminar('sku', el.dataset.delsku, 'el SKU "' + (sk ? [sk.variedad, sk.empaque].filter(Boolean).join(' · ') : '') + '"', true);
+    }));
     $det().querySelectorAll('[data-vcli]').forEach(el => el.addEventListener('click', () => vincularClienteSku(el.dataset.vcli)));
     $det().querySelectorAll('[data-unlinkcli]').forEach(el => el.addEventListener('click', () => {
       const [sid, cid] = el.dataset.unlinkcli.split(':'); desvincularClienteSku(sid, cid);
@@ -391,7 +401,7 @@
           </div>
           <div class="catc-card"><h4>${c.es_proveedor ? 'SKUs / productos que surte' : 'SKUs que compra'} ${puedeCap() ? '<span class="catc-add" data-vsku><i class="ti ti-plus"></i>Vincular</span>' : ''}</h4>
             <div style="display:flex;flex-wrap:wrap;gap:6px">${det.skus.length
-              ? det.skus.map(s => `<span class="catc-chip">${esc(s.etiqueta)}${puedeCap() ? `<i class="ti ti-x" data-unlinksku="${esc(s.sku_id)}"></i>` : ''}</span>`).join('')
+              ? det.skus.map(s => `<span class="catc-chip">${esc(s.etiqueta)}${puedeCap() ? `<i class="ti ti-x" data-unlinksku="${esc(s.sku_id)}" title="Desvincular SKU"></i>` : ''}</span>`).join('')
               : '<span class="catc-hint">Sin vínculos.</span>'}</div>
           </div>
         </div>
@@ -402,9 +412,12 @@
     </div>`;
 
     const bSave = $det().querySelector('[data-save]'); if (bSave) bSave.addEventListener('click', guardarContraparte);
-    const bDel = $det().querySelector('[data-del]'); if (bDel) bDel.addEventListener('click', () => eliminar('contraparte', c.id, c.nombre));
+    const bDel = $det().querySelector('[data-del]'); if (bDel) bDel.addEventListener('click', () => eliminar('contraparte', c.id, 'el registro "' + (c.nombre || '') + '"'));
     const bAddCont = $det().querySelector('[data-addcont]'); if (bAddCont) bAddCont.addEventListener('click', () => agregarContacto(c.id));
-    $det().querySelectorAll('[data-delcont]').forEach(el => el.addEventListener('click', () => eliminar('contacto', el.dataset.delcont, 'contacto', true)));
+    $det().querySelectorAll('[data-delcont]').forEach(el => el.addEventListener('click', () => {
+      const kk = det.contactos.find(x => String(x.id) === String(el.dataset.delcont));
+      eliminar('contacto', el.dataset.delcont, 'el contacto "' + (kk ? kk.nombre : '') + '"', true);
+    }));
     const bVsku = $det().querySelector('[data-vsku]'); if (bVsku) bVsku.addEventListener('click', () => vincularSkuAContraparte(c));
     $det().querySelectorAll('[data-unlinksku]').forEach(el => el.addEventListener('click', () => desvincularSkuContraparte(el.dataset.unlinksku, c.id)));
   }
@@ -434,7 +447,7 @@
 
   /* ================= Vínculos ================= */
   async function vincularProveedor(p) {
-    const provs = (await q('v_cat_contrapartes', '&es_proveedor=eq.true&order=nombre.asc').catch(() => []))
+    const provs = (await q('v_catc_contrapartes', '&es_proveedor=eq.true&order=nombre.asc').catch(() => []))
       .filter(x => !det.proveedores.some(v => String(v.contraparte_id) === String(x.id)));
     vistaPicker('Vincular proveedor · ' + p.nombre, provs.map(x => ({ id: x.id, label: x.nombre })), async sel => {
       await escribir('fn_cat_vincular_producto_proveedor', { p_producto_id: Number(p.id), p_contraparte_id: Number(sel.id) }, 'Vinculado — aparece también en el proveedor');
@@ -444,7 +457,7 @@
     await escribir('fn_cat_desvincular_producto_proveedor', { p_producto_id: Number(pid), p_contraparte_id: Number(cid) }, 'Desvinculado');
   }
   async function vincularClienteSku(sid) {
-    const clis = (await q('v_cat_contrapartes', '&es_cliente=eq.true&order=nombre.asc').catch(() => []));
+    const clis = (await q('v_catc_contrapartes', '&es_cliente=eq.true&order=nombre.asc').catch(() => []));
     const yaCli = det.skuClientes.filter(c => String(c.sku_id) === String(sid)).map(c => String(c.contraparte_id));
     vistaPicker('Vincular cliente al SKU', clis.filter(x => !yaCli.includes(String(x.id))).map(x => ({ id: x.id, label: x.nombre })), async sel => {
       const codigo = (prompt('Código de item del cliente (opcional):') || '').trim() || null;
@@ -456,15 +469,15 @@
     await escribir('fn_cat_desvincular_sku_cliente', { p_sku_id: Number(sid), p_contraparte_id: Number(cid) }, 'Desvinculado');
   }
   async function vincularSkuAContraparte(c) {
-    const etiquetas = (await q('v_cat_sku_etiqueta', '&order=etiqueta.asc').catch(() => []));
+    const etiquetas = (await q('v_catc_sku_etiqueta', '&order=etiqueta.asc').catch(() => []));
     const ya = det.skus.map(s => String(s.sku_id));
     vistaPicker('Vincular SKU · ' + c.nombre, etiquetas.filter(e => !ya.includes(String(e.sku_id))).map(e => ({ id: e.sku_id, label: e.etiqueta })), async sel => {
       if (c.es_cliente) {
         const codigo = (prompt('Código de item del cliente (opcional):') || '').trim() || null;
         await escribir('fn_cat_vincular_sku_cliente', { p_sku_id: Number(sel.id), p_contraparte_id: Number(c.id), p_codigo_item_cliente: codigo, p_precio_contrato_ref: null }, 'Vinculado');
       } else {
-        // proveedor surte a nivel PRODUCTO: resolver el producto del SKU vía v_cat_skus
-        const sku = uno(await q('v_cat_skus', `&id=eq.${Number(sel.id)}`).catch(() => []));
+        // proveedor surte a nivel PRODUCTO: resolver el producto del SKU vía v_catc_skus
+        const sku = uno(await q('v_catc_skus', `&id=eq.${Number(sel.id)}`).catch(() => []));
         if (!sku.producto_id) { ERP.toast('err', 'No se pudo resolver el producto del SKU.'); return; }
         await escribir('fn_cat_vincular_producto_proveedor', { p_producto_id: Number(sku.producto_id), p_contraparte_id: Number(c.id) }, 'Vinculado a nivel producto');
       }
@@ -473,7 +486,7 @@
   async function desvincularSkuContraparte(sid, cid) {
     // en cliente = vinculo_sku_cliente; en proveedor = producto_proveedor (resolver producto)
     if (det.reg.es_cliente) { await escribir('fn_cat_desvincular_sku_cliente', { p_sku_id: Number(sid), p_contraparte_id: Number(cid) }, 'Desvinculado'); return; }
-    const sku = uno(await q('v_cat_skus', `&id=eq.${Number(sid)}`).catch(() => []));
+    const sku = uno(await q('v_catc_skus', `&id=eq.${Number(sid)}`).catch(() => []));
     if (sku.producto_id) await escribir('fn_cat_desvincular_producto_proveedor', { p_producto_id: Number(sku.producto_id), p_contraparte_id: Number(cid) }, 'Desvinculado');
   }
 
@@ -547,6 +560,7 @@
       if (!val) return;
       try {
         await rpc('fn_cat_lista_valor_alta', { p_tipo: tipo, p_valor: val });
+        ERP.limpiarCache();
         // agregar al select vivo + al cache
         listas[tipo] = listas[tipo] || []; if (!listas[tipo].includes(val)) listas[tipo].push(val);
         const o = document.createElement('option'); o.text = val; o.value = val;
@@ -575,6 +589,7 @@
     };
     try {
       await rpc('fn_cat_sku_alta', args);
+      ERP.limpiarCache();
       ERP.toast('ok', 'SKU creado');
       skuMode = 'cards';
       det = { reg: det.reg, ...(await cargarDetalleProducto(det.reg.id)) };
@@ -632,6 +647,7 @@
           p_nombre: nombre, p_codigo_item: v('n_codigo').trim() || null, p_categoria: v('n_cat') || null,
           p_pais_origen: v('n_pais').trim() || null, p_organico: v('n_org') === 'true', p_nota: v('n_nota').trim() || null
         }));
+        ERP.limpiarCache();
         ERP.toast('ok', 'Producto creado');
         await recargarLista();
         if (r.id != null) { selId = r.id; pintarRows(); abrirDetalle(selId); }
@@ -693,6 +709,7 @@
         if (r.id != null && v('x_cnom').trim()) {
           await rpc('fn_cat_contacto_alta', { p_contraparte_id: Number(r.id), p_nombre: v('x_cnom').trim(), p_rol: v('x_crol').trim() || null, p_email: v('x_cmail').trim() || null, p_telefono_whatsapp: v('x_cwa').trim() || null }).catch(() => {});
         }
+        ERP.limpiarCache();
         ERP.toast('ok', (esCli ? 'Cliente' : 'Proveedor') + ' creado');
         await recargarLista();
         if (r.id != null) { selId = r.id; pintarRows(); abrirDetalle(selId); }
@@ -703,9 +720,10 @@
   /* ================= Eliminar / papelera ================= */
   const RPC_ELIMINAR = { producto: 'fn_cat_producto_eliminar', variedad: 'fn_cat_variedad_eliminar', sku: 'fn_cat_sku_eliminar', contraparte: 'fn_cat_contraparte_eliminar', contacto: 'fn_cat_contacto_eliminar' };
   async function eliminar(entidad, id, nombre, quedarseEnDetalle) {
-    if (!confirm(`¿Enviar "${nombre}" a la papelera? Se puede recuperar (si tiene movimientos, se archiva).`)) return;
+    if (!confirm(`¿Eliminar ${nombre}? Va a la papelera y se puede restaurar (si tiene movimientos, se archiva).`)) return;
     try {
       const r = uno(await rpc(RPC_ELIMINAR[entidad], { p_id: Number(id) }));
+      ERP.limpiarCache();
       ERP.toast('ok', r.accion === 'archivado' ? 'Tenía movimientos: se archivó (inactivo).' : 'En papelera.');
       if (quedarseEnDetalle && det) {
         // sub-registro (variedad/sku/contacto): recargar el detalle del padre
@@ -720,7 +738,7 @@
   const RPC_RESTAURAR = { producto: 'fn_cat_producto_restaurar', variedad: 'fn_cat_variedad_restaurar', sku: 'fn_cat_sku_restaurar', contraparte: 'fn_cat_contraparte_restaurar' };
   async function vistaPapelera() {
     selId = null;
-    const filas = await q('v_cat_papelera', '&order=deleted_at.desc').catch(() => []);
+    const filas = await q('v_catc_papelera', '&order=deleted_at.desc').catch(() => []);
     document.getElementById('catcRows').innerHTML = '<div class="catc-hint" style="padding:16px">Papelera abierta en el detalle →</div>';
     $det().innerHTML = `<div class="catc-dwrap">
       <div style="font-size:17px;font-weight:600;margin-bottom:2px">Papelera</div>
@@ -733,7 +751,7 @@
     </div>`;
     $det().querySelectorAll('[data-restore]').forEach(b => b.addEventListener('click', async () => {
       const [ent, id] = b.dataset.restore.split(':');
-      try { await rpc(RPC_RESTAURAR[ent], { p_id: Number(id) }); ERP.toast('ok', 'Restaurado'); vistaPapelera(); recargarLista(); }
+      try { await rpc(RPC_RESTAURAR[ent], { p_id: Number(id) }); ERP.limpiarCache(); ERP.toast('ok', 'Restaurado'); vistaPapelera(); recargarLista(); }
       catch (e) { ERP.toast('err', 'No se pudo restaurar: ' + esc(e.message)); }
     }));
   }
@@ -742,7 +760,7 @@
   async function vistaListas() {
     selId = null;
     listas = null; await cargarListas();
-    const filas = await q('v_cat_listas_valores', '&order=tipo.asc,orden.asc,valor.asc').catch(() => []);
+    const filas = await q('v_catc_listas_valores', '&order=tipo.asc,orden.asc,valor.asc').catch(() => []);
     const porTipo = {};
     (filas || []).forEach(f => { (porTipo[f.tipo] = porTipo[f.tipo] || []).push(f); });
     const TIPOS = ['empaque', 'calibre', 'grado', 'unidad', 'categoria'];
@@ -758,11 +776,11 @@
     $det().querySelectorAll('[data-addlv]').forEach(b => b.addEventListener('click', async () => {
       const val = (prompt(`Nuevo valor para «${b.dataset.addlv}»:`) || '').trim();
       if (!val) return;
-      try { await rpc('fn_cat_lista_valor_alta', { p_tipo: b.dataset.addlv, p_valor: val }); ERP.toast('ok', 'Agregado'); vistaListas(); }
+      try { await rpc('fn_cat_lista_valor_alta', { p_tipo: b.dataset.addlv, p_valor: val }); ERP.limpiarCache(); ERP.toast('ok', 'Agregado'); vistaListas(); }
       catch (e) { ERP.toast('err', 'No se pudo: ' + esc(e.message)); }
     }));
     $det().querySelectorAll('[data-dellv]').forEach(b => b.addEventListener('click', async () => {
-      try { const r = uno(await rpc('fn_cat_lista_valor_eliminar', { p_id: Number(b.dataset.dellv) })); ERP.toast('ok', r.accion === 'archivado' ? 'En uso: se desactivó.' : 'Quitado'); vistaListas(); }
+      try { const r = uno(await rpc('fn_cat_lista_valor_eliminar', { p_id: Number(b.dataset.dellv) })); ERP.limpiarCache(); ERP.toast('ok', r.accion === 'archivado' ? 'En uso: se desactivó.' : 'Quitado'); vistaListas(); }
       catch (e) { ERP.toast('err', 'No se pudo: ' + esc(e.message)); }
     }));
   }
@@ -869,6 +887,7 @@
       const fn = { productos: 'fn_cat_import_productos', skus: 'fn_cat_import_skus', contrapartes: 'fn_cat_import_contrapartes' }[entidad];
       try {
         const r = uno(await rpc(fn, { p_filas: filas }));
+        ERP.limpiarCache();
         ERP.toast('ok', `${r.insertados ?? 0} ${entidad} importados${r.existentes ? ' · ' + r.existentes + ' ya existían' : ''}.`);
         await recargarLista(); abrirDetalle(selId);
       } catch (e) { if (!(ERP.avisarSiPermiso && ERP.avisarSiPermiso(e))) ERP.toast('err', 'La importación falló: ' + esc(e.message)); }
@@ -877,10 +896,42 @@
     pintar();
   }
 
+  /* ================= Exportar Excel (simétrico al import) ================= */
+  function filaExport(reg, campos) {
+    const o = {}; campos.forEach(c => { const v = reg[c]; o[c] = v == null ? '' : v; }); return o;
+  }
+
+  async function exportarExcel() {
+    try {
+      if (!window.XLSX) throw new Error('La librería XLSX no está cargada.');
+      const wb = XLSX.utils.book_new();
+      const hoy = ERP.hoyISO ? ERP.hoyISO() : new Date().toISOString().slice(0, 10);
+      let nombreArchivo;
+      if (esProd()) {
+        const [productos, skus] = await Promise.all([
+          q('v_catc_productos', '&order=nombre.asc'),
+          q('v_catc_skus', '&order=producto_id.asc,id.asc')
+        ]);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet((productos || []).map(p => filaExport(p, CAMPOS_IMPORT.productos))), 'Productos');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet((skus || []).map(s => filaExport(s, CAMPOS_IMPORT.skus))), 'SKUs');
+        nombreArchivo = `catalogo_productos_${hoy}.xlsx`;
+      } else {
+        const filtro = tab === 'prov' ? '&es_proveedor=eq.true' : '&es_cliente=eq.true';
+        const contrapartes = await q('v_catc_contrapartes', filtro + '&order=nombre.asc');
+        const hoja = tab === 'prov' ? 'Proveedores' : 'Clientes';
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet((contrapartes || []).map(c => filaExport(c, CAMPOS_IMPORT.contrapartes))), hoja);
+        nombreArchivo = `catalogo_${tab === 'prov' ? 'proveedores' : 'clientes'}_${hoy}.xlsx`;
+      }
+      XLSX.writeFile(wb, nombreArchivo);
+      ERP.toast('ok', 'Exportado');
+    } catch (e) { ERP.toast('err', 'No se pudo exportar: ' + esc(e.message)); }
+  }
+
   /* ================= Escritura genérica ================= */
   async function escribir(fn, args, okMsg, recargarCabecera) {
     try {
       await rpc(fn, args);
+      ERP.limpiarCache();
       ERP.toast('ok', okMsg);
       // recargar detalle + lista
       if (esProd()) det = { reg: det.reg, ...(await cargarDetalleProducto(det.reg.id)) };
