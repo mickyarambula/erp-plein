@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catálogos — ERP Plein (completo)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/[email protected]/dist/tabler-icons.min.css">
+<style>
+:root{
+  --brand:#1E531D; --brand-tint:#EAF1E7; --money:#1E7A3C; --primary:#14231A; --on-primary:#fff;
+  --bg:#EEF1EA; --panel:#fff; --panel2:#F7F9F5; --soft:#EDF0E9;
+  --border:#E3E7DE; --border2:#D4DACC;
+  --ink:#18201A; --sec:#586158; --muted:#8B958A;
+  --accent:#1E7A3C; --accent-soft:rgba(30,122,60,.10);
+  --ok-bg:rgba(30,122,60,.12); --ok-tx:#1E7A3C;
+  --warn-bg:rgba(190,132,26,.14); --warn-tx:#8A6210;
+  --danger:#B4483C; --danger-soft:rgba(180,72,60,.10);
+  --sel:#EAF1E7; --r:11px;
+}
+[data-theme="dark"]{
+  --brand:#4FA249; --brand-tint:#18211550; --money:#5FC078; --primary:#E7ECE4; --on-primary:#12160F;
+  --bg:#0B0F0A; --panel:#141912; --panel2:#10140E; --soft:#1A1F17;
+  --border:#262D22; --border2:#333B2E;
+  --ink:#E7ECE4; --sec:#9CA79A; --muted:#6B746A;
+  --accent:#5FC078; --accent-soft:rgba(95,192,120,.14);
+  --ok-bg:rgba(95,192,120,.15); --ok-tx:#7AD293;
+  --warn-bg:rgba(214,166,74,.16); --warn-tx:#DDB25E;
+  --danger:#E0796C; --danger-soft:rgba(224,121,108,.14);
+  --sel:#1B2417;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font-family:"Inter",system-ui,sans-serif;font-size:14px;-webkit-font-smoothing:antialiased;height:100vh;overflow:hidden}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace}
+button{font-family:inherit;cursor:pointer;border:1px solid var(--border2);background:var(--panel);color:var(--ink);border-radius:8px;transition:.12s}
+button:hover{border-color:var(--muted)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+input,select{font-family:inherit;font-size:12.5px;background:var(--panel);border:1px solid var(--border);color:var(--ink);border-radius:7px;padding:0 9px;height:32px;width:100%}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+.btn-primary{background:var(--primary);color:var(--on-primary);border:none}
+a{color:var(--accent);text-decoration:none}
+.app{display:flex;flex-direction:column;height:100vh}
+.top{height:52px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;padding:0 18px;background:var(--panel);flex-shrink:0}
+.logo{width:30px;height:30px;border-radius:8px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600}
+.top .ttl{font-weight:600;font-size:15px}
+.top .grow{flex:1}
+.tabsb{display:flex;gap:2px;background:var(--soft);border-radius:9px;padding:3px}
+.tabsb button{border:none;background:transparent;color:var(--sec);font-size:12.5px;font-weight:500;padding:5px 12px;border-radius:7px;display:inline-flex;align-items:center;gap:6px}
+.tabsb button.on{background:var(--panel);color:var(--ink)}
+.ib{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;font-size:17px;color:var(--sec);border-color:transparent;background:transparent}
+.user{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--sec)}
+.user .av{width:28px;height:28px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:11px}
+.split{flex:1;display:flex;min-height:0}
+.list{width:320px;border-right:1px solid var(--border);background:var(--panel2);display:flex;flex-direction:column;flex-shrink:0}
+.lh{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center}
+.lh .sb{position:relative;flex:1}
+.lh .sb i{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px}
+.lh .sb input{padding-left:28px}
+.lh .ic2{width:32px;height:32px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-size:16px;color:var(--sec)}
+.lh .newb{width:32px;height:32px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-size:17px;background:var(--primary);color:var(--on-primary);border:none}
+.rows{overflow-y:auto;flex:1}
+.row{padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:11px;border-left:3px solid transparent}
+.row:hover{background:var(--soft)}
+.row.on{background:var(--sel);border-left-color:var(--brand)}
+.row .av{width:32px;height:32px;border-radius:8px;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;flex-shrink:0}
+.row .nm{font-weight:600;font-size:13px}.row .mt{font-size:11.5px;color:var(--muted);margin-top:1px}
+.detail{flex:1;overflow-y:auto;padding:22px 26px}
+.dwrap{max-width:740px}
+.dhead{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+.dhead .av{width:44px;height:44px;border-radius:11px;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:16px}
+.f label{font-size:10.5px;color:var(--sec);display:block;margin-bottom:3px;text-transform:uppercase;letter-spacing:.03em}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:12px}
+.card h4{margin:0 0 12px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--sec);display:flex;align-items:center;justify-content:space-between}
+.card h4 .add{font-size:11.5px;font-weight:500;color:var(--accent);cursor:pointer;text-transform:none;letter-spacing:0;display:inline-flex;align-items:center;gap:4px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 9px;border-radius:20px}
+.pill.ok{background:var(--ok-bg);color:var(--ok-tx)}.pill.off{background:var(--soft);color:var(--muted)}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 9px;border-radius:6px;background:var(--accent-soft);color:var(--accent)}
+.chip{display:inline-flex;align-items:center;gap:7px;font-size:12px;padding:4px 10px;border:1px solid var(--border2);border-radius:8px}
+.chip i{font-size:13px;color:var(--muted);cursor:pointer}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block}
+.sku{border:1px solid var(--border);border-radius:10px;margin-bottom:9px;overflow:hidden;background:var(--panel)}
+.sku-top{display:flex;align-items:center;gap:12px;padding:11px 13px;cursor:pointer}
+.sku-top .chev{color:var(--muted);font-size:17px;transition:.15s}
+.sku.open .chev{transform:rotate(90deg)}
+.sku-nm{font-weight:600;font-size:13px}.sku-sb{font-size:11px;color:var(--muted);margin-top:1px}
+.sku-tg{margin-left:auto;display:flex;gap:12px;align-items:center;font-size:11.5px;color:var(--sec)}
+.sku-tg .mono{font-size:10.5px;color:var(--muted)}
+.sku-bd{display:none;border-top:1px solid var(--border);background:var(--panel2);padding:11px 13px}
+.sku.open .sku-bd{display:block}
+.linkline{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--panel);border:1px solid var(--border);border-radius:8px;margin-bottom:6px}
+.linkline .cn{font-weight:600;font-size:12px;flex:1}
+.linkline .price{font-family:"JetBrains Mono";font-size:12px;color:var(--ok-tx)}
+.linkline .code{font-size:10.5px;color:var(--muted);font-family:"JetBrains Mono"}
+.linkline .go{color:var(--muted);font-size:15px;cursor:pointer}
+.kv{display:flex;justify-content:space-between;align-items:center;padding:3px 0}
+.kv span{color:var(--sec);font-size:12px}.kv input{height:28px;width:110px;text-align:right}
+.contact{border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:center}
+.contact .cn{font-size:12px;font-weight:600}.contact .cr{font-size:10.5px;color:var(--muted)}
+.contact a{font-size:16px;margin-left:7px}.contact a.wa{color:var(--money)}
+.actbtn{height:32px;padding:0 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px}
+.actbtn.wa{background:var(--ok-bg);color:var(--ok-tx);border-color:transparent}
+.actbtn i{font-size:15px}
+.dfoot{display:flex;align-items:center;justify-content:space-between;margin-top:8px;flex-wrap:wrap;gap:10px}
+.hist{font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:5px}
+.del{color:var(--danger)}.del:hover{border-color:var(--danger);background:var(--danger-soft)}
+.hint{font-size:11px;color:var(--muted);line-height:1.6}
+.badges{display:flex;gap:6px;margin-top:7px;flex-wrap:wrap}
+.segtog{display:inline-flex;background:var(--soft);border-radius:7px;padding:2px}
+.segtog button{border:none;background:transparent;color:var(--sec);font-size:11px;padding:3px 9px;border-radius:5px}
+.segtog button.on{background:var(--panel);color:var(--ink)}
+.dz{border:1px dashed var(--border2);border-radius:var(--r);text-align:center;padding:24px;background:var(--panel)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:6px 8px;font-weight:500;color:var(--sec);font-size:10.5px;text-transform:uppercase}
+td{padding:7px 8px;border-top:1px solid var(--border)}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--primary);color:var(--on-primary);padding:9px 15px;border-radius:9px;font-size:12.5px;opacity:0;pointer-events:none;transition:.25s;z-index:50;display:flex;align-items:center;gap:7px}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <div class="logo">P</div><div class="ttl">Catálogos</div>
+    <div class="tabsb">
+      <button class="on" data-tab="prod"><i class="ti ti-box"></i>Productos</button>
+      <button data-tab="prov"><i class="ti ti-tractor"></i>Proveedores</button>
+      <button data-tab="cli"><i class="ti ti-building-store"></i>Clientes</button>
+    </div>
+    <div class="grow"></div>
+    <button class="ib" id="theme" aria-label="Tema"><i class="ti ti-moon"></i></button>
+    <div class="user"><div class="av">MA</div>Miguel</div>
+  </div>
+  <div class="split">
+    <div class="list">
+      <div class="lh" style="flex-direction:column;align-items:stretch;gap:9px">
+        <div class="sb"><i class="ti ti-search"></i><input placeholder="Buscar"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-primary" id="newBtn" style="flex:1;height:34px;font-size:12.5px;display:inline-flex;align-items:center;justify-content:center;gap:6px"><i class="ti ti-plus" style="font-size:16px"></i><span id="newLbl">Nuevo producto</span></button>
+          <button id="impBtn" style="height:34px;font-size:12.5px;padding:0 12px;display:inline-flex;align-items:center;gap:6px"><i class="ti ti-file-spreadsheet" style="font-size:16px"></i>Importar</button>
+        </div>
+      </div>
+      <div class="rows" id="rows"></div>
+    </div>
+    <div class="detail"><div class="dwrap" id="detail"></div></div>
+  </div>
+</div>
+<div id="toast"></div>
+<script>
+const PROD=[
+ {cod:'PRD-001',nombre:'Papaya',cat:'Fruta',pais:'México',org:'No',estado:'Activo',variedades:['Maradol','Formosa'],
+  skus:[
+   {v:'Maradol',emp:'Caja 10 kg',cal:'6–9',marca:'Plein',gtin:'10841234500019',cxt:80,estiba:'8x10',temp:'10',vida:'14',cli:[{n:'Northgate Markets',p:'$21.00',c:'NG-PAP-10'},{n:'Royal Halo',p:'$20.50',c:'RH-4471'}]},
+   {v:'Formosa',emp:'Caja 8 kg',cal:'9–12',marca:'Plein',gtin:'10841234500033',cxt:96,estiba:'9x11',temp:'10',vida:'12',cli:[{n:'Crystal Valley Foods',p:'$18.75',c:'CV-882'}]}
+  ],provs:['Papayas and More LLC','Agrofepac']},
+ {cod:'PRD-002',nombre:'Espárrago',cat:'Verdura',pais:'Perú',org:'Sí',estado:'Activo',variedades:['Orgánico'],
+  skus:[{v:'Orgánico',emp:'Manojo 11 oz',cal:'Std',marca:'Plein',gtin:'10841234500026',cxt:120,estiba:'—',temp:'2',vida:'10',cli:[{n:'Crystal Valley Foods',p:'$14.00',c:'CV-ESP'}]}],provs:['Pampas Store']},
+ {cod:'PRD-003',nombre:'Jack Fruit',cat:'Fruta',pais:'México',org:'No',estado:'Activo',variedades:[],
+  skus:[{v:'—',emp:'Caja 20 kg',cal:'—',marca:'—',gtin:'—',cxt:48,estiba:'—',temp:'12',vida:'20',cli:[{n:'Papayas and More LLC',p:'$32.00',c:'PM-JF'}]}],provs:['Agrofepac']},
+ {cod:'PRD-004',nombre:'Kabocha',cat:'Verdura',pais:'México',org:'No',estado:'Activo',variedades:[],
+  skus:[{v:'—',emp:'Bin',cal:'Mix',marca:'—',gtin:'—',cxt:1,estiba:'—',temp:'10',vida:'30',cli:[]}],provs:['Akambarhu Hortalizas']}
+];
+const CP=[
+ {ini:'PM',nombre:'Papayas and More LLC',prov:true,cli:false,estado:'Activo',razon:'Papayas and More LLC',tax:'47-3920184',paca:'20210655',cert:'PACA',pais:'Estados Unidos',ciudad:'McAllen, TX',credito:'21',limite:'150,000',pago:'ACH',moneda:'USD',
+  cont:[{n:'Ana López',r:'Compras',m:'ana@papayasandmore.com',w:'19565550148'},{n:'Cuentas por pagar',r:'Pagos',m:'ap@papayasandmore.com',w:''}],skus:['Papaya · Maradol · Caja 10 kg','Jack Fruit · Caja 20 kg']},
+ {ini:'AG',nombre:'Agrofepac',prov:true,cli:false,estado:'Activo',razon:'Agrofepac S.A. de C.V.',tax:'AGR120534KJ2',paca:'—',cert:'GlobalGAP, Orgánico',pais:'México',ciudad:'Los Mochis, Sin.',credito:'30',limite:'—',pago:'Transferencia',moneda:'USD',
+  cont:[{n:'Pagos Agrofepac',r:'Pagos',m:'pagos@agrofepac.mx',w:'526688120044'}],skus:['Jack Fruit · Caja 20 kg','Kabocha · Bin']},
+ {ini:'PS',nombre:'Pampas Store',prov:true,cli:false,estado:'Activo',razon:'Pampas Store LLC',tax:'PST990211Q75',paca:'—',cert:'Orgánico',pais:'México',ciudad:'Guadalajara, Jal.',credito:'0',limite:'—',pago:'Transferencia',moneda:'USD',
+  cont:[{n:'Ventas Pampas',r:'Ventas',m:'ventas@pampas.mx',w:'523336419820'}],skus:['Espárrago · Orgánico · Manojo 11 oz']},
+ {ini:'NM',nombre:'Northgate Markets',prov:false,cli:true,estado:'Activo',razon:'Northgate Gonzalez LLC',tax:'33-0578921',paca:'20180422',cert:'PACA',pais:'Estados Unidos',ciudad:'Anaheim, CA',credito:'14',limite:'200,000',pago:'Cheque',moneda:'USD',
+  cont:[{n:'Mesa de compras',r:'Compras',m:'buyers@northgate.com',w:''}],skus:['Papaya · Maradol · Caja 10 kg']},
+ {ini:'CV',nombre:'Crystal Valley Foods',prov:false,cli:true,estado:'Activo',razon:'Crystal Valley Foods Inc',tax:'36-4102938',paca:'20190777',cert:'PACA',pais:'Estados Unidos',ciudad:'Miami, FL',credito:'21',limite:'120,000',pago:'ACH',moneda:'USD',
+  cont:[{n:'AP Crystal',r:'Pagos',m:'ap@crystalvalley.com',w:'13055550199'}],skus:['Espárrago · Orgánico','Papaya · Formosa · Caja 8 kg']},
+ {ini:'RH',nombre:'Royal Halo',prov:false,cli:true,estado:'Activo',razon:'Royal Halo Produce Inc',tax:'82-7741100',paca:'20200311',cert:'PACA',pais:'Estados Unidos',ciudad:'Los Angeles, CA',credito:'14',limite:'90,000',pago:'ACH',moneda:'USD',
+  cont:[{n:'Compras Royal',r:'Compras',m:'buy@royalhalo.com',w:''}],skus:['Papaya · Maradol · Caja 10 kg']}
+];
+const LISTAS={empaque:['Caja','Bin','Manojo','Bolsa','Clamshell'],calibre:['4','5','6','8','9','12','Mix','—'],grado:['1','2','Fancy','—'],unidad:['kg','lb','oz']};
+let skuMode='cards';
+const $=s=>document.querySelector(s), esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function matrizHTML(p){
+  return `<div class="hint" style="margin-bottom:8px">Todos los SKUs del producto en una vista — para revisar y para seleccionar.</div>
+  <table><thead><tr><th>Variedad</th><th>Empaque</th><th>Calibre</th><th>Grado</th><th>GTIN</th><th style="text-align:right">Cajas/tar.</th><th style="text-align:right">Clientes</th></tr></thead>
+  <tbody>${p.skus.map(s=>`<tr><td>${esc(s.v)}</td><td>${esc(s.emp)}</td><td style="color:var(--sec)">${esc(s.cal)}</td><td style="color:var(--sec)">${esc(s.grado||'—')}</td><td class="mono" style="font-size:11px;color:var(--muted)">${esc(s.gtin)}</td><td style="text-align:right;color:var(--sec)">${s.cxt}</td><td style="text-align:right;color:var(--sec)">${s.cli.length}</td></tr>`).join('')}</tbody></table>`;
+}
+let tab='prod', sel=0;
+function toast(m,i){const t=$('#toast');t.innerHTML=(i?'<i class="ti '+i+'"></i>':'')+esc(m);t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2000);}
+function data(){return tab==='prod'?PROD:CP.filter(c=>tab==='prov'?c.prov:c.cli);}
+function renderList(){
+  const d=data();
+  $('#rows').innerHTML=d.map((x,i)=>tab==='prod'
+    ?`<div class="row ${i===sel?'on':''}" data-i="${i}"><div class="av">${esc(x.nombre[0])}</div><div><div class="nm">${esc(x.nombre)}</div><div class="mt">${x.skus.length} SKU · ${esc(x.cat)}</div></div></div>`
+    :`<div class="row ${i===sel?'on':''}" data-i="${i}"><div class="av">${esc(x.ini)}</div><div><div class="nm">${esc(x.nombre)}</div><div class="mt">${esc(x.ciudad)}</div></div></div>`).join('');
+  $('#rows').querySelectorAll('.row').forEach(r=>r.onclick=()=>{sel=+r.dataset.i;renderList();renderDetail();});
+  const nl=$('#newLbl'); if(nl) nl.textContent = tab==='prod'?'Nuevo producto':tab==='prov'?'Nuevo proveedor':'Nuevo cliente';
+}
+function renderDetail(){tab==='prod'?detProd(data()[sel]):detCP(data()[sel]);}
+
+function detProd(p){
+  if(!p){$('#detail').innerHTML='<div class="hint">Selecciona un producto.</div>';return;}
+  $('#detail').innerHTML=`
+    <div class="dhead">
+      <div style="flex:1;display:grid;grid-template-columns:1fr 130px;gap:10px;min-width:260px">
+        <div class="f"><label>Producto</label><input value="${esc(p.nombre)}" style="font-size:15px;font-weight:600;height:36px"></div>
+        <div class="f"><label>Código</label><input class="mono" value="${esc(p.cod)}" style="height:36px"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:7px">
+        <span class="pill ${p.estado==='Activo'?'ok':'off'}"><span class="dot"></span>${esc(p.estado)}</span>
+        <div style="display:flex;gap:7px"><button class="actbtn del" data-del><i class="ti ti-trash"></i></button><button class="btn-primary actbtn" data-save>Guardar</button></div>
+      </div>
+    </div>
+    <div class="card"><h4>Datos generales</h4>
+      <div class="g3"><div class="f"><label>Categoría</label><input value="${esc(p.cat)}"></div><div class="f"><label>País de origen</label><input value="${esc(p.pais)}"></div><div class="f"><label>Orgánico</label><select><option ${p.org==='No'?'selected':''}>No</option><option ${p.org==='Sí'?'selected':''}>Sí</option></select></div></div>
+    </div>
+    <div class="card"><h4>Variedades <span class="add"><i class="ti ti-plus"></i>Agregar</span></h4>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">${p.variedades.length?p.variedades.map(v=>`<span class="chip">${esc(v)}<i class="ti ti-pencil"></i></span>`).join(''):'<span class="hint">Sin variedades.</span>'}</div>
+    </div>
+    <div class="card"><h4>SKUs · variedad + presentación
+        <span style="display:flex;align-items:center;gap:10px;text-transform:none;letter-spacing:0">
+          <span class="segtog"><button class="${skuMode==='cards'?'on':''}" data-mode="cards">Tarjetas</button><button class="${skuMode==='matriz'?'on':''}" data-mode="matriz">Matriz</button></span>
+          <span class="add" data-newsku><i class="ti ti-plus"></i>Nuevo SKU</span>
+        </span></h4>
+      ${skuMode==='matriz'? matrizHTML(p) : p.skus.map((s,i)=>`
+        <div class="sku ${i===0?'open':''}">
+          <div class="sku-top"><i class="ti ti-chevron-right chev"></i>
+            <div><div class="sku-nm">${esc(s.v)} · ${esc(s.emp)}</div><div class="sku-sb">${s.cli.length} cliente(s) · ${s.cxt} cajas/tarima</div></div>
+            <div class="sku-tg"><span class="mono">GTIN ${esc(s.gtin)}</span><i class="ti ti-pencil" style="cursor:pointer;color:var(--muted)"></i></div>
+          </div>
+          <div class="sku-bd">
+            <div class="g3" style="margin-bottom:10px">
+              <div class="f"><label>Calibre</label><input value="${esc(s.cal)}"></div>
+              <div class="f"><label>Marca</label><input value="${esc(s.marca)}"></div>
+              <div class="f"><label>Cajas/tarima</label><input value="${esc(s.cxt)}"></div>
+              <div class="f"><label>Estiba (Ti×Hi)</label><input value="${esc(s.estiba)}"></div>
+              <div class="f"><label>Temp. °C</label><input value="${esc(s.temp)}"></div>
+              <div class="f"><label>Vida anaquel (d)</label><input value="${esc(s.vida)}"></div>
+            </div>
+            <div class="hint" style="margin-bottom:7px">Clientes de este SKU con su <b>código de item</b>. El precio se define en cada pedido — aquí solo va el de contrato/referencia si aplica. Pallets → cajas = pallets × ${s.cxt}.</div>
+            ${s.cli.map(c=>`<div class="linkline"><div style="flex:1"><div class="cn">${esc(c.n)}</div><div class="code">código ${esc(c.c)}</div></div>${c.p?`<span class="tag" style="background:var(--soft);color:var(--sec);font-size:10.5px">ref. ${esc(c.p)}</span>`:''}<i class="ti ti-arrow-up-right go"></i></div>`).join('')||'<div class="hint">Aún sin clientes vinculados.</div>'}
+            <span class="add" data-vcli="${i}" style="font-size:12px;color:var(--accent);cursor:pointer"><i class="ti ti-plus"></i> Vincular cliente</span>
+          </div>
+        </div>`).join('')}
+    </div>
+    <div class="card"><h4>Proveedores que lo surten <span class="add" data-vprov><i class="ti ti-plus"></i>Vincular</span></h4>
+      <div style="display:flex;flex-wrap:wrap;gap:7px">${p.provs.map(v=>`<span class="chip">${esc(v)}<i class="ti ti-x"></i></span>`).join('')}</div>
+    </div>
+    <div class="dfoot"><span class="hist"><i class="ti ti-history"></i>Editado hoy · Miguel</span><div style="display:flex;gap:7px"><button class="actbtn del" data-del><i class="ti ti-trash"></i>Eliminar</button><button class="btn-primary actbtn" data-save>Guardar</button></div></div>
+    <div class="hint" style="margin-top:8px">Todo editable · eliminar va a papelera (recuperable) · si tiene movimientos, se archiva.</div>`;
+  $('#detail').querySelectorAll('.sku-top').forEach(t=>t.onclick=()=>t.parentElement.classList.toggle('open'));
+  $('#detail').querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{skuMode=b.dataset.mode;detProd(p);});
+  const ns=$('#detail').querySelector('[data-newsku]'); if(ns)ns.onclick=()=>createSku(p);
+  const vp=$('#detail').querySelector('[data-vprov]'); if(vp)vp.onclick=()=>pickerView('Vincular proveedor · '+p.nombre, CP.filter(x=>x.prov&&!p.provs.includes(x.nombre)).map(x=>x.nombre), v=>{p.provs.push(v);const cp=CP.find(x=>x.nombre===v);if(cp&&!cp.skus.includes(p.nombre))cp.skus.push(p.nombre);toast('Vinculado — aparece también en '+v,'ti-link');}, ()=>detProd(p));
+  $('#detail').querySelectorAll('[data-vcli]').forEach(el=>el.onclick=()=>{const s=p.skus[+el.dataset.vcli];pickerView('Vincular cliente · '+s.emp, CP.filter(x=>x.cli).map(x=>x.nombre), n=>{s.cli.push({n:n,p:'',c:'—'});const lb=p.nombre+(s.v&&s.v!=='—'?' · '+s.v:'')+' · '+s.emp;const cp=CP.find(x=>x.nombre===n);if(cp&&!cp.skus.includes(lb))cp.skus.push(lb);toast('Cliente vinculado a este SKU','ti-link');}, ()=>detProd(p));});
+  wireSaveDel(p.nombre,()=>{});
+}
+function detCP(c){
+  if(!c){$('#detail').innerHTML='<div class="hint">Selecciona una empresa.</div>';return;}
+  const wa=c.cont.find(x=>x.w);
+  $('#detail').innerHTML=`
+    <div class="dhead">
+      <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:250px">
+        <div class="av">${esc(c.ini)}</div>
+        <div style="flex:1"><input value="${esc(c.nombre)}" style="font-size:15px;font-weight:600;height:36px;max-width:320px">
+          <div class="badges"><span class="tag" style="${c.prov?'':'background:var(--soft);color:var(--muted)'}"><i class="ti ti-tractor"></i>Proveedor</span><span class="tag" style="${c.cli?'':'background:var(--soft);color:var(--muted)'}"><i class="ti ti-building-store"></i>Cliente</span><span class="pill ok"><span class="dot"></span>${esc(c.estado)}</span></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:7px">
+        <a class="actbtn" href="mailto:${esc(c.cont[0].m)}"><i class="ti ti-mail"></i>Correo</a>
+        <a class="actbtn wa" ${wa?`href="https://wa.me/${esc(wa.w)}" target="_blank" rel="noopener"`:'style="opacity:.5;pointer-events:none"'}><i class="ti ti-brand-whatsapp"></i>WhatsApp</a>
+      </div>
+    </div>
+    <div class="g2">
+      <div>
+        <div class="card"><h4>Fiscal</h4>
+          <div class="f" style="margin-bottom:9px"><label>Razón social</label><input value="${esc(c.razon)}"></div>
+          <div class="g2" style="margin-bottom:9px"><div class="f"><label>Tax ID / RFC</label><input class="mono" value="${esc(c.tax)}"></div><div class="f"><label>PACA</label><input class="mono" value="${esc(c.paca)}"></div></div>
+          <div class="f" style="margin-bottom:9px"><label>Certificaciones</label><input value="${esc(c.cert)}"></div>
+          <div class="g2"><div class="f"><label>País</label><input value="${esc(c.pais)}"></div><div class="f"><label>Ciudad</label><input value="${esc(c.ciudad)}"></div></div>
+        </div>
+        <div class="card"><h4>Términos</h4>
+          <div class="kv"><span>Días de crédito</span><input value="${esc(c.credito)}"></div>
+          <div class="kv"><span>Límite de crédito</span><input value="${esc(c.limite)}"></div>
+          <div class="kv"><span>Método de pago</span><input value="${esc(c.pago)}"></div>
+          <div class="kv"><span>Moneda</span><input class="mono" value="${esc(c.moneda)}"></div>
+        </div>
+      </div>
+      <div>
+        <div class="card"><h4>Contactos <span class="add"><i class="ti ti-plus"></i>Agregar</span></h4>
+          ${c.cont.map(k=>`<div class="contact"><div><div class="cn">${esc(k.n)}</div><div class="cr">${esc(k.r)} · ${esc(k.m)}</div></div><div><a href="mailto:${esc(k.m)}"><i class="ti ti-mail"></i></a>${k.w?`<a class="wa" href="https://wa.me/${esc(k.w)}" target="_blank" rel="noopener"><i class="ti ti-brand-whatsapp"></i></a>`:''}</div></div>`).join('')}
+        </div>
+        <div class="card"><h4>${c.prov?'SKUs que surte':'SKUs que compra'} <span class="add" data-vsku><i class="ti ti-plus"></i>Vincular</span></h4>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">${c.skus.map(s=>`<span class="chip">${esc(s)}<i class="ti ti-x"></i></span>`).join('')}</div>
+        </div>
+      </div>
+    </div>
+    <div class="dfoot"><span class="hist"><i class="ti ti-history"></i>Editado hoy 21:40 · Miguel</span><div style="display:flex;gap:7px"><button class="actbtn del" data-del><i class="ti ti-trash"></i>Eliminar</button><button class="btn-primary actbtn" data-save>Guardar</button></div></div>
+    <div class="hint" style="margin-top:8px">Eliminar → papelera. Con movimientos ligados, en producción se archiva.</div>`;
+  const vs=$('#detail').querySelector('[data-vsku]');if(vs)vs.onclick=()=>{const opts=[];PROD.forEach(pr=>pr.skus.forEach(s=>opts.push(pr.nombre+(s.v&&s.v!=='—'?' · '+s.v:'')+' · '+s.emp)));pickerView('Vincular SKU · '+c.nombre, opts.filter(o=>!c.skus.includes(o)), o=>{c.skus.push(o);const pn=o.split(' · ')[0];const pr=PROD.find(x=>x.nombre===pn);if(pr&&c.prov&&!pr.provs.includes(c.nombre))pr.provs.push(c.nombre);toast('Vinculado — aparece también en '+pn,'ti-link');}, ()=>detCP(c));};
+  wireSaveDel(c.nombre,()=>{});
+}
+function createSku(p){
+  const opts=(arr,newlbl)=>arr.map(o=>`<option>${esc(o)}</option>`).join('')+`<option value="__new">${newlbl}</option>`;
+  $('#detail').innerHTML=`
+    <button class="actbtn" data-back style="margin-bottom:14px"><i class="ti ti-arrow-left"></i>${esc(p.nombre)}</button>
+    <div style="font-size:17px;font-weight:600;margin-bottom:2px">Nuevo SKU · ${esc(p.nombre)}</div>
+    <div class="hint" style="margin-bottom:14px">Arma la presentación eligiendo de listas — así no hay valores repetidos. ¿Falta uno? Elige «＋ otro…» y se agrega a la lista para todos.</div>
+    <div class="card"><h4>Combinación (define el SKU)</h4>
+      <div class="g2" style="margin-bottom:10px">
+        <div class="f"><label>Variedad</label>${p.variedades.length?`<select id="k_var"><option value="">— sin variedad —</option>${p.variedades.map(v=>`<option>${esc(v)}</option>`).join('')}<option value="__new">＋ nueva variedad…</option></select>`:`<input id="k_var" placeholder="(sin variedades)">`}</div>
+        <div class="f"><label>Empaque *</label><select id="k_emp">${opts(LISTAS.empaque,'＋ otro empaque…')}</select></div>
+      </div>
+      <div class="g3">
+        <div class="f"><label>Calibre</label><select id="k_cal">${opts(LISTAS.calibre,'＋ otro calibre…')}</select></div>
+        <div class="f"><label>Grado</label><select id="k_gra">${opts(LISTAS.grado,'＋ otro grado…')}</select></div>
+        <div class="f"><label>Peso + unidad</label><input id="k_peso" placeholder="10 kg"></div>
+      </div>
+      <div id="newval" style="display:none;margin-top:10px"></div>
+      <div style="background:var(--soft);border-radius:9px;padding:10px 12px;font-size:13px;margin-top:12px">Vista previa del SKU: <b id="prev">—</b></div>
+    </div>
+    <div class="card"><h4>Datos del SKU</h4>
+      <div class="g3"><div class="f"><label>Marca</label><input></div><div class="f"><label>GTIN</label><input class="mono"></div><div class="f"><label>Cajas/tarima</label><input></div>
+      <div class="f"><label>Estiba (Ti×Hi)</label><input placeholder="8x10"></div><div class="f"><label>Temp. °C</label><input></div><div class="f"><label>Vida anaquel (d)</label><input></div></div>
+    </div>
+    <div class="dfoot"><span class="hint">* obligatorio · los clientes se vinculan después de crear el SKU</span><div style="display:flex;gap:7px"><button class="actbtn" data-back>Cancelar</button><button class="btn-primary actbtn" data-create><i class="ti ti-check"></i>Crear SKU</button></div></div>`;
+  const gv=id=>{const e=document.getElementById(id);return e?e.value:'';};
+  const upd=()=>{const v=gv('k_var'),e=gv('k_emp'),c=gv('k_cal');$('#prev').textContent=p.nombre+(v&&v!=='__new'?' · '+v:'')+(e&&e!=='__new'?' · '+e:'')+(c&&c!=='__new'&&c!=='—'?' · cal '+c:'');};
+  ['k_var','k_emp','k_cal','k_gra'].forEach(id=>{const el=document.getElementById(id);if(el&&el.tagName==='SELECT')el.onchange=()=>{
+    if(el.value==='__new'){$('#newval').style.display='block';$('#newval').innerHTML='<span class="hint">Nuevo valor para la lista:</span> <input id="nv" style="height:28px;width:150px;margin:0 6px"><button class="actbtn" id="nvadd" style="height:28px">Agregar</button>';
+      document.getElementById('nvadd').onclick=()=>{const val=document.getElementById('nv').value;if(val){const o=document.createElement('option');o.text=val;el.add(o,el.options[el.options.length-1]);o.selected=true;$('#newval').style.display='none';upd();toast('«'+val+'» agregado a la lista','ti-check');}};}
+    upd();};});
+  upd();
+  $('#detail').querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>detProd(p));
+  $('#detail').querySelector('[data-create]').onclick=()=>{const v=gv('k_var'),e=gv('k_emp')||'Caja',c=gv('k_cal')||'—';p.skus.push({v:(v&&v!=='__new')?v:'—',emp:(e&&e!=='__new')?e:'Caja',cal:(c&&c!=='__new')?c:'—',grado:(gv('k_gra')&&gv('k_gra')!=='__new')?gv('k_gra'):'—',marca:'—',gtin:'—',cxt:0,estiba:'—',temp:'',vida:'',cli:[]});toast('SKU creado','ti-check');skuMode='cards';detProd(p);};
+}
+function pickerView(title, opts, onPick, back){
+  $('#detail').innerHTML=`
+    <button class="actbtn" data-back style="margin-bottom:14px"><i class="ti ti-arrow-left"></i>Cancelar</button>
+    <div style="font-size:16px;font-weight:600;margin-bottom:3px">${esc(title)}</div>
+    <div class="hint" style="margin-bottom:14px">Elige de lo que ya existe en el catálogo. El vínculo se guarda una sola vez y aparece en las dos fichas.</div>
+    <div class="sb" style="position:relative;margin-bottom:12px"><i class="ti ti-search" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px"></i><input id="pkq" placeholder="Buscar" style="padding-left:28px"></div>
+    <div id="pkl">${opts.length?opts.map(o=>`<button class="pk" data-v="${esc(o)}" style="width:100%;text-align:left;height:auto;padding:10px 12px;margin-bottom:6px;font-size:13px;display:flex;align-items:center;gap:8px"><i class="ti ti-plus" style="font-size:15px;color:var(--accent)"></i>${esc(o)}</button>`).join(''):'<div class="hint">Ya están todos vinculados, o falta capturarlos en el catálogo.</div>'}</div>`;
+  $('#detail').querySelector('[data-back]').onclick=back;
+  $('#detail').querySelectorAll('.pk').forEach(b=>b.onclick=()=>{onPick(b.dataset.v);back();});
+  const q=$('#pkq'); if(q)q.oninput=()=>{const t=q.value.toLowerCase();$('#detail').querySelectorAll('.pk').forEach(b=>b.style.display=b.dataset.v.toLowerCase().includes(t)?'flex':'none');};
+}
+function createNew(){
+  if(tab==='prod') return createProd();
+  return createCP(tab);
+}
+function createProd(){
+  $('#detail').innerHTML=`
+    <button class="actbtn" data-back style="margin-bottom:14px"><i class="ti ti-arrow-left"></i>Productos</button>
+    <div style="font-size:18px;font-weight:600;margin-bottom:2px">Nuevo producto</div>
+    <div class="hint" style="margin-bottom:16px">Toda la estructura está aquí; solo el nombre es obligatorio. Puedes crear el primer SKU de una vez.</div>
+    <div class="card"><h4>Datos generales</h4>
+      <div class="g2" style="margin-bottom:10px"><div class="f"><label>Nombre *</label><input autofocus></div><div class="f"><label>Código</label><input class="mono" value="PRD-005"></div></div>
+      <div class="g3"><div class="f"><label>Categoría</label><input></div><div class="f"><label>País de origen</label><input></div><div class="f"><label>Orgánico</label><select><option>No</option><option>Sí</option></select></div></div>
+    </div>
+    <div class="card"><h4>Variedades</h4><div style="display:flex;gap:8px"><input placeholder="Variedad (opcional)" style="flex:1"><button class="actbtn"><i class="ti ti-plus"></i>Añadir</button></div></div>
+    <div class="card"><h4>Primer SKU (presentación) <span class="hint" style="text-transform:none;letter-spacing:0">opcional — puedes agregarlos después</span></h4>
+      <div class="g3" style="margin-bottom:9px"><div class="f"><label>Variedad</label><input></div><div class="f"><label>Empaque</label><input placeholder="Caja"></div><div class="f"><label>Peso + unidad</label><input placeholder="10 kg"></div></div>
+      <div class="g3" style="margin-bottom:9px"><div class="f"><label>Calibre</label><input></div><div class="f"><label>Marca</label><input></div><div class="f"><label>GTIN</label><input class="mono"></div></div>
+      <div class="g3"><div class="f"><label>Cajas/tarima</label><input></div><div class="f"><label>Temp. °C</label><input></div><div class="f"><label>Vida anaquel</label><input></div></div>
+    </div>
+    <div class="dfoot"><span class="hint">* obligatorio</span><div style="display:flex;gap:7px"><button class="actbtn" data-back>Cancelar</button><button class="btn-primary actbtn" data-create><i class="ti ti-check"></i>Crear producto</button></div></div>`;
+  $('#detail').querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>renderDetail());
+  $('#detail').querySelector('[data-create]').onclick=()=>{toast('Producto creado','ti-check');renderDetail();};
+}
+function createCP(kind){
+  const isCli=kind==='cli';
+  $('#detail').innerHTML=`
+    <button class="actbtn" data-back style="margin-bottom:14px"><i class="ti ti-arrow-left"></i>${isCli?'Clientes':'Proveedores'}</button>
+    <div style="font-size:18px;font-weight:600;margin-bottom:2px">Nuevo ${isCli?'cliente':'proveedor'}</div>
+    <div class="hint" style="margin-bottom:16px">Una empresa puede ser cliente y proveedor a la vez.</div>
+    <div class="g2">
+      <div>
+        <div class="card"><h4>Identidad</h4>
+          <div class="f" style="margin-bottom:9px"><label>Nombre *</label><input autofocus></div>
+          <div class="f" style="margin-bottom:11px"><label>Razón social</label><input></div>
+          <div style="display:flex;gap:16px"><label style="font-size:12px;color:var(--sec);display:flex;gap:6px;align-items:center"><input type="checkbox" ${kind==='prov'?'checked':''} style="width:auto;height:auto;padding:0">Proveedor</label><label style="font-size:12px;color:var(--sec);display:flex;gap:6px;align-items:center"><input type="checkbox" ${isCli?'checked':''} style="width:auto;height:auto;padding:0">Cliente</label></div>
+        </div>
+        <div class="card"><h4>Fiscal</h4>
+          <div class="g2" style="margin-bottom:9px"><div class="f"><label>Tax ID / RFC</label><input class="mono"></div><div class="f"><label>PACA</label><input class="mono"></div></div>
+          <div class="f" style="margin-bottom:9px"><label>Certificaciones</label><input placeholder="GAP, Orgánico…"></div>
+          <div class="g2"><div class="f"><label>País</label><input></div><div class="f"><label>Ciudad</label><input></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="card"><h4>Términos</h4>
+          <div class="kv"><span>Días de crédito</span><input value="0"></div>
+          <div class="kv"><span>Límite de crédito</span><input></div>
+          <div class="kv"><span>Método de pago</span><input placeholder="ACH / Cheque"></div>
+          <div class="kv"><span>Moneda</span><input class="mono" value="USD"></div>
+        </div>
+        <div class="card"><h4>Contacto principal</h4>
+          <div class="f" style="margin-bottom:8px"><label>Nombre</label><input></div>
+          <div class="g2" style="margin-bottom:8px"><div class="f"><label>Rol</label><input placeholder="Compras / Pagos"></div><div class="f"><label>Correo</label><input></div></div>
+          <div class="f"><label>WhatsApp</label><input placeholder="+1..."></div>
+        </div>
+      </div>
+    </div>
+    <div class="dfoot"><span class="hint">* obligatorio · más contactos y SKUs, después</span><div style="display:flex;gap:7px"><button class="actbtn" data-back>Cancelar</button><button class="btn-primary actbtn" data-create><i class="ti ti-check"></i>Crear ${isCli?'cliente':'proveedor'}</button></div></div>`;
+  $('#detail').querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>renderDetail());
+  $('#detail').querySelector('[data-create]').onclick=()=>{toast((isCli?'Cliente':'Proveedor')+' creado','ti-check');renderDetail();};
+}
+function openImport(){
+  const cosa=tab==='prod'?'productos':tab==='prov'?'proveedores':'clientes';
+  $('#detail').innerHTML=`
+    <button class="actbtn" data-back style="margin-bottom:14px"><i class="ti ti-arrow-left"></i>Volver</button>
+    <div style="font-size:18px;font-weight:600;margin-bottom:2px">Importar ${esc(cosa)} de Excel</div>
+    <div class="hint" style="margin-bottom:16px">Baja la plantilla, llénala, súbela. El ERP cuadra columnas y te deja previsualizar antes de guardar.</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px"><button class="actbtn" data-tpl><i class="ti ti-download"></i>Descargar plantilla</button></div>
+    <div class="dz"><i class="ti ti-file-spreadsheet" style="font-size:32px;color:var(--accent)"></i><div style="font-size:13px;font-weight:500;margin-top:8px">Arrastra tu .xlsx aquí o <span style="color:var(--accent);cursor:pointer">búscalo</span></div><div class="hint" style="margin-top:3px">Primera fila = encabezados</div></div>
+    <div class="card" style="margin-top:12px"><h4>Paso 2 · Cuadrar columnas</h4>
+      <table><thead><tr><th>Tu Excel</th><th></th><th>Campo del catálogo</th></tr></thead><tbody>
+        <tr><td class="mono" style="font-size:11px">Producto</td><td style="color:var(--muted)"><i class="ti ti-arrow-right"></i></td><td><span class="tag"><i class="ti ti-check"></i>Nombre</span></td></tr>
+        <tr><td class="mono" style="font-size:11px">Pais_origen</td><td style="color:var(--muted)"><i class="ti ti-arrow-right"></i></td><td><span class="tag"><i class="ti ti-check"></i>País de origen</span></td></tr>
+        <tr><td class="mono" style="font-size:11px">Notas</td><td style="color:var(--muted)"><i class="ti ti-arrow-right"></i></td><td><span class="pill off">Ignorar</span></td></tr>
+      </tbody></table>
+    </div>
+    <div class="card"><h4>Paso 3 · Previsualizar <span class="hint" style="text-transform:none;letter-spacing:0">42 filas · 40 nuevas · 2 ya existen</span></h4>
+      <table><thead><tr><th>Nombre</th><th>Categoría</th><th>Resultado</th></tr></thead><tbody>
+        <tr><td>Pepino</td><td style="color:var(--sec)">Verdura</td><td><span class="pill ok"><span class="dot"></span>Nuevo</span></td></tr>
+        <tr><td>Papaya</td><td style="color:var(--sec)">Fruta</td><td><span class="pill" style="background:var(--warn-bg);color:var(--warn-tx)">Ya existe</span></td></tr>
+      </tbody></table>
+    </div>
+    <div class="dfoot"><span class="hint">Nada se guarda hasta confirmar.</span><div style="display:flex;gap:7px"><button class="actbtn" data-back>Cancelar</button><button class="btn-primary actbtn" data-conf><i class="ti ti-check"></i>Importar 40 nuevas</button></div></div>`;
+  $('#detail').querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>renderDetail());
+  $('#detail').querySelector('[data-tpl]').onclick=()=>toast('Plantilla descargada (demo)','ti-download');
+  $('#detail').querySelector('[data-conf]').onclick=()=>{toast('40 '+cosa+' importados','ti-check');renderDetail();};
+}
+function wireSaveDel(nombre){
+  const s=$('#detail').querySelectorAll('[data-save]'); s.forEach(b=>b.onclick=()=>toast('Guardado','ti-check'));
+  const d=$('#detail').querySelectorAll('[data-del]'); d.forEach(b=>b.onclick=()=>{if(confirm('¿Enviar "'+nombre+'" a la papelera? Se puede recuperar.'))toast('En papelera','ti-trash');});
+}
+document.querySelectorAll('.tabsb button').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;sel=0;document.querySelectorAll('.tabsb button').forEach(x=>x.classList.toggle('on',x===b));renderList();renderDetail();});
+$('#newBtn').onclick=()=>createNew();
+$('#impBtn').onclick=()=>openImport();
+$('#theme').onclick=()=>{const d=document.documentElement.getAttribute('data-theme')==='dark';document.documentElement.setAttribute('data-theme',d?'':'dark');$('#theme').innerHTML='<i class="ti ti-'+(d?'moon':'sun')+'"></i>';};
+renderList(); renderDetail();
+</script>
+</body>
+</html>
