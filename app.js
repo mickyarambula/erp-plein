@@ -56,6 +56,7 @@
   const GRUPO_META = {
     inicio:    { label: 'Inicio',    icono: 'ti-home' },
     operacion: { label: 'Operación', icono: 'ti-package' },
+    'camino-c': { label: 'Camino C', icono: 'ti-route' },
     dinero:    { label: 'Dinero',    icono: 'ti-cash' },
     finanzas:  { label: 'Finanzas',  icono: 'ti-chart-bar' },
     catalogos: { label: 'Catálogos', icono: 'ti-book-2' },

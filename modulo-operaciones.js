@@ -226,6 +226,7 @@
       ${ERP.puede('capturar') ? `<div class="acciones" style="margin:4px 0 12px">
         <button class="btn-mini" id="opBtnAgregarCompra">Agregar compra</button>
         <button class="btn-mini" id="opBtnRegistrarEmbarque">Registrar embarque</button>
+        <button class="btn-mini gris" id="opBtnGastoEntrada">Agregar gasto de entrada</button>
       </div>` : ''}
 
       <div class="seccion-head"><h4>Compras (OC)</h4></div>
@@ -265,8 +266,111 @@
     if (btnCompra) btnCompra.addEventListener('click', () => abrirAgregarCompra(op.folio_op));
     const btnEmbarque = document.getElementById('opBtnRegistrarEmbarque');
     if (btnEmbarque) btnEmbarque.addEventListener('click', () => abrirRegistrarEmbarque(op));
+    const btnGastoEntrada = document.getElementById('opBtnGastoEntrada');
+    if (btnGastoEntrada) btnGastoEntrada.addEventListener('click', () => abrirGastoEntrada(op.folio_op));
     const btnAnular = document.getElementById('opBtnAnular');
     if (btnAnular) btnAnular.addEventListener('click', () => anularOperacion(op));
+  }
+
+  /* ================= "Agregar gasto de entrada" (O2b — fn_op_costo_entrada) =================
+     Contrato verificado en vivo (2026-08-13): op.op_costos.operacion_id → public.operaciones
+     (folio_op) — el stack VIVO, no op.operaciones (Camino C). La LECTURA no necesita código
+     nuevo: v_operacion_costos/v_operacion_cxp ya traen la capa 'op' vía UNION (backend), así que
+     un gasto capturado aquí aparece solo en "Costos por línea"/"Costo por contraparte real (CxP)"
+     de este mismo drawer al recargar. p_op_lot_id se manda SIEMPRE null desde esta pantalla — sin
+     cross-check todavía (op.lots no tiene operacion_id, D-177/pendientes) y sin vista para listar
+     "lotes de esta OP"; ligar un lote a mano invitaría un error silencioso. p_actor NO existe en
+     esta RPC (a diferencia de las de Camino C) — no se manda. */
+
+  let comboContraparteGasto = null;
+  let conceptosGastoEntrada = [];
+
+  function avisoGasto(tipo, html) {
+    const el = document.getElementById('opgAviso');
+    if (el) { el.className = 'aviso visible ' + tipo; el.innerHTML = html; }
+  }
+
+  async function abrirGastoEntrada(folioOp) {
+    if (!ERP.puede('capturar')) return;
+    ERP.abrirPanel('Agregar gasto de entrada', `A la operación ${esc(folioOp)}`, '<div class="skel">Cargando catálogos…</div>');
+
+    let conceptosCat, proveedores;
+    try {
+      [conceptosCat, proveedores] = await Promise.all([
+        q('v_catalogo_conceptos_costo', '&order=nombre.asc'),
+        q('v_directorio_contrapartes', '&es_proveedor=eq.true&order=nombre.asc')
+      ]);
+    } catch (e) {
+      ERP.abrirPanel('Agregar gasto de entrada', '', `<div class="errbox">No se pudieron cargar los catálogos: ${esc(e.message)}</div>`);
+      return;
+    }
+    // O2b es para gastos DE RECEPCIÓN — el picker se limita a los 3 conceptos que dio el backend
+    // (In & Out QC / Fletes / Aduanas), no al catálogo completo de conceptos_costo. Match por
+    // nombre normalizado (mayúsc./acentos) para no fallar por un espacio/mayúscula del catálogo.
+    const RECEPCION = new Set(['in & out qc', 'fletes', 'aduanas']);
+    conceptosGastoEntrada = (conceptosCat || []).filter(c => RECEPCION.has(norm(c.nombre)));
+    if (!conceptosGastoEntrada.length) conceptosGastoEntrada = conceptosCat || [];   // red de seguridad: si el nombre vivo cambió, no bloquear la captura
+
+    ERP.abrirPanel('Agregar gasto de entrada', `A la operación ${esc(folioOp)}`, `
+      <div class="form-erp">
+        <div class="campos">
+          <div class="campo ancho"><label>Concepto <span class="req">*</span></label>
+            <select id="opgConcepto"><option value="">— Elige un concepto —</option>${conceptosGastoEntrada.map(c =>
+              `<option value="${esc(c.nombre)}">${esc(c.nombre)}</option>`).join('')}</select></div>
+          <div class="campo"><label>Monto <span class="req">*</span></label>
+            <input id="opgMonto" class="mono" type="number" step="0.01" min="0" placeholder="0.00"></div>
+          <div class="campo ancho"><label>Contraparte real</label><div id="opgContraparte"></div>
+            <div class="alias-ayuda">Opcional — quién cobró este gasto. Sin elegir queda "(interno / pendiente)".</div></div>
+          <div class="campo ancho"><label>Nota</label><input id="opgNota" type="text" maxlength="200" placeholder="Opcional"></div>
+        </div>
+        <div class="acciones">
+          <button class="btn-mini" id="opgGuardar">Agregar gasto</button>
+          <button class="btn-mini gris" id="opgCancelar">Cancelar</button>
+        </div>
+        <div class="aviso" id="opgAviso"></div>
+      </div>`);
+
+    comboContraparteGasto = ERP.crearCombo({
+      contenedor: document.getElementById('opgContraparte'),
+      items: (proveedores || []).map(p => ({ id: p.id, nombre: p.nombre })),
+      placeholder: 'Busca proveedor…', permitirNuevo: false
+    });
+
+    document.getElementById('opgCancelar').addEventListener('click', () => verOperacion(folioOp));
+    document.getElementById('opgGuardar').addEventListener('click', () => guardarGastoEntrada(folioOp));
+  }
+
+  async function guardarGastoEntrada(folioOp) {
+    const v = id => (document.getElementById(id) || {}).value;
+    const concepto = v('opgConcepto');
+    if (!concepto) { avisoGasto('err', 'Elige un concepto.'); return; }
+    const numOrNullGasto = raw => { const t = String(raw == null ? '' : raw).trim(); return t === '' ? null : Number(t); };
+    const monto = numOrNullGasto(v('opgMonto'));
+    if (!(monto > 0)) { avisoGasto('err', 'El monto debe ser mayor a cero.'); return; }
+
+    const args = {
+      p_operacion_id: folioOp,
+      p_concepto: concepto,
+      p_monto: monto,
+      p_contraparte_id: (() => { const id = comboContraparteGasto && comboContraparteGasto.valorId(); return id ? Number(id) : null; })(),
+      p_op_lot_id: null,
+      p_nota: v('opgNota').trim() || null
+    };
+
+    const btn = document.getElementById('opgGuardar');
+    btn.disabled = true;
+    avisoGasto('warn', 'Registrando gasto…');
+    try {
+      const data = await rpc('fn_op_costo_entrada', args);
+      const r = (Array.isArray(data) ? data[0] : data) || {};
+      ERP.toast('ok', `Gasto de <b>${esc(r.concepto || concepto)}</b> por ${usd(r.monto ?? monto)} registrado en <b>${esc(folioOp)}</b>.`);
+      ERP.marcarDatosSucios();
+      await verOperacion(folioOp);
+    } catch (e) {
+      if (ERP.avisarSiPermiso && ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
+      avisoGasto('err', `El ERP rechazó el gasto: ${esc(e.message)}`);
+      btn.disabled = false;
+    }
   }
 
   /* ================= "+ Nueva operación" (Slice 1 del rediseño OP, D-147..D-149) =================

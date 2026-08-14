@@ -4,6 +4,14 @@
 :root{
   --tinta:#14261C; --papel:#F6F5EF; --tarjeta:#FFFFFF;
   --verde:#1E5B3A; --verde-hover:#27714A; --verde-claro:#E4EFE7; --lima:#8DBF3F;
+  /* --verde-solido/-hover (E123): fondo de botón/chip SÓLIDO con texto blanco fijo (.btn.verde,
+     .btn-mini, .chip.activo, .login-card button, .etapa.hecha .bolita, .pres-botones:hover).
+     Deliberadamente SIN alias en [data-theme="dark"] (tokens.css) — se queda en este mismo valor
+     en ambos temas. Por qué: --verde SÍ se alía a var(--brand) para su uso mayoritario (~65 usos,
+     texto/acento — pills, enlaces, bordes), donde debe aclararse en oscuro; pero estos ~6 usos lo
+     usan como FONDO con texto blanco fijo, y --brand (pensado para texto sobre fondo oscuro) es
+     demasiado claro ahí — bajaría el contraste a ~2.6:1. Token separado, cero pelea de cascada. */
+  --verde-solido:#1E5B3A; --verde-solido-hover:#27714A;
   --ambar:#C98A2D; --ambar-bg:#FBF3E4;
   --rojo:#B3402E; --rojo-bg:#F9E9E5;
   --gris:#6B7268; --gris-claro:#9AA097; --linea:#DDDCD2;
@@ -78,13 +86,13 @@ a{color:inherit}
   border:none;border-radius:6px;cursor:pointer;
   font-family:'Archivo',sans-serif;font-weight:700;font-size:12px;padding:8px 14px;
 }
-.btn.lima{background:var(--lima);color:var(--tinta)}
+.btn.lima{background:var(--lima);color:#14261C}
 .btn.lima:hover{filter:brightness(1.08)}
 .btn.lima:disabled{opacity:.5;cursor:wait}
 .btn.fantasma{background:transparent;border:1px solid var(--bd);color:var(--ink);font-weight:600}
 .btn.fantasma:hover{background:var(--hair)}
-.btn.verde{background:var(--verde);color:#fff}
-.btn.verde:hover{background:var(--verde-hover)}
+.btn.verde{background:var(--verde-solido);color:#fff}
+.btn.verde:hover{background:var(--verde-solido-hover)}
 
 /* ---------- Buscador universal (dentro de la barra de módulo) ---------- */
 .buscador{position:relative;width:260px;min-width:0;flex:none}
@@ -251,7 +259,7 @@ tr.fila-margen td:first-child{padding-left:16px}
   font-size:12px;font-weight:600;cursor:pointer;color:var(--gris);white-space:nowrap;
 }
 .chip:hover{border-color:var(--verde);color:var(--verde)}
-.chip.activo{background:var(--verde);border-color:var(--verde);color:#fff}
+.chip.activo{background:var(--verde-solido);border-color:var(--verde-solido);color:#fff}
 .conteo{font-size:12px;color:var(--gris);margin-left:auto;white-space:nowrap}
 
 /* Filtro de rango de fechas (Embarques): dos <input type=date> + atajos + etiqueta removible */
@@ -368,7 +376,7 @@ tr.vencido-alto .enlace{color:var(--rojo);font-weight:600}
 .det-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:4px 0 6px}
 .det{background:var(--papel);border:1px solid var(--linea);border-radius:7px;padding:9px 11px}
 .det .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--gris);font-weight:700}
-.det .v{font-size:13px;margin-top:3px;word-break:break-word}
+.det .v{font-size:13px;margin-top:3px;word-break:break-word;color:var(--ink)}
 .det .v.mono{font-family:'IBM Plex Mono',monospace}
 
 .flagbox{background:var(--ambar-bg);border:1px solid var(--ambar);border-radius:8px;padding:13px 15px;margin-top:18px}
@@ -426,13 +434,15 @@ tr.vencido-alto .enlace{color:var(--rojo);font-weight:600}
 
 /* ---------- Login ---------- */
 .login-ov{position:fixed;inset:0;background:var(--papel);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
-.login-card{background:#fff;border:1px solid #E4E2D8;border-radius:14px;padding:34px 32px;width:340px;
-  box-shadow:0 8px 30px rgba(20,38,28,.08)}
+.login-card{background:var(--pan);border:1px solid var(--bd);border-radius:14px;padding:34px 32px;width:340px;
+  box-shadow:0 8px 30px rgba(20,38,28,.08);color:var(--ink)}
 .login-card h1{font-family:'Archivo',sans-serif;font-size:20px;margin:0 0 4px}
 .login-card p{font-size:13px;color:var(--gris);margin:0 0 18px}
-.login-card label{display:block;font-size:12px;font-weight:600;color:#3C4A40;margin:12px 0 4px}
-.login-card input{width:100%;padding:10px 12px;border:1px solid #CFCDBF;border-radius:8px;font-size:14px;font-family:'Inter',sans-serif}
-.login-card button{width:100%;margin-top:18px;padding:11px;border:0;border-radius:8px;background:var(--verde);
+.login-card label{display:block;font-size:12px;font-weight:600;color:var(--i2);margin:12px 0 4px}
+.login-card input{width:100%;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;font-size:14px;
+  font-family:'Inter',sans-serif;background:var(--pan);color:var(--ink);color-scheme:inherit}
+.login-card input::placeholder{color:var(--i3)}
+.login-card button{width:100%;margin-top:18px;padding:11px;border:0;border-radius:8px;background:var(--verde-solido);
   color:#fff;font-weight:600;font-size:14px;cursor:pointer}
 .login-card button:disabled{opacity:.6;cursor:wait}
 .login-err{display:none;margin-top:12px;font-size:13px;color:var(--rojo)}
@@ -463,7 +473,7 @@ tr.vencido-alto .enlace{color:var(--rojo);font-weight:600}
 .pres-botones{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .pres-botones button{padding:14px 10px;border:1px solid var(--linea);border-radius:10px;background:var(--verde-claro);
   color:var(--verde);font-family:'Inter',sans-serif;font-size:15px;font-weight:600;cursor:pointer;transition:background .12s,border-color .12s}
-.pres-botones button:hover{background:var(--verde);color:#fff;border-color:var(--verde)}
+.pres-botones button:hover{background:var(--verde-solido);color:#fff;border-color:var(--verde-solido)}
 
 /* ---------- Pipeline de etapas ---------- */
 .pipeline{display:flex;align-items:center;gap:0;margin:2px 0 18px;flex-wrap:wrap}
@@ -476,10 +486,10 @@ tr.vencido-alto .enlace{color:var(--rojo);font-weight:600}
 .etapa .linea{flex:1;height:2px;background:var(--linea);min-width:12px}
 .etapa:last-child{flex:none}
 .etapa:last-child .linea{display:none}
-.etapa.hecha .bolita{background:var(--verde);border-color:var(--verde);color:#fff}
+.etapa.hecha .bolita{background:var(--verde-solido);border-color:var(--verde-solido);color:#fff}
 .etapa.hecha .nombre{color:var(--verde)}
 .etapa.hecha .linea{background:var(--verde)}
-.etapa.actual .bolita{background:var(--lima);border-color:var(--verde);color:var(--tinta);
+.etapa.actual .bolita{background:var(--lima);border-color:var(--verde);color:#14261C;
   box-shadow:0 0 0 4px var(--verde-claro)}
 .etapa.actual .nombre{color:var(--tinta);font-weight:700}
 .pipeline-libre{display:flex;align-items:center;gap:10px;margin:2px 0 18px}
@@ -487,9 +497,9 @@ tr.vencido-alto .enlace{color:var(--rojo);font-weight:600}
 /* ---------- Formularios de captura ---------- */
 .seccion-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:20px 0 8px}
 .seccion-head h4{margin:0}
-.btn-mini{background:var(--verde);color:#fff;border:none;border-radius:6px;padding:6px 12px;
+.btn-mini{background:var(--verde-solido);color:#fff;border:none;border-radius:6px;padding:6px 12px;
   font-family:'Archivo',sans-serif;font-weight:700;font-size:11.5px;cursor:pointer;white-space:nowrap}
-.btn-mini:hover{background:var(--verde-hover)}
+.btn-mini:hover{background:var(--verde-solido-hover)}
 .btn-mini.gris{background:transparent;color:var(--gris);border:1px solid var(--linea)}
 .btn-mini:disabled{opacity:.5;cursor:wait}
 
@@ -500,9 +510,11 @@ tr.vencido-alto .enlace{color:var(--rojo);font-weight:600}
 .form-erp label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--gris);
   font-weight:700;margin-bottom:4px}
 .form-erp input,.form-erp select,.form-erp textarea{
-  border:1px solid #CFCDBF;border-radius:6px;padding:8px 10px;font-size:13px;
-  font-family:'Inter',sans-serif;background:#fff;width:100%}
-.form-erp input:focus,.form-erp select:focus,.form-erp textarea:focus{outline:none;border-color:var(--verde)}
+  border:1px solid var(--bd);border-radius:6px;padding:8px 10px;font-size:13px;
+  font-family:'Inter',sans-serif;background:var(--pan);color:var(--ink);width:100%;
+  color-scheme:inherit}
+.form-erp input::placeholder,.form-erp textarea::placeholder{color:var(--i3)}
+.form-erp input:focus,.form-erp select:focus,.form-erp textarea:focus{outline:none;border-color:var(--brand)}
 .form-erp input.mono{font-family:'IBM Plex Mono',monospace}
 .form-erp textarea{min-height:52px;resize:vertical}
 .form-erp .acciones{display:flex;gap:8px;margin-top:12px;align-items:center}
@@ -531,45 +543,46 @@ tr.vencido-alto .enlace{color:var(--rojo);font-weight:600}
 .ficha-cp .ficha-seccion:first-child{border-top:none;padding-top:0;margin-top:0}
 .ficha-cp .ficha-linea{display:flex;gap:10px;padding:3px 0;font-size:13px;align-items:baseline}
 .ficha-cp .ficha-etq{flex:0 0 150px;color:var(--gris);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
-.ficha-cp .ficha-val{flex:1;min-width:0;color:var(--tinta);white-space:pre-wrap;word-break:break-word}
+.ficha-cp .ficha-val{flex:1;min-width:0;color:var(--ink);white-space:pre-wrap;word-break:break-word}
 .ficha-cp .ficha-val.mono{font-family:'IBM Plex Mono',monospace;font-size:12px}
 .ficha-cp .ficha-vacio{color:var(--gris-claro);font-style:italic;font-size:12px;padding:2px 0}
 .cp-nombre-link{background:none;border:none;padding:0;font:inherit;color:var(--verde);font-weight:600;
   cursor:pointer;text-align:left}
 .cp-nombre-link:hover{text-decoration:underline}
-.chk-lista{max-height:150px;overflow:auto;border:1px solid var(--linea);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:5px;background:#fff}
+.chk-lista{max-height:150px;overflow:auto;border:1px solid var(--bd);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:5px;background:var(--pan);color:var(--ink)}
 
 /* ---------- Combo con búsqueda ---------- */
 .combo{position:relative}
 .combo .combo-input{
-  width:100%;border:1px solid #CFCDBF;border-radius:6px;padding:8px 10px;font-size:13px;
-  font-family:'Inter',sans-serif;background:#fff;
+  width:100%;border:1px solid var(--bd);border-radius:6px;padding:8px 10px;font-size:13px;
+  font-family:'Inter',sans-serif;background:var(--pan);color:var(--ink);color-scheme:inherit;
 }
-.combo .combo-input:focus{outline:none;border-color:var(--verde)}
-.combo.elegido .combo-input{border-color:var(--verde);background:#FCFEFC}
-.combo.elegido.es-nuevo .combo-input{border-color:var(--ambar);background:var(--ambar-bg)}
+.combo .combo-input::placeholder{color:var(--i3)}
+.combo .combo-input:focus{outline:none;border-color:var(--brand)}
+.combo.elegido .combo-input{border-color:var(--brand);background:var(--gtint)}
+.combo.elegido.es-nuevo .combo-input{border-color:var(--amb);background:var(--amb-bg)}
 .combo-lista{
   display:none;position:absolute;top:calc(100% + 3px);left:0;right:0;z-index:70;
-  background:#fff;border:1px solid var(--linea);border-radius:8px;
+  background:var(--pan);border:1px solid var(--bd);border-radius:8px;
   box-shadow:0 8px 24px rgba(20,38,28,.16);max-height:240px;overflow-y:auto;
 }
 .combo-lista.abierta{display:block}
 .combo-item{
   display:flex;align-items:baseline;gap:8px;padding:9px 12px;cursor:pointer;font-size:13px;
-  border-bottom:1px solid var(--linea);
+  border-bottom:1px solid var(--bd);color:var(--ink);
 }
 .combo-item:last-child{border-bottom:none}
-.combo-item.sel,.combo-item:hover{background:var(--verde-claro)}
+.combo-item.sel,.combo-item:hover{background:var(--gtint)}
 .combo-item .txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.combo-item .alias{font-size:11px;color:var(--gris);white-space:nowrap;font-style:italic}
-.combo-item.nuevo{color:var(--ambar);font-weight:600;background:var(--ambar-bg)}
-.combo-item.nuevo.sel,.combo-item.nuevo:hover{background:#F5E6C8}
+.combo-item .alias{font-size:11px;color:var(--i2);white-space:nowrap;font-style:italic}
+.combo-item.nuevo{color:var(--amb);font-weight:600;background:var(--amb-bg)}
+.combo-item.nuevo.sel,.combo-item.nuevo:hover{background:color-mix(in srgb, var(--amb) 22%, var(--amb-bg))}
 .combo-item.nuevo .mas{font-weight:800;font-size:15px;line-height:1}
 .combo-item.nuevo b{font-weight:700}
 /* Guía suave de producto por contraparte (E55): solo sube al principio y marca con ★ — nunca
    oculta ni deshabilita el resto de las opciones. */
 .combo-destacado{color:var(--lima);font-size:11px;flex:0 0 auto}
-.combo-vacio{padding:12px;font-size:12.5px;color:var(--gris);text-align:center}
+.combo-vacio{padding:12px;font-size:12.5px;color:var(--i2);text-align:center}
 
 /* En pantallas táctiles, filas cómodas de tocar */
 @media(pointer:coarse){
@@ -641,10 +654,12 @@ tr.vencido-alto .enlace{color:var(--rojo);font-weight:600}
 .alias-chip button:hover{color:var(--rojo);background:var(--rojo-bg)}
 .sin-alias{font-size:11.5px;color:var(--gris-claro);font-style:italic}
 
-.alias-editor{border:1px solid #CFCDBF;border-radius:6px;padding:7px;background:#fff}
-.alias-editor:focus-within{border-color:var(--verde)}
+.alias-editor{border:1px solid var(--bd);border-radius:6px;padding:7px;background:var(--pan);color:var(--ink)}
+.alias-editor:focus-within{border-color:var(--brand)}
 .alias-editor .alias-lista{margin-bottom:6px}
-.alias-editor input{border:none;padding:3px 2px;font-size:13px;width:100%;font-family:'Inter',sans-serif}
+.alias-editor input{border:none;padding:3px 2px;font-size:13px;width:100%;font-family:'Inter',sans-serif;
+  background:transparent;color:inherit;color-scheme:inherit}
+.alias-editor input::placeholder{color:var(--i3)}
 .alias-editor input:focus{outline:none}
 .alias-ayuda{font-size:10.5px;color:var(--gris);margin-top:4px}
 
@@ -708,7 +723,7 @@ tr.vencido-alto .enlace{color:var(--rojo);font-weight:600}
 .linea-doc .lcol{min-width:0;display:flex;flex-direction:column}
 .linea-doc .lcol.prod{grid-column:1}
 .linea-doc label{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--gris);font-weight:700;margin-bottom:3px}
-.linea-doc input,.linea-doc .combo-input{border:1px solid #CFCDBF;border-radius:5px;padding:6px 7px;font-size:12.5px;width:100%;font-family:'Inter',sans-serif}
+.linea-doc input,.linea-doc .combo-input{border:1px solid var(--bd);border-radius:5px;padding:6px 7px;font-size:12.5px;width:100%;font-family:'Inter',sans-serif;background:var(--pan);color:var(--ink);color-scheme:inherit}
 .linea-doc input:focus,.linea-doc .combo-input:focus{outline:none;border-color:var(--verde)}
 .linea-doc input.mono{font-family:'IBM Plex Mono',monospace}
 .linea-doc .lcol-importe .val{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;padding:6px 0;white-space:nowrap;text-align:right}
@@ -1927,3 +1942,235 @@ tr.anulada td:nth-child(2) .enlace{text-decoration:line-through;text-decoration-
 
 .pantalla-operaciones .vacio{padding:20px;text-align:center;color:var(--i2);font-style:italic}
 .pantalla-operaciones .leyenda{font-size:11px;color:var(--i2);padding:12px 2px;font-style:italic}
+
+/* ================= CAMINO C · O1 — Customer PO + Sales Orders (D-160/161/162) =================
+   Scope por pantalla (.pantalla-o1-cpo / .pantalla-o1-so), CSS anidado, solo tokens. Mismo método
+   que las 7 pantallas vestidas (E90–E97): cada regla lleva la clase de scope extra para ganar el
+   cascade sin tocar nada global. Las fichas/alta viven en #panelBody (fuera del scope): usan las
+   clases compartidas (.form-erp, .det, .pill globales) como el resto del ERP. */
+
+/* Tira de KPIs (idéntica a Embarques) */
+.pantalla-o1-cpo .kpistrip,.pantalla-o1-so .kpistrip,.pantalla-o1-inventario .kpistrip{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.pantalla-o1-cpo .kpi,.pantalla-o1-so .kpi,.pantalla-o1-inventario .kpi{background:var(--pan);border:1px solid var(--bd);border-radius:10px;padding:11px 16px;flex:1;min-width:130px}
+.pantalla-o1-cpo .kpi .k,.pantalla-o1-so .kpi .k,.pantalla-o1-inventario .kpi .k{font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--i2)}
+.pantalla-o1-cpo .kpi .v,.pantalla-o1-so .kpi .v,.pantalla-o1-inventario .kpi .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:20px;color:var(--money);margin-top:4px}
+.pantalla-o1-cpo .kpi .v.ink,.pantalla-o1-so .kpi .v.ink,.pantalla-o1-inventario .kpi .v.ink{color:var(--ink)}
+
+/* Filtros */
+.pantalla-o1-cpo .filtros,.pantalla-o1-so .filtros,.pantalla-o1-inventario .filtros{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.pantalla-o1-cpo .filtros .busca,.pantalla-o1-so .filtros .busca,.pantalla-o1-inventario .filtros .busca{background:var(--pan);border:1px solid var(--bd);color:var(--ink);border-radius:8px;padding:8px 11px;font-size:12.5px}
+.pantalla-o1-cpo .filtros .busca:focus,.pantalla-o1-so .filtros .busca:focus,.pantalla-o1-inventario .filtros .busca:focus{outline:none;border-color:var(--brand)}
+.pantalla-o1-cpo .conteo,.pantalla-o1-so .conteo,.pantalla-o1-inventario .conteo{color:var(--i3);font-size:11.5px;margin-left:auto}
+.pantalla-o1-so .leyenda-o1,.pantalla-o1-inventario .leyenda-o1{font-size:11.5px;color:var(--i2);margin:2px 0 12px}
+.pantalla-o1-so .leyenda-o1 b,.pantalla-o1-inventario .leyenda-o1 b{color:var(--ink);font-weight:600}
+.pantalla-o1-cpo .i3,.pantalla-o1-so .i3,.pantalla-o1-inventario .i3{color:var(--i3)}
+
+/* Tabla densa (idéntica a Embarques) */
+.pantalla-o1-cpo table,.pantalla-o1-so table,.pantalla-o1-inventario table{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-o1-cpo thead th,.pantalla-o1-so thead th,.pantalla-o1-inventario thead th{text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.pantalla-o1-cpo thead th.num,.pantalla-o1-so thead th.num,.pantalla-o1-inventario thead th.num{text-align:right}
+.pantalla-o1-cpo tbody td,.pantalla-o1-so tbody td,.pantalla-o1-inventario tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
+.pantalla-o1-cpo tbody td.num,.pantalla-o1-so tbody td.num,.pantalla-o1-inventario tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.pantalla-o1-cpo tbody tr.clic,.pantalla-o1-so tbody tr.clic,.pantalla-o1-inventario tbody tr.clic{cursor:pointer}
+.pantalla-o1-cpo tbody tr:hover,.pantalla-o1-so tbody tr:hover,.pantalla-o1-inventario tbody tr:hover{background:var(--gtint)}
+.pantalla-o1-cpo td.ent,.pantalla-o1-so td.ent,.pantalla-o1-inventario td.ent{color:var(--ink);font-weight:500}
+.pantalla-o1-cpo .mono,.pantalla-o1-so .mono,.pantalla-o1-inventario .mono{font-family:'IBM Plex Mono',monospace}
+.pantalla-o1-cpo td.acc,.pantalla-o1-so td.acc,.pantalla-o1-inventario td.acc{text-align:right;white-space:nowrap}
+
+/* Enlace de folio → verde marca (legible claro/oscuro) */
+.pantalla-o1-cpo .enlace,.pantalla-o1-so .enlace,.pantalla-o1-inventario .enlace{color:var(--brand);font-weight:600}
+
+/* Pastillas — remapeadas a tokens (theme-aware) igual que en Embarques */
+.pantalla-o1-cpo .pill,.pantalla-o1-so .pill,.pantalla-o1-inventario .pill{font-size:10px;font-weight:600;border-radius:13px;padding:2px 8px}
+.pantalla-o1-cpo .pill.verde,.pantalla-o1-so .pill.verde,.pantalla-o1-inventario .pill.verde{background:color-mix(in srgb,var(--brand) 13%,transparent);color:var(--brand)}
+.pantalla-o1-cpo .pill.ambar,.pantalla-o1-so .pill.ambar,.pantalla-o1-inventario .pill.ambar{background:var(--amb-bg);color:var(--amb)}
+.pantalla-o1-cpo .pill.rojo,.pantalla-o1-so .pill.rojo,.pantalla-o1-inventario .pill.rojo{background:var(--red-bg);color:var(--red)}
+.pantalla-o1-cpo .pill.gris,.pantalla-o1-so .pill.gris,.pantalla-o1-inventario .pill.gris{background:var(--hair);color:var(--i2)}
+.pantalla-o1-cpo .pill.azul,.pantalla-o1-so .pill.azul,.pantalla-o1-inventario .pill.azul{background:var(--gtint);color:var(--brand)}
+
+/* Botones (reusa .btn-mini: sin modificador = negro primario, .gris = fantasma) */
+.pantalla-o1-cpo .btn-mini,.pantalla-o1-so .btn-mini,.pantalla-o1-inventario .btn-mini{background:var(--btn);color:var(--btnT);border:0;border-radius:8px;font-size:12.5px;font-weight:600;padding:9px 14px;cursor:pointer}
+.pantalla-o1-cpo .btn-mini:hover,.pantalla-o1-so .btn-mini:hover,.pantalla-o1-inventario .btn-mini:hover{filter:brightness(1.3)}
+.pantalla-o1-cpo .btn-mini.gris,.pantalla-o1-so .btn-mini.gris,.pantalla-o1-inventario .btn-mini.gris{background:var(--pan);border:1px solid var(--bd);color:var(--i2);font-weight:500;font-size:12px;padding:8px 12px}
+.pantalla-o1-cpo .btn-mini.gris:hover,.pantalla-o1-so .btn-mini.gris:hover,.pantalla-o1-inventario .btn-mini.gris:hover{background:var(--hair)}
+
+/* Vacío / superficies */
+.pantalla-o1-cpo .vacio,.pantalla-o1-so .vacio,.pantalla-o1-inventario .vacio{padding:20px;text-align:center;color:var(--i2);font-style:italic}
+.pantalla-o1-cpo .errbox,.pantalla-o1-so .errbox,.pantalla-o1-inventario .errbox{background:var(--red-bg);border:1px solid var(--red);color:var(--red);border-radius:8px;padding:12px 14px;font-size:12.5px}
+
+/* ===== Ficha/alta de O1 en #panelBody (FUERA del scope): helpers puntuales, tokens nuevos ===== */
+/* Tablero del SO: Allocated/Purchased llegan en O2/O3 → en gris; Open resaltado */
+.so-tablero td.futuro{color:var(--i3)}
+.so-tablero td.open{font-weight:700;color:var(--money)}
+.so-tablero td.prod{font-weight:500}
+.so-lineas .num,.so-tablero .num{text-align:right;font-family:'IBM Plex Mono',monospace}
+.so-estados{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.cpo-nota,.so-nota{margin:10px 0;font-size:12.5px;color:var(--i2)}
+.cpo-nota .l,.so-nota .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--i3);font-weight:700;margin-right:6px}
+
+/* Incremento A (E122): subir archivo del Customer PO en el form del panel (#panelBody, global) */
+.adjunto-sube{display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap}
+.btn-file{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--brand);border:1px dashed var(--bd);border-radius:8px;padding:6px 11px;cursor:pointer}
+.btn-file:hover{background:var(--gtint)}
+.adjunto-estado{font-size:12px;color:var(--i2);display:inline-flex;align-items:center;gap:6px}
+.adjunto-estado .quitar{cursor:pointer;color:var(--red)}
+.adjunto-estado .quitar:hover{text-decoration:underline}
+
+/* Incremento B (E125): "Leer PO con IA" — pantalla de revisión en #panelBody (global, sin scope).
+   Solo tokens dark-aware (E123/E124). Botón primario NEGRO (--btn/--btnT), Tabler ti-sparkles/
+   ti-loader-2 (spin), cero emojis. */
+.ia-leer-wrap{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap}
+.ia-leer-wrap .btn-mini{display:inline-flex;align-items:center;gap:6px}
+.ia-leer-wrap .btn-mini:disabled{opacity:.55;cursor:not-allowed}
+.ti-spin{display:inline-block;animation:girar-ia .8s linear infinite}
+@keyframes girar-ia{to{transform:rotate(360deg)}}
+
+.ia-aviso-ia{display:flex;align-items:flex-start;gap:8px;background:var(--amb-bg);border:1px solid var(--amb);
+  color:var(--amb);border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:14px}
+.ia-aviso-ia i{flex:none;margin-top:1px}
+.ia-aviso-ia b{font-weight:700}
+
+.ia-leido{font-size:11.5px;color:var(--i3);font-style:italic;margin-bottom:5px;word-break:break-word}
+.ia-combo-cell{display:flex;flex-direction:column;gap:6px}
+.ia-combo-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ia-alts{display:flex;gap:6px;flex-wrap:wrap}
+.ia-alt{font-size:10.5px;padding:3px 9px}
+.ia-lineas .ia-leido{margin:0;max-width:160px}
+
+.ia-revision #iaConfirmar{background:var(--btn);color:var(--btnT)}
+.ia-revision #iaConfirmar:hover{filter:brightness(1.15)}
+
+/* ================= CAMINO C · Catálogos (master-detail) — scope .pantalla-catalogos-c =================
+   Portado de catalogos-completo.html a los tokens reales del proyecto (tokens.css, dark-aware, E123/E124).
+   Mapeo: --panel→--pan · --panel2→--bg · --soft/--sel→--gtint · --border(2)→--bd · --ink→--ink ·
+   --sec→--i2 · --muted→--i3 · --accent→--brand · --primary→--btn · --on-primary→--btnT · --danger→--red.
+   Todo anidado bajo el scope; inputs/select/table/.card/.pill se estilizan SOLO dentro del scope. */
+
+.pantalla-catalogos-c{color:var(--ink)}
+.pantalla-catalogos-c .mono{font-family:'IBM Plex Mono',monospace}
+.pantalla-catalogos-c input,.pantalla-catalogos-c select{font-family:inherit;font-size:12.5px;background:var(--pan);border:1px solid var(--bd);color:var(--ink);border-radius:7px;padding:0 9px;height:32px;width:100%;color-scheme:inherit}
+.pantalla-catalogos-c input:focus,.pantalla-catalogos-c select:focus{outline:none;border-color:var(--brand)}
+.pantalla-catalogos-c input::placeholder{color:var(--i3)}
+.pantalla-catalogos-c a{color:var(--brand);text-decoration:none}
+.pantalla-catalogos-c .f label{font-size:10.5px;color:var(--i2);display:block;margin-bottom:3px;text-transform:uppercase;letter-spacing:.03em}
+.pantalla-catalogos-c .catc-sec{color:var(--i2)}
+.pantalla-catalogos-c .catc-mut{color:var(--i3)}
+.pantalla-catalogos-c .catc-hint{font-size:11px;color:var(--i3);line-height:1.6}
+.pantalla-catalogos-c .catc-hint b{color:var(--i2);font-weight:600}
+
+/* Pestañas */
+.pantalla-catalogos-c .catc-tabs{display:flex;gap:4px;align-items:center;margin-bottom:12px}
+.pantalla-catalogos-c .catc-tabs button{border:none;background:var(--gtint);color:var(--i2);font-size:12.5px;font-weight:500;padding:6px 13px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.pantalla-catalogos-c .catc-tabs button.on{background:var(--brand);color:#fff}
+.pantalla-catalogos-c .catc-tabs .grow{flex:1;background:none}
+.pantalla-catalogos-c .catc-ic{width:34px;height:34px;background:var(--pan);border:1px solid var(--bd);border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:17px;color:var(--i2);cursor:pointer;padding:0}
+.pantalla-catalogos-c .catc-ic:hover{border-color:var(--brand);color:var(--brand)}
+
+/* Split master-detail */
+.pantalla-catalogos-c .catc-split{display:flex;height:calc(100vh - 210px);min-height:440px;border:1px solid var(--bd);border-radius:12px;overflow:hidden;background:var(--pan)}
+.pantalla-catalogos-c .catc-list{width:320px;flex-shrink:0;border-right:1px solid var(--bd);background:var(--bg);display:flex;flex-direction:column}
+.pantalla-catalogos-c .catc-lh{padding:12px;border-bottom:1px solid var(--bd);display:flex;flex-direction:column;gap:9px}
+.pantalla-catalogos-c .catc-sb{position:relative}
+.pantalla-catalogos-c .catc-sb i{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--i3);font-size:14px}
+.pantalla-catalogos-c .catc-sb input{padding-left:28px}
+.pantalla-catalogos-c .catc-lh-btns{display:flex;gap:8px}
+.pantalla-catalogos-c .catc-lh-btns .btn-primary{flex:1;height:34px;font-size:12.5px;background:var(--btn);color:var(--btnT);border:none;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
+.pantalla-catalogos-c .catc-lh-btns button:not(.btn-primary){height:34px;font-size:12.5px;padding:0 12px;background:var(--pan);border:1px solid var(--bd);color:var(--i2);border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.pantalla-catalogos-c .catc-lh-btns .btn-primary:hover{filter:brightness(1.25)}
+
+.pantalla-catalogos-c .catc-rows{overflow-y:auto;flex:1}
+.pantalla-catalogos-c .catc-row{padding:11px 13px;border-bottom:1px solid var(--bd);cursor:pointer;display:flex;align-items:center;gap:11px;border-left:3px solid transparent}
+.pantalla-catalogos-c .catc-row:hover{background:var(--gtint)}
+.pantalla-catalogos-c .catc-row.on{background:var(--gtint);border-left-color:var(--brand)}
+.pantalla-catalogos-c .catc-av{width:32px;height:32px;border-radius:8px;background:color-mix(in srgb,var(--brand) 14%,transparent);color:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;flex-shrink:0}
+.pantalla-catalogos-c .catc-av.lg{width:44px;height:44px;border-radius:11px;font-size:16px}
+.pantalla-catalogos-c .catc-rt .nm{font-weight:600;font-size:13px}
+.pantalla-catalogos-c .catc-rt .mt{font-size:11.5px;color:var(--i3);margin-top:1px}
+
+/* Detalle */
+.pantalla-catalogos-c .catc-detail{flex:1;overflow-y:auto;padding:22px 26px}
+.pantalla-catalogos-c .catc-dwrap{max-width:760px}
+.pantalla-catalogos-c .catc-dhead{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+.pantalla-catalogos-c .catc-card{background:var(--pan);border:1px solid var(--bd);border-radius:11px;padding:14px 16px;margin-bottom:12px}
+.pantalla-catalogos-c .catc-card h4{margin:0 0 12px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--i2);display:flex;align-items:center;justify-content:space-between}
+.pantalla-catalogos-c .catc-add{font-size:11.5px;font-weight:500;color:var(--brand);cursor:pointer;text-transform:none;letter-spacing:0;display:inline-flex;align-items:center;gap:4px}
+.pantalla-catalogos-c .catc-g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pantalla-catalogos-c .catc-g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+
+/* Pastillas / chips / tags */
+.pantalla-catalogos-c .catc-pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 9px;border-radius:20px}
+.pantalla-catalogos-c .catc-pill.ok{background:color-mix(in srgb,var(--money) 15%,transparent);color:var(--money)}
+.pantalla-catalogos-c .catc-pill.off{background:var(--gtint);color:var(--i3)}
+.pantalla-catalogos-c .catc-pill.warn{background:var(--amb-bg);color:var(--amb)}
+.pantalla-catalogos-c .catc-dot{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block}
+.pantalla-catalogos-c .catc-tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 9px;border-radius:6px;background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand)}
+.pantalla-catalogos-c .catc-tag.soft{background:var(--gtint);color:var(--i2)}
+.pantalla-catalogos-c .catc-tag.off{background:var(--gtint);color:var(--i3)}
+.pantalla-catalogos-c .catc-chip{display:inline-flex;align-items:center;gap:7px;font-size:12px;padding:4px 10px;border:1px solid var(--bd);border-radius:8px;color:var(--ink)}
+.pantalla-catalogos-c .catc-chip.off{opacity:.55}
+.pantalla-catalogos-c .catc-chip i{font-size:13px;color:var(--i3);cursor:pointer}
+.pantalla-catalogos-c .catc-chip i:hover{color:var(--red)}
+.pantalla-catalogos-c .catc-badges{display:flex;gap:6px;margin-top:7px;flex-wrap:wrap}
+.pantalla-catalogos-c .catc-chk{font-size:12px;color:var(--i2);display:flex;gap:6px;align-items:center}
+.pantalla-catalogos-c .catc-chk input{width:auto;height:auto;padding:0}
+
+/* SKU cards */
+.pantalla-catalogos-c .catc-sku{border:1px solid var(--bd);border-radius:10px;margin-bottom:9px;overflow:hidden;background:var(--pan)}
+.pantalla-catalogos-c .catc-sku-top{display:flex;align-items:center;gap:12px;padding:11px 13px;cursor:pointer}
+.pantalla-catalogos-c .catc-sku-top .chev{color:var(--i3);font-size:17px;transition:.15s}
+.pantalla-catalogos-c .catc-sku.open .chev{transform:rotate(90deg)}
+.pantalla-catalogos-c .catc-sku-nm{font-weight:600;font-size:13px}
+.pantalla-catalogos-c .catc-sku-sb{font-size:11px;color:var(--i3);margin-top:1px}
+.pantalla-catalogos-c .catc-sku-tg{margin-left:auto;display:flex;gap:12px;align-items:center;font-size:11.5px;color:var(--i2)}
+.pantalla-catalogos-c .catc-sku-tg .catc-mut{font-size:10.5px}
+.pantalla-catalogos-c .catc-sku-bd{display:none;border-top:1px solid var(--bd);background:var(--bg);padding:11px 13px}
+.pantalla-catalogos-c .catc-sku.open .catc-sku-bd{display:block}
+.pantalla-catalogos-c .catc-linkline{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--pan);border:1px solid var(--bd);border-radius:8px;margin-bottom:6px}
+.pantalla-catalogos-c .catc-linkline .cn{font-weight:600;font-size:12px}
+.pantalla-catalogos-c .catc-linkline .code{font-size:10.5px;color:var(--i3);font-family:'IBM Plex Mono',monospace}
+.pantalla-catalogos-c .catc-go{color:var(--i3);font-size:15px;cursor:pointer}
+.pantalla-catalogos-c .catc-go:hover{color:var(--red)}
+
+/* kv rows / contactos */
+.pantalla-catalogos-c .catc-kv{display:flex;justify-content:space-between;align-items:center;padding:3px 0}
+.pantalla-catalogos-c .catc-kv span{color:var(--i2);font-size:12px}
+.pantalla-catalogos-c .catc-kv input{height:28px;width:130px;text-align:right}
+.pantalla-catalogos-c .catc-contact{border:1px solid var(--bd);border-radius:8px;padding:8px 10px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:center}
+.pantalla-catalogos-c .catc-contact .cn{font-size:12px;font-weight:600}
+.pantalla-catalogos-c .catc-contact .cr{font-size:10.5px;color:var(--i3)}
+.pantalla-catalogos-c .catc-contact a{font-size:16px;margin-left:7px}
+.pantalla-catalogos-c .catc-contact a.wa{color:var(--money)}
+
+/* botones de acción */
+.pantalla-catalogos-c .catc-act{height:32px;padding:0 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;background:var(--pan);border:1px solid var(--bd);color:var(--ink);border-radius:8px;cursor:pointer}
+.pantalla-catalogos-c .catc-act:hover{border-color:var(--i3)}
+.pantalla-catalogos-c .catc-act.btn-primary{background:var(--btn);color:var(--btnT);border:none}
+.pantalla-catalogos-c .catc-act.btn-primary:hover{filter:brightness(1.25)}
+.pantalla-catalogos-c .catc-act.wa{background:color-mix(in srgb,var(--money) 14%,transparent);color:var(--money);border-color:transparent}
+.pantalla-catalogos-c .catc-act.del{color:var(--red)}
+.pantalla-catalogos-c .catc-act.del:hover{border-color:var(--red);background:var(--red-bg)}
+.pantalla-catalogos-c .catc-act i{font-size:15px}
+.pantalla-catalogos-c .catc-actions{display:flex;gap:7px;flex-wrap:wrap}
+.pantalla-catalogos-c .catc-dfoot{display:flex;align-items:center;justify-content:space-between;margin-top:8px;flex-wrap:wrap;gap:10px}
+
+/* seg toggle */
+.pantalla-catalogos-c .catc-segtog{display:inline-flex;background:var(--gtint);border-radius:7px;padding:2px}
+.pantalla-catalogos-c .catc-segtog button{border:none;background:transparent;color:var(--i2);font-size:11px;padding:4px 10px;border-radius:5px;cursor:pointer}
+.pantalla-catalogos-c .catc-segtog button.on{background:var(--pan);color:var(--ink)}
+
+/* dropzone import */
+.pantalla-catalogos-c .catc-dz{border:1px dashed var(--bd);border-radius:11px;text-align:center;padding:24px;background:var(--pan)}
+.pantalla-catalogos-c .catc-dz.over{border-color:var(--brand);background:var(--gtint)}
+.pantalla-catalogos-c .catc-prev{background:var(--gtint);border-radius:9px;padding:10px 12px;font-size:13px;margin-top:12px}
+
+/* tablas */
+.pantalla-catalogos-c .catc-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.pantalla-catalogos-c .catc-tbl th{text-align:left;padding:6px 8px;font-weight:500;color:var(--i2);font-size:10.5px;text-transform:uppercase}
+.pantalla-catalogos-c .catc-tbl td{padding:7px 8px;border-top:1px solid var(--bd)}
+
+/* picker */
+.pantalla-catalogos-c .catc-pk{width:100%;text-align:left;height:auto;padding:10px 12px;margin-bottom:6px;font-size:13px;display:flex;align-items:center;gap:8px;background:var(--pan);border:1px solid var(--bd);color:var(--ink);border-radius:8px;cursor:pointer}
+.pantalla-catalogos-c .catc-pk:hover{border-color:var(--brand);background:var(--gtint)}
+.pantalla-catalogos-c .catc-pk i{font-size:15px;color:var(--brand)}
+
+.pantalla-catalogos-c .errbox{background:var(--red-bg);border:1px solid var(--red);color:var(--red);border-radius:8px;padding:14px 16px;font-size:13px}

@@ -9,9 +9,37 @@
   --money:#1E7A3C;--brand:#1E531D;--btn:#14231A;--btnT:#FFFFFF;--amb:#B26B12;--amb-bg:#FBF0DB;
   --red:#B3402E;--red-bg:#FBEAE7;--tabG:#1E7A3C;--tabO:#C98A2D;--gtint:#F0F6EE;
 }
-[data-theme="dark"]{
+/* E123: selector con especificidad reforzada (html + atributo, 0-0-1-1) — NO solo `[data-theme="dark"]`
+   (0-0-1-0, empate con `:root`). estilos.css carga DESPUÉS de tokens.css y su `:root{}` legacy
+   (--tarjeta/--papel/--tinta/--gris/--linea…) ganaba el empate por orden de aparición, dejando los
+   alias de abajo sin efecto pase lo que pase. `html[data-theme="dark"]` gana siempre, sin importar
+   el orden de los archivos. data-theme se fija en <html> (document.documentElement) — ver
+   index.html (anti-parpadeo) y app.js (toggle). */
+html[data-theme="dark"]{
   color-scheme: dark;
   --bg:#0F1512;--pan:#151B17;--ink:#EAF0EB;--i2:#93A197;--i3:#66736B;--bd:#232B26;--hair:#1B221D;
   --money:#57C06A;--brand:#5FB255;--btn:#EAF0EB;--btnT:#0F1512;--amb:#D69A3C;--amb-bg:#2A2213;
   --red:#E5675A;--red-bg:#2A1613;--tabG:#57C06A;--tabO:#D69A3C;--gtint:#141E15;
+
+  /* Fix global de tema oscuro (E123): alias de los tokens LEGACY de color del :root de
+     estilos.css a su equivalente dark-aware más cercano. Causa raíz: --tarjeta/--papel/--tinta/
+     --gris/--linea/etc. solo existían en el :root claro — el panel/fichas (y ~40 superficies más:
+     .card, .form-erp, .toast, .campo-fijo, .login-ov…) quedaban con fondo blanco fijo y texto que,
+     según la regla, terminaba invisible sobre ese fondo. Alias SOLO aquí (dark): el :root claro
+     no se toca, así el modo claro queda pixel-idéntico a antes. Nunca usar estos legacy en
+     pantallas nuevas — ver regla permanente en SISTEMA-DISENO.md. */
+  --tinta:var(--ink); --papel:var(--pan); --tarjeta:var(--pan);
+  --verde:var(--brand); --verde-claro:var(--gtint);
+  --ambar:var(--amb); --ambar-bg:var(--amb-bg);
+  --rojo:var(--red); --rojo-bg:var(--red-bg);
+  --gris:var(--i2); --gris-claro:var(--i3); --linea:var(--bd);
+
+  /* --lima y --verde-hover: SIN alias aquí a propósito — se quedan en su valor fijo del :root de
+     estilos.css en ambos temas. Motivo: --verde SÍ se alía arriba a var(--brand) porque en el
+     90%+ de sus ~65 usos es TEXTO/acento (pills, enlaces, bordes) y ahí debe aclararse en oscuro;
+     pero un puñado de usos lo usan (o usaban) como FONDO SÓLIDO emparejado con texto blanco/oscuro
+     FIJO (no un token) — ahí --brand/--money (pensados para texto sobre fondo oscuro) son
+     demasiado claros y bajan el contraste en vez de arreglarlo. Esos casos ya NO dependen de
+     --verde/--lima: usan el token dedicado --verde-solido (ver estilos.css :root) o un literal
+     directo (`.btn.lima`, `.etapa.actual .bolita`) — cero pelea de especificidad/cascada aquí. */
 }
