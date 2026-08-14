@@ -4841,3 +4841,59 @@ el DOM real, no aproximado):**
 (extendidos), `index.html` (script + nav), `estilos.css` (scope nuevo extendiendo el bloque
 triple-selector de E121). `node --check` limpio en los 3 `.js`. **NO DESPLEGADO** (Miguel corre
 `npx vercel --prod`).
+
+## E128 (2026-08-14) — CAMINO C · Módulo Catálogos (master-detail) contra el contrato cat.*
+_Parte B de la spec de Catálogos. **Este chat = solo frontend** (la Parte A/DDL la aplica el chat de
+backend con `SPEC-CATALOGOS-BACKEND.md`). Módulo NUEVO en Camino C — NO toca el `modulo-catalogos.js`
+viejo (Directorio Comercial). Portado de `catalogos-completo.html` a los tokens reales (dark-aware)._
+
+**`modulo-catalogos-c.js` (nuevo, ruta `catalogos-c`, scope `.pantalla-catalogos-c`, grupo Camino C).**
+Master-detail (lista 320px + detalle), 3 pestañas Productos/Proveedores/Clientes. Contra las vistas
+`v_cat_*` (lectura) y RPCs `fn_cat_*` (escritura) del contrato. Construido **antes** de que el backend
+aplique el schema (Miguel autorizó "dale") — enlaza directo cuando el backend lo aplique; si algún
+nombre cambia, re-sincronizo unos identificadores.
+
+Piezas:
+- **Lista + pestañas** con buscador, "Nuevo X" (con texto) e "Importar". Fila con avatar (inicial/
+  iniciales) + nombre + meta.
+- **Ficha de producto:** encabezado editable (nombre/código/estado + Guardar/Eliminar), Datos generales
+  (categoría desde `listas_valores`, país, orgánico, temporada, estado, nota), Variedades (chips +
+  Agregar/quitar), **SKUs con toggle Tarjetas|Matriz** (tarjeta expandible con calibre/marca/cajas-
+  tarima/estiba/temp/vida editables + Guardar SKU, y linklines de clientes con código de item + precio
+  de contrato "ref."), **armador "Nuevo SKU"** (selects desde `listas_valores` con "＋ otro…" que llama
+  `fn_cat_lista_valor_alta` y agrega el valor al vuelo + **vista previa en vivo**), y Proveedores que lo
+  surten (chips + Vincular).
+- **Ficha de contraparte:** encabezado con badges Cliente/Proveedor + Correo (mailto) y WhatsApp (wa.me),
+  Identidad/Fiscal, Términos (kv), Contactos multi (clic-para-enviar), SKUs que surte/compra (chips +
+  Vincular). Guardar/Eliminar.
+- **Vínculos bidireccionales** (`fn_cat_vincular_*`/`fn_cat_desvincular_*`): picker "elige de lo existente"
+  desde producto o desde contraparte; el vínculo aparece en ambas fichas.
+- **Altas** de producto y de cliente/proveedor (form completo, solo nombre obligatorio).
+- **Importar Excel**: descarga de las 3 plantillas (`plantilla_*.xlsx` en el repo), dropzone + parseo
+  real con la lib XLSX ya cargada, **auto-mapeo** de columnas (los encabezados de las plantillas coinciden
+  1:1 con los campos), corrección manual por `<select>`, **previsualización** (nuevas vs. ya existen,
+  calculada en cliente contra la lista cargada) y confirmar → `fn_cat_import_*`. Nada se guarda hasta
+  confirmar.
+- **Pantalla de Listas** (icono en la cabecera): administra `listas_valores` por tipo (agregar/quitar).
+- **Papelera** (icono): lista `v_cat_papelera` + Restaurar. Eliminar = soft-delete; si tiene movimientos
+  el backend archiva (la RPC devuelve `accion`).
+
+**Diseño:** portado a tokens reales (`--pan/--ink/--i2/--i3/--bd/--gtint/--brand/--money/--btn/--red/
+--amb`), dark-aware (E123/E124). CSS scopeado bajo `.pantalla-catalogos-c` (inputs/select/table/.card/
+.pill/.chip estilizados SOLO dentro del scope). Split con `height:calc(100vh - 210px)` para scroll
+independiente de lista y detalle dentro del MARCO.
+
+**Verificación (Chrome DevTools MCP, red mockeada al contrato exacto `v_cat_*`/`fn_cat_*`, flujo real):**
+lista + 3 pestañas; ficha de producto (variedades, SKUs cards/matriz, linklines de clientes, proveedores);
+armador de SKU con preview en vivo + "＋ otro empaque" → `fn_cat_lista_valor_alta` (valor agregado al
+select vivo); crear SKU → `fn_cat_sku_alta` (args exactos); ficha de cliente (badges, correo/WhatsApp
+—deshabilitado sin número—, fiscal, términos, contactos, SKUs); crear producto → `fn_cat_producto_alta`;
+picker vincular cliente a SKU → `fn_cat_vincular_sku_cliente` (args exactos); import de un .xlsx real →
+auto-mapeo de 5 columnas + preview (Pepino "Nueva" / Papaya "Ya existe") + confirmar → `fn_cat_import_
+productos`; papelera + restaurar; listas. Claro Y oscuro por screenshot (0×0 inicial era artefacto del
+harness: `#shell` necesita `.visible`, que el login real añade — no bug del módulo).
+
+**Archivos:** `modulo-catalogos-c.js` (nuevo), `estilos.css` (bloque scope nuevo), `index.html` (nav
+Camino C + `<script>`). Contrato para el backend: `SPEC-CATALOGOS-BACKEND.md` (ya en repo). `node --check`
+limpio. **NO DESPLEGADO** (Miguel corre `npx vercel --prod`) **y el módulo mostrará un aviso "pídele al
+backend que aplique cat.*" hasta que el chat de backend cree las vistas/RPCs.**

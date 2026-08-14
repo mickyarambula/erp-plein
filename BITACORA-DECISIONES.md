@@ -2367,3 +2367,33 @@ histórico ya existente; no es un movimiento "extra" ni duplicado. Este chat no 
 de sanidad post-cambio (`v_anclas`/`v_seguridad_auth`) — la pidió a Miguel/backend antes de dar
 por cerrada la sesión, ya que este chat es frontend y su verificación de Supabase MCP en esta
 sesión fue solo para leer firmas, no para escribir ni para correr la lectura de sanidad final.
+
+## Sesión E128 (2026-08-14) — CAMINO C · Módulo Catálogos (frontend, Parte B) + contrato backend
+_Módulo maestro de catálogos del reinicio Camino C. **División de trabajo (regla de dos chats):** este
+chat (frontend) redactó el contrato de backend y construyó la Parte B; el **DDL (Parte A) lo aplica el
+chat de backend** con `SPEC-CATALOGOS-BACKEND.md`. Las decisiones D-## del schema `cat.*` las numera y
+registra el chat de backend al aplicar; aquí se registra la decisión de arquitectura frontend + el
+hand-off._
+
+- **Decisión (frontend/arquitectura):** el modelo nuevo (SKUs/`listas_valores`/vínculos/contactos/
+  papelera) vive en un **schema `cat.*` aislado** (nace cerrado, mismo patrón que `op.*`), expuesto por
+  `public.v_cat_*` (lectura) + `public.fn_cat_*` (escritura). **NO** se toca el `modulo-catalogos.js`
+  viejo (Directorio Comercial) ni sus tablas vivas `productos`/`contrapartes` — el módulo nuevo es un
+  stack paralelo en el grupo Camino C (`modulo-catalogos-c.js`, ruta `catalogos-c`). Migrar/retirar el
+  viejo se decide cuando el nuevo esté probado.
+- **Contrato entregado:** `SPEC-CATALOGOS-BACKEND.md` (8 tablas, 11 vistas, ~30 RPCs, seed de listas,
+  papelera vía `deleted_at`, regla archivar-si-tiene-movimientos, `v_seguridad_auth 0/0/0`). Commit
+  `1943904`.
+- **Frontend E128:** `modulo-catalogos-c.js` — master-detail 3 pestañas, ficha de producto (con armador
+  de SKU desde listas + "＋ otro" al vuelo + preview en vivo, tarjetas/matriz, linklines de clientes),
+  ficha de contraparte (badges, correo/WhatsApp, fiscal, términos, contactos, SKUs), vínculos
+  bidireccionales por picker, altas, import de Excel (parseo real XLSX + auto-mapeo + preview + confirmar),
+  papelera y pantalla de Listas. Portado de `catalogos-completo.html` a tokens reales (dark-aware). Detalle
+  y verificación (red mockeada al contrato, claro/oscuro) en `REPORTE-FRONTEND.md` (E128).
+- **Construido ANTES del backend** (Miguel autorizó): enlaza directo cuando el chat de backend aplique
+  `cat.*`; hasta entonces el módulo muestra un aviso pidiendo aplicar la spec. Si el backend renombra
+  algo, se re-sincronizan unos identificadores del frontend.
+
+**ANCLAS:** sin cambio — frontend money-neutral; el schema `cat.*` es nuevo y vacío; no toca Cuadre/CxC/
+CxP/JPM ni el histórico. La verificación de seguridad (`v_seguridad_auth 0/0/0`) y el DDL los corre el
+chat de backend al aplicar `SPEC-CATALOGOS-BACKEND.md`.
