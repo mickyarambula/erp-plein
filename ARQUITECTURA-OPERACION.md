@@ -160,3 +160,37 @@ El reinicio operativo "Camino C" (ver `PLAN-REINICIO-OPERATIVO-CAMINO-C.md`) arr
 **Frontend (E121, solo frontend):** `modulo-o1-cpo.js` (pantalla Customer PO, scope `.pantalla-o1-cpo`) y `modulo-o1-so.js` (pantalla Sales Orders + tablero Required/Allocated/Purchased/Open, scope `.pantalla-o1-so`), agrupados en un MARCO nuevo **"Camino C"** (riel `ti-route`). Allocated/Purchased se muestran en 0 y en gris ("llegan en O2/O3"). Detalle fino en `REPORTE-FRONTEND.md` (E121).
 
 **Estado O1:** entregado a Miguel para prueba de aceptación (DoD: registrar un Customer PO real → generar y confirmar su Sales Order → verificar que se creó la OP y que el CPO pasó a "Convertido" → tablero con Required = Open).
+
+---
+
+## 11. CAMINO C · Incremento B — "Leer PO con IA" (2026-08-13, D-169/170/171)
+
+Slice final de O1 (§10): captura asistida por IA del Customer PO, montada SOBRE el mismo par de
+RPCs manuales ya probado — la IA nunca escribe directo a `op.*`, solo prellena el mismo formulario
+que el flujo manual ya usaba.
+
+**Infraestructura nueva (backend, D-169/170/171):**
+- `pg_trgm` en el schema `extensions` (no `public`) — similitud de texto para el mapeo IA↔catálogo.
+- Edge Function **`extraer-po`** (`verify_jwt=false`, valida `capturar` dentro de la función):
+  descarga el PDF/imagen de `cpo-adjuntos`, extrae encabezado (N° PO, fecha, moneda) y líneas
+  (producto/cantidad/UOM/precio) vía Claude (**Haiku 4.5** primario, **Sonnet 5** de respaldo si
+  falla o el JSON es inválido), y mapea cliente + cada producto contra catálogo con
+  `fn_op_sugerir_contraparte`/`fn_op_sugerir_producto`.
+- `fn_op_sugerir_contraparte`/`fn_op_sugerir_producto` (D-171): RPCs de solo lectura, nacen
+  **cerradas** (sin GRANT a `anon`, solo invocables desde dentro de la Edge Function), umbral de
+  coincidencia 0.3 vía `word_similarity` (pg_trgm). Por debajo del umbral → sin sugerencia.
+
+**Regla de negocio (D-167, ya cerrada en la sesión de O1 original, reafirmada aquí):** la IA
+SUGIERE contra catálogo existente — nunca crea contraparte ni producto nuevo. Si no hay sugerencia
+o el usuario la rechaza, debe elegir un registro EXISTENTE. El Sales Type nunca lo decide la IA.
+
+**Frontend (E125):** extiende `modulo-o1-cpo.js` (mismo archivo del alta manual, sin módulo nuevo)
+con un botón "Leer PO con IA" (habilitado tras subir el adjunto a Storage) y una pantalla de
+revisión prellenada-editable que, al confirmar, llama **los mismos 2 RPCs del flujo manual**
+(`fn_op_cpo_alta` → `fn_op_so_crear_desde_cpo`) con el mismo shape de `p_lineas`. Guardia
+anti-huérfano: si el CPO se crea pero la Sales Order falla, un reintento NO duplica el CPO.
+Detalle fino y verificación en `REPORTE-FRONTEND.md` (E125) y `BITACORA-DECISIONES.md` (D-169/170/171).
+
+**Estado:** entregado a Miguel para prueba con el Customer PO real de Northgate (DoD: cliente
+prellenado NORTHGATE MARKETS, ≥1 línea con Papaya preseleccionado; confirmar crea 1 Customer PO +
+1 Sales Order en `op.*`; `v_anclas`/`v_seguridad_auth` sin cambio).

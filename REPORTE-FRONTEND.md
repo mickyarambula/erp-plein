@@ -4728,3 +4728,72 @@ dark-aware por defecto en la base; `color-scheme:inherit` en controles nativos c
 probar también el dropdown ABIERTO y con opción SELECCIONADA, no solo el estado vacío.
 
 **NO DESPLEGADO** (Miguel corre `npx vercel --prod`).
+
+## E125 (2026-08-13) — Incremento B: "Leer PO con IA" (backend D-169/170/171)
+_Slice final de O1. Extiende `modulo-o1-cpo.js` (NO se creó archivo nuevo) con captura asistida
+por IA sobre el mismo par de RPCs del flujo manual ya probado (E121/E122). D-169/170/171 son
+decisiones de BACKEND (extensión, Edge Function, RPCs de sugerencia) — infraestructura ya
+desplegada, este chat solo la consume (frontend)._
+
+**Botón "Leer PO con IA"** (`ti-sparkles`) en el form "Nuevo Customer PO", junto al bloque de
+adjunto — deshabilitado hasta subir un PDF/imagen a `cpo-adjuntos` (reusa `adjuntoSubido` del
+Incremento A). Al click: "Leyendo…" con spinner (`ti-loader-2.ti-spin`, keyframe nuevo `girar-ia`)
+→ `ERP.sb.functions.invoke('extraer-po', {body:{ruta}})`, con `ruta` = la ruta cruda SIN el
+prefijo `storage:cpo-adjuntos/` (se obtiene reusando `parseStorageRef()`, ya existente del
+Incremento A). Errores mapeados a español por código (`MENSAJES_ERROR_IA`, catálogo D-170:
+`falta_ruta`/`sin_sesion`/`auth_error`/`sin_permiso_capturar`/`descarga_falla`/`anthropic_falla`/
+`json_invalido`), leyendo el cuerpo JSON de `error.context` cuando existe.
+
+**Pantalla de revisión** (`abrirRevisionIA`, en el mismo panel/drawer global `#panelBody`):
+- Aviso ámbar fijo: "La IA sugiere. Revisa antes de guardar. **Nada se guarda hasta que
+  confirmes.**" (`.ia-aviso-ia`, tokens `--amb`/`--amb-bg`, dark-aware).
+- Encabezado editable: N° PO, fecha (prellenados de `extraccion`), moneda — `<select>` de
+  `ERP.MONEDAS` (no texto libre: evita mandarle a la RPC una moneda que no sea USD/MXN), default
+  USD si la IA no la trajo.
+- **Cliente:** texto crudo leído (`.ia-leido`, itálica muted) + combo buscable sobre
+  `v_catalogo_clientes` (mismo catálogo del alta manual — SIEMPRE existente, nunca se inventa),
+  preseleccionado vía `combo.seleccionar()` si `mapeo.cliente.sugerencia.es_cliente`; badge de
+  score (`scoreBadge()`: verde ≥70%, ámbar ≥30%, rojo <30%, gris "sin sugerencia"); chips de
+  `alternativas` (filtradas a `es_cliente`, `.ia-alts`/`.ia-alt` sobre `.chip` global) que
+  reseleccionan el combo al click. Sin sugerencia → combo vacío, validación bloquea "Confirmar"
+  hasta elegir manual (D-167).
+- **Sales Type:** `<select>` de `v_revenue_models` activos, SIEMPRE vacío al abrir — la IA nunca
+  lo sugiere (regla explícita del pedido); obligatorio para confirmar.
+- **Líneas:** tabla editable, un combo de producto POR FILA sobre `v_catalogo_productos`
+  (`permitirNuevo:false`), mismo patrón de badge/alternativas/preselección que cliente; texto
+  leído por fila en la primera columna; cantidad/UOM/precio editables (precio vacío = comisión
+  pura, correcto); agregar/quitar filas (mismo patrón que `modulo-o1-so.js`).
+- **"Confirmar y guardar"** — botón primario **NEGRO** (`var(--btn)/var(--btnT)`, dark-aware:
+  `#14231A`/blanco en claro, invertido en oscuro — NO el `--verde-solido` que usan los demás
+  botones del panel legacy, por pedido explícito de diseño). Reusa **EXACTAMENTE**
+  `fn_op_cpo_alta` → `fn_op_so_crear_desde_cpo` con el MISMO shape de `p_lineas` que
+  `lineasPayload()` de `modulo-o1-so.js` (`{producto_id,cantidad,uom,precio_unitario}`);
+  `p_actor:null` en ambos RPCs (lo resuelve el server por JWT, como pide el contrato).
+- **Guardia anti-huérfano:** `iaCpoCreado` guarda `{customer_po_id,folio}` tras el paso A exitoso;
+  si el paso B (SO) falla, un reintento del mismo botón NO vuelve a llamar `fn_op_cpo_alta` — solo
+  reintenta la SO. El aviso de error explica exactamente qué se creó y qué falló, con la opción de
+  generar la SO a mano desde la lista de Customer PO si el reintento tampoco funciona.
+- "Cancelar" no escribe nada (limpia `iaCpoCreado` y cierra el panel).
+
+**Verificación (Chrome DevTools MCP) — flujo REAL con red mockeada a nivel `fetch`** (sin sesión
+Supabase real; se interceptaron `v_catalogo_clientes`/`v_revenue_models`/`v_catalogo_productos`/
+`extraer-po`/ambas RPCs, dejando correr el código de producción sin aproximar nada — subida de
+archivo real vía `File`+`DataTransfer`+evento `change`, clicks reales sobre el DOM real):
+1. Botón deshabilitado → habilitado tras subida real del PDF.
+2. `invoke` recibió `{ruta:"2026/<uuid>-PO-Northgate-...pdf"}` — confirmado SIN el prefijo `storage:`.
+3. Pantalla prellenada exacta: cliente NORTHGATE MARKETS 100%, línea Papaya 92% + línea sin
+   sugerencia (combo vacío, precio vacío intacto de la extracción con `precio:null`).
+4. Chip de alternativa reselecciona el combo (verificado con Aguacate Hass).
+5. Validaciones: confirmar sin Sales Type → bloquea; línea con datos pero sin producto elegido →
+   bloquea con mensaje claro (D-167).
+6. Payload capturado en ambas RPCs — exacto: `p_cliente_id:38`, `p_lineas` con 2 filas
+   (`producto_id:3/9`, `precio_unitario:18.5/null`), `p_actor:null` en ambas,
+   `p_adjunto_ref:"storage:cpo-adjuntos/2026/...pdf"`.
+7. **Caso CPO-creado/SO-falla:** 1er intento crea CPO (1 llamada) + SO falla (aviso claro);
+   reintento NO duplica el CPO (sigue en 1 llamada) y reintenta solo la SO (2ª llamada) hasta
+   éxito → navega a la ficha de la Sales Order creada.
+8. Claro y oscuro por screenshot: "Confirmar y guardar" negro/blanco correcto en ambos temas.
+
+**Archivos tocados:** `modulo-o1-cpo.js` (único `.js`), `estilos.css` (bloque nuevo sin scope de
+pantalla, vive en `#panelBody`). `node --check` limpio. **NO DESPLEGADO** (Miguel corre
+`npx vercel --prod`).

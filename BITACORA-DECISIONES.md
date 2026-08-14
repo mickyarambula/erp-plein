@@ -2182,3 +2182,91 @@ _Arranque del reinicio operativo "Camino C" (ver `PLAN-REINICIO-OPERATIVO-CAMINO
 - Catálogos reusados (vistas ya vivas del ERP, NO se inventaron nombres): clientes `v_catalogo_clientes`, productos `v_catalogo_productos`, modelos de venta `v_revenue_models`. `p_actor` = `ERP.perfil.socio_codigo` (o null).
 
 **ANCLAS:** sin cambio en las anclas de dinero — O1 es un namespace nuevo vacío; no toca Cuadre/CxC/CxP/JPM ni el histórico. Frontend money-neutral. Este chat es frontend/docs y no reverifica en vivo (Supabase MCP no autenticado en esta sesión); la prueba de aceptación (DoD O1) la corre Miguel en producción.
+
+## Sesión E125 (2026-08-13) — CAMINO C · Incremento B: "Leer PO con IA" (D-169/170/171)
+_Slice final de O1 — el reinicio operativo Order-to-Cash queda con captura asistida por IA sobre
+el mismo par de RPCs manuales ya probado (D-160/161/162). **D-169/170/171 son decisiones de
+BACKEND** (esquema, extensión, Edge Function, RPCs de sugerencia) — aplicadas por el chat de
+backend; **este chat es frontend** y consume el contrato ya desplegado ("INFRA VIVA"), no lo
+verifica en vivo (Supabase MCP no autenticado en esta sesión). Se documentan aquí porque este chat
+cierra el incremento end-to-end._
+
+- **D-169 — `pg_trgm` en el schema `extensions`** (no en `public`): habilita similitud de texto
+  (`word_similarity`) para el mapeo de la IA contra catálogo (cliente/producto), sin ensuciar el
+  namespace público con objetos de extensión.
+- **D-170 — Edge Function `extraer-po`** (`verify_jwt=false`, valida el JWT/capacidad `capturar`
+  DENTRO de la función, no vía el gate nativo de Supabase): dos rutas — "ping" (health-check) y
+  "extracción" real (descarga el PDF de `cpo-adjuntos` por `ruta`, lo manda a Claude). Modelo
+  primario **Haiku 4.5**, con **Sonnet 5 de respaldo** si Haiku falla o el JSON no es válido.
+  Contrato de respuesta/errores fijo (ver INFRA VIVA abajo) — invocada por el frontend con
+  `supabase.functions.invoke('extraer-po', {body:{ruta}})`, que adjunta el JWT de sesión solo.
+- **D-171 — `fn_op_sugerir_contraparte`/`fn_op_sugerir_producto`** (RPCs de solo lectura,
+  `SECURITY DEFINER`, nacen **cerradas** — sin GRANT a `anon`; consumidas SOLO desde dentro de
+  `extraer-po`, no expuestas directo al frontend). Umbral de coincidencia **0.3** vía
+  `word_similarity` (pg_trgm, D-169); por debajo del umbral, `sugerencia:null` — el frontend
+  obliga a elegir manual (D-167 ya documentado en la sesión de O1 original: nunca se crea
+  contraparte/producto nuevo desde este flujo).
+
+**Contrato consumido por el frontend (INFRA VIVA, ya viva — no se re-creó):**
+- `supabase.functions.invoke('extraer-po', {body:{ruta}})` — `ruta` = ruta del objeto DENTRO de
+  `cpo-adjuntos`, SIN el prefijo `storage:cpo-adjuntos/`.
+- Éxito 200: `{ok:true, modelo_usado, extraccion:{numero_po,fecha,moneda}, mapeo:{cliente:{texto,
+  sugerencia,alternativas}, lineas:[{producto_texto,cantidad,uom,precio,sugerencia,alternativas}]}}`.
+  `sugerencia`/cada item de `alternativas` = `{id, etiqueta|nombre, ..., score, es_sugerencia:true}`.
+- Errores (`ok:false,error`): 400 `falta_ruta` · 401 `sin_sesion`/`auth_error` · 403
+  `sin_permiso_capturar` · 404 `descarga_falla` · 502 `anthropic_falla`/`json_invalido`.
+
+**Frontend (E125) — `modulo-o1-cpo.js` (sin archivo nuevo; extiende el flujo de alta de CPO):**
+- Botón **"Leer PO con IA"** (ícono `ti-sparkles`) en el form "Nuevo Customer PO", habilitado solo
+  tras subir un PDF/imagen a `cpo-adjuntos` (reusa el `adjuntoSubido` del Incremento A/E122). Al
+  click: estado "Leyendo…" con spinner (`ti-loader-2.ti-spin`), invoca `extraer-po` con
+  `{ruta: parseStorageRef(adjuntoSubido).ruta}` (prefijo `storage:cpo-adjuntos/` quitado en
+  frontend, nunca se manda a la función). Errores mapeados a español por código (D-170).
+- **Pantalla de revisión** (`abrirRevisionIA`, mismo panel/drawer global `#panelBody`): aviso
+  ámbar fijo "La IA sugiere… Nada se guarda hasta que confirmes"; encabezado editable (N° PO,
+  fecha, moneda — `select` de `ERP.MONEDAS`, no texto libre, para no mandarle a la RPC una moneda
+  inválida); **Cliente** — combo buscable sobre `v_catalogo_clientes` (mismo catálogo que el alta
+  manual), preseleccionado con `combo.seleccionar()` si hay `sugerencia.es_cliente`, badge de
+  score (verde ≥70%, ámbar ≥30%, rojo <30%, gris "sin sugerencia"), chips de `alternativas`
+  (filtradas a `es_cliente`) que reseleccionan el combo al click; sin sugerencia → combo vacío,
+  **Confirmar bloquea** hasta elegir manual (D-167, verificado). **Sales Type** — `select` de
+  `v_revenue_models` activos, SIEMPRE vacío al abrir (la IA nunca lo sugiere), obligatorio.
+  **Líneas** — tabla editable, un combo de producto POR FILA sobre `v_catalogo_productos`
+  (`permitirNuevo:false` en cliente y producto — D-167: nunca se crea catálogo nuevo desde aquí),
+  mismo patrón de badge/alternativas/preselección que cliente; cantidad/UOM/precio editables,
+  precio vacío = comisión pura (correcto, igual que el flujo manual); agregar/quitar filas.
+- **"Confirmar y guardar"** (botón primario NEGRO — `var(--btn)/var(--btnT)`, dark-aware): reusa
+  **EXACTAMENTE** los 2 RPCs y el shape de `p_lineas` del flujo manual (`fn_op_cpo_alta` →
+  `fn_op_so_crear_desde_cpo`, mismo `{producto_id,cantidad,uom,precio_unitario}` que
+  `lineasPayload()` de `modulo-o1-so.js`); `p_actor:null` en ambos (lo resuelve el server por
+  JWT); `p_adjunto_ref` = el mismo `adjuntoSubido` ya construido por el Incremento A. **Guardia
+  anti-huérfano:** si el paso A (CPO) tiene éxito y el paso B (SO) falla, el CPO NO se reintenta
+  en un segundo click (se guarda `customer_po_id` localmente) — solo se reintenta la SO; el aviso
+  de error explica exactamente qué se creó y qué falló, con instrucción de reintento o de generar
+  la SO a mano desde la lista de Customer PO. **Cancelar** no escribe nada.
+
+**Verificación (Chrome DevTools MCP, flujo real con mocks de red — sin sesión Supabase real):**
+red mockeada a nivel `fetch` (catálogos, `extraer-po`, ambas RPCs) para poder ejercitar el código
+de PRODUCCIÓN sin aproximarlo — clicks reales sobre el DOM real, subida de archivo real
+(`File`/`DataTransfer` + evento `change` real → `onArchivoCPO` real). Confirmado:
+1. Botón deshabilitado hasta subir archivo; habilitado tras subida real.
+2. `invoke` recibe `{ruta}` SIN el prefijo `storage:`.
+3. Pantalla de revisión prellenada exacta (cliente 100%, línea 92% + línea "sin sugerencia" con
+   combo vacío y precio vacío intacto).
+4. Chip de alternativa reselecciona el combo correctamente.
+5. Confirmar sin Sales Type → bloquea con mensaje claro; línea sin producto elegido → bloquea con
+   mensaje claro (D-167).
+6. Payload real capturado en ambas RPCs: `p_cliente_id`/`p_lineas`/`p_actor:null` exactos,
+   `p_adjunto_ref` con el formato `storage:cpo-adjuntos/<ruta>` correcto.
+7. **Caso CPO-creado/SO-falla:** primer intento crea CPO (1 llamada) y la SO falla (aviso claro);
+   reintento NO duplica el CPO (sigue en 1 llamada) y la SO se reintenta (2ª llamada) hasta éxito.
+8. Claro y oscuro verificados por screenshot — "Confirmar y guardar" negro/blanco correcto en
+   ambos temas (`var(--btn)/var(--btnT)`, dark-aware desde E123).
+
+**Archivos tocados:** `modulo-o1-cpo.js` (único `.js` tocado), `estilos.css` (bloque nuevo,
+sin scope de pantalla — vive en `#panelBody`). Ningún cambio a `tokens.css` ni a otros módulos.
+
+**ANCLAS:** sin cambio — mismo flujo O1 money-neutral (D-160..162); la IA solo prellena, el
+guardado real sigue siendo el mismo par de RPCs ya auditados. Este chat no reverifica `v_anclas`/
+`v_seguridad_auth` en vivo (sin acceso a Supabase MCP en esta sesión) — la lectura de sanidad
+pedida (CxC/CxP/JPM sin mover, `v_seguridad_auth` 0/0/0) la corre el chat de backend o Miguel.
