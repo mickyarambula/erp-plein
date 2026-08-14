@@ -4797,3 +4797,47 @@ archivo real vía `File`+`DataTransfer`+evento `change`, clicks reales sobre el 
 **Archivos tocados:** `modulo-o1-cpo.js` (único `.js`), `estilos.css` (bloque nuevo sin scope de
 pantalla, vive en `#panelBody`). `node --check` limpio. **NO DESPLEGADO** (Miguel corre
 `npx vercel --prod`).
+
+## E127 (2026-08-13) — CAMINO C · O2a/O2b: Inventario + Asignación a SO + Gasto de entrada (D-177..180)
+_Backend O2a/O2b ya HECHO Y PROBADO (motor CxP con ENSAYO ok). Este chat verificó el contrato en
+vivo (autorizó Supabase MCP a propósito — no quiso adivinar firmas de RPC) y construyó el
+frontend completo. Detalle de decisiones en `BITACORA-DECISIONES.md` (D-177..180)._
+
+**`modulo-o1-inventario.js` (nuevo, ruta `o1-inventario`, grupo "Camino C").** Lista de lotes
+(`v_op_inventario`) con KPIs Lotes/Disponible total/Ubicaciones. **"Recibir inventario"**
+(`fn_op_lot_recibir`): producto, ubicación (picker derivado de `v_op_inventario` + "+ Nueva
+ubicación" inline vía `fn_op_location_alta`, preselecciona al crear), cantidad, UOM, proveedor de
+origen, referencia, fecha. Standalone — un lote NO se liga a ninguna operación al recibirlo.
+
+**`modulo-o1-so.js` (extendido).** Tablero de la ficha de Sales Order gana **"Asignar"** por
+línea (si `open>0`): panel con lote elegible (filtrado por producto + disponible, desde
+`v_op_inventario`) + cantidad → `fn_op_alloc_crear`. Guardas de UI (cantidad ≤ disponible del lote
+y ≤ open de la línea). Sin lote disponible → atajo directo a "Recibir inventario nuevo" con el
+producto de la línea prellenado. Allocated ya no se muestra en gris ("futuro") — sube en vivo.
+
+**`modulo-operaciones.js` (extendido).** Botón **"Agregar gasto de entrada"** en la ficha de OP
+(junto a "Agregar compra"/"Registrar embarque"): concepto restringido en frontend a los 3
+conceptos de recepción (In & Out QC/Fletes/Aduanas, con red de seguridad si el catálogo vivo
+cambiara de nombre), monto, contraparte real (opcional), nota → `fn_op_costo_entrada` (que NO
+lleva `p_actor`, a diferencia de las RPCs de Camino C). `p_op_lot_id` siempre `null` desde esta
+pantalla (sin cross-check todavía, ver D-178). **Cero código nuevo en la lectura** — las vistas
+`v_operacion_costos`/`v_operacion_cxp` ya traen la capa `'op'` vía UNION (backend), así que el
+gasto capturado aparece solo en las tablas que ya existían en ese mismo drawer.
+
+**Verificación (Chrome DevTools MCP, red mockeada al contrato exacto, flujo real — clicks sobre
+el DOM real, no aproximado):**
+- Gasto de entrada: picker filtrado a 3/6 conceptos mockeados; payload capturado exacto en
+  `fn_op_costo_entrada` (sin `p_actor`); recarga la ficha de OP tras guardar.
+- Recibir inventario: alta de ubicación inline con preselección automática; payload exacto en
+  `fn_op_lot_recibir`.
+- Asignar a línea: lote filtrado por producto+disponible; validación de exceso sobre Open probada
+  y bloqueada; payload exacto en `fn_op_alloc_crear`; vuelve al tablero actualizado.
+- Caso sin lote disponible: mensaje + atajo a "Recibir inventario nuevo" con producto prellenado
+  (confirmado combo con el producto correcto ya seleccionado al llegar).
+- Oscuro verificado por color computado (mismo triple-selector `.pantalla-o1-cpo/so/inventario`
+  extendido de E121 — sin selectores nuevos sin verificar).
+
+**Archivos:** `modulo-o1-inventario.js` (nuevo), `modulo-o1-so.js` + `modulo-operaciones.js`
+(extendidos), `index.html` (script + nav), `estilos.css` (scope nuevo extendiendo el bloque
+triple-selector de E121). `node --check` limpio en los 3 `.js`. **NO DESPLEGADO** (Miguel corre
+`npx vercel --prod`).

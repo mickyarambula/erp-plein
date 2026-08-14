@@ -2270,3 +2270,100 @@ sin scope de pantalla — vive en `#panelBody`). Ningún cambio a `tokens.css` n
 guardado real sigue siendo el mismo par de RPCs ya auditados. Este chat no reverifica `v_anclas`/
 `v_seguridad_auth` en vivo (sin acceso a Supabase MCP en esta sesión) — la lectura de sanidad
 pedida (CxC/CxP/JPM sin mover, `v_seguridad_auth` 0/0/0) la corre el chat de backend o Miguel.
+
+## Sesión E127 (2026-08-13) — CAMINO C · O2a/O2b: Inventario + Asignación + Gasto de entrada (D-177..180)
+_Cierre de FRONTEND para O2 (Inventario + Lots + Allocation). **Backend O2a/O2b ya estaba HECHO Y
+PROBADO** (motor CxP con ENSAYO ok) — este chat es frontend y consumió el contrato **verificado en
+vivo por Miguel/backend en esta misma sesión** (Supabase MCP autorizado a pedido de este chat,
+justo para esto: no quiso adivinar firmas de RPC). D-177 es el entregable de frontend; D-178/179/180
+son las decisiones de implementación de backend que quedaron pendientes de registrar._
+
+- **D-177 — Frontend O2a + O2b entregado.** 3 archivos tocados/nuevos, `node --check` limpio,
+  verificado end-to-end con red mockeada al contrato exacto (Chrome DevTools MCP, clicks reales
+  sobre el DOM real — mismo método que E121-E126):
+  - **`modulo-o1-inventario.js` (nuevo, ruta `o1-inventario`, grupo "Camino C").** Lista de lotes
+    desde `v_op_inventario` (KPIs Lotes/Disponible total/Ubicaciones) + **"Recibir inventario"**
+    (`fn_op_lot_recibir`): producto (combo sobre `v_catalogo_productos`, `permitirNuevo:false`),
+    ubicación (combo derivado de `v_op_inventario` — sin vista dedicada de ubicaciones todavía,
+    ver limitación abajo — con "+ Nueva ubicación" inline que llama `fn_op_location_alta` y
+    preselecciona la ubicación recién creada), cantidad, UOM (default CAJA), proveedor de origen
+    (opcional), referencia de origen, fecha. Un lote se recibe SIN ligar a ninguna operación ni
+    venta (`op.lots` es standalone).
+  - **`modulo-o1-so.js` (extendido).** El tablero de la ficha de Sales Order (Required/Allocated/
+    Purchased/Open) gana una acción **"Asignar"** por línea (solo si `open > 0` y `capacidad
+    capturar`): abre un panel con el lote elegible (filtrado a `producto_id` de la línea +
+    `disponible > 0`, desde `v_op_inventario`) y cantidad; llama `fn_op_alloc_crear(p_so_linea_id,
+    p_lot_id, p_cantidad)`, con guardas de UI (cantidad ≤ disponible del lote Y ≤ open de la
+    línea — el backend es la autoridad, esto es solo guía). Si no hay lote disponible del
+    producto, ofrece un atajo directo a "Recibir inventario nuevo" con el producto prellenado.
+    Allocated dejó de mostrarse en gris (ya no es "futuro"): sube en vivo al asignar.
+  - **`modulo-operaciones.js` (extendido).** Botón **"Agregar gasto de entrada"** en la ficha de
+    OP (`verOperacion`), junto a "Agregar compra"/"Registrar embarque": concepto (select
+    restringido en frontend a los 3 conceptos de recepción — In & Out QC/Fletes/Aduanas — de
+    `v_catalogo_conceptos_costo`, con red de seguridad si el nombre vivo cambiara), monto,
+    contraparte real (combo opcional sobre `v_directorio_contrapartes&es_proveedor=true`), nota.
+    Llama `fn_op_costo_entrada` (que NO acepta `p_actor`, a diferencia de las RPCs de Camino C —
+    confirmado no mandarlo). `p_op_lot_id` se manda SIEMPRE `null` desde esta pantalla — deliberado
+    (ver D-178). **La LECTURA no necesitó código nuevo:** `v_operacion_costos`/`v_operacion_cxp`
+    ya traen la capa `'op'` vía UNION (D-179) — un gasto capturado aquí aparece solo en "Costos
+    por línea"/"Costo por contraparte real (CxP)" del mismo drawer al recargar.
+  - **Limitación conocida (anotada, no bloqueante):** no hay vista dedicada de ubicaciones — el
+    picker de `modulo-o1-inventario.js` se arma por-dedupe de `v_op_inventario`, así que una
+    ubicación recién creada solo aparece "de forma persistente" (entre sesiones) hasta que tenga
+    al menos un lote. Dentro de la MISMA sesión de captura queda disponible de inmediato (se
+    agrega al array en memoria al crearla). Suficiente para el flujo real; una vista
+    `v_op_locations` sería la mejora natural si el catálogo de ubicaciones crece.
+  - **Sin "liberar" en esta pasada:** `fn_op_alloc_liberar(p_allocation_id)` existe y quedó fuera
+    del alcance de esta pantalla — no hay vista que exponga IDs de allocation individuales (solo
+    agregados vía `v_op_so_tablero`), así que no hay forma segura de ofrecer "liberar" sin
+    inventar una consulta. Parqueado para cuando exista esa vista.
+
+- **D-178 — O2b anclado a `public.operaciones` (stack VIVO), no a `op.lots`/`op.operaciones`
+  (Camino C).** `op.op_costos.operacion_id` → `public.operaciones(folio_op)` — el motor de gasto
+  de entrada vive del lado del modelo OP en producción (`OP-00xx`), no del namespace nuevo de O1
+  (`OP-2026-#####`, hoy vacío). Consecuencia directa para frontend: el botón de captura vive en
+  `modulo-operaciones.js` (la ficha OP legacy, ya en uso real por Miguel), no en `modulo-o1-so.js`.
+  `op.lots` tampoco tiene `operacion_id` — por eso `p_op_lot_id` se deja siempre `null` desde
+  "Agregar gasto de entrada": no hay cross-check que impida ligar un lote que no corresponda a
+  esa OP, y ofrecer el campo sin esa validación invitaría un error silencioso de captura. Cuando
+  Camino C migre el negocio real (O1 deje de estar vacío), hay que migrar la FK de `op.op_costos`
+  + las vistas junto con cargas/Sales Orders — pendiente parqueado, no de esta sesión.
+- **D-179 — Columna `capa` en `v_operacion_cxp`/`v_operacion_costos` (UNION `'contable'|'op'`).**
+  Ambas vistas ya usadas por `modulo-operaciones.js` desde antes de O2 ahora combinan filas del
+  modelo contable histórico y de `op.op_costos` en una sola fuente — el frontend de lectura NO
+  necesitó ningún cambio: el UNION resuelve la coexistencia de los dos stacks de forma
+  transparente para la pantalla que ya existía.
+- **D-180 — `v_anclas.cxp_total` pliega `op.op_costos` (NOT anulado).** Una sola fuente de CxP
+  para el ancla global — un gasto de entrada capturado vía O2b mueve el ancla `cxp_total` igual
+  que cualquier otro costo del modelo contable histórico, sin una segunda cuenta paralela.
+
+**Verificación (Chrome DevTools MCP, red mockeada al contrato exacto, flujo real):**
+1. O2b: picker de concepto correctamente restringido a 3/6 conceptos mockeados (Aduanas/In & Out
+   QC/Fletes); payload capturado en `fn_op_costo_entrada` exacto (`p_operacion_id:"OP-0088"`,
+   `p_concepto:"Fletes"`, `p_monto:850.5`, `p_contraparte_id:22`, `p_op_lot_id:null`, nota — SIN
+   `p_actor`); tras guardar, vuelve a `verOperacion()` (recarga de lectura).
+2. O2a recibir: producto + "Nueva ubicación" inline (`fn_op_location_alta` con
+   `{p_codigo:"NGL-01",p_nombre:"Bodega Nogales"}`, preselección automática de la ubicación
+   creada) + proveedor + cantidad → `fn_op_lot_recibir` con payload exacto
+   (`p_producto_id:3,p_location_id:501,p_on_hand:300,p_uom:"CAJA",p_proveedor_id:22,
+   p_origen_ref:"OC-0123",p_fecha:"2026-08-13"`).
+3. O2a asignar: tablero con línea Open=200 → "Asignar" → lote filtrado por producto+disponible
+   mostrado correctamente → validación de exceso sobre Open (200) probada y bloqueada antes de
+   probar con cantidad válida (150) → `fn_op_alloc_crear` con payload exacto
+   (`p_so_linea_id:55,p_lot_id:9001,p_cantidad:150`) → vuelve al tablero actualizado.
+4. Caso "sin lote disponible": mensaje correcto + atajo "Recibir inventario nuevo" que prellena
+   el producto de la línea (verificado: combo de producto llega con "PAPAYA" ya seleccionado).
+5. Modo oscuro verificado por color computado (mismo triple-selector `.pantalla-o1-cpo/so/
+   inventario` extendido de E121, sin selectores nuevos sin verificar).
+
+**Archivos:** `modulo-o1-inventario.js` (nuevo), `modulo-o1-so.js` + `modulo-operaciones.js`
+(extendidos), `index.html` (script + nav "Camino C"), `estilos.css` (scope `.pantalla-o1-
+inventario` extendiendo el bloque triple-selector de E121). Ningún cambio a `tokens.css`.
+
+**ANCLAS:** O2a (recibir/asignar) es money-neutral por diseño — `op.lots`/`op.inventory_
+allocations` no mueven CxC/CxP/JPM. O2b SÍ mueve `cxp_total` (D-180) — cada gasto de entrada
+capturado es un costo real nuevo, exactamente como capturar un costo por el flujo contable
+histórico ya existente; no es un movimiento "extra" ni duplicado. Este chat no corrió la lectura
+de sanidad post-cambio (`v_anclas`/`v_seguridad_auth`) — la pidió a Miguel/backend antes de dar
+por cerrada la sesión, ya que este chat es frontend y su verificación de Supabase MCP en esta
+sesión fue solo para leer firmas, no para escribir ni para correr la lectura de sanidad final.

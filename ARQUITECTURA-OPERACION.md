@@ -194,3 +194,29 @@ Detalle fino y verificación en `REPORTE-FRONTEND.md` (E125) y `BITACORA-DECISIO
 **Estado:** entregado a Miguel para prueba con el Customer PO real de Northgate (DoD: cliente
 prellenado NORTHGATE MARKETS, ≥1 línea con Papaya preseleccionado; confirmar crea 1 Customer PO +
 1 Sales Order en `op.*`; `v_anclas`/`v_seguridad_auth` sin cambio).
+
+---
+
+## 12. O2 · Inventario + Lots + Allocation (2026-08-13, D-177..180)
+
+Dos stacks conviven deliberadamente (confirmado en vivo, no supuesto):
+- **O2a (recibir + asignar), sin dinero:** `op.lots`/`op.inventory_allocations` — stack Camino C.
+  Un lote se recibe standalone (sin `operacion_id`); se asigna a una línea de `op.so_lineas` (O1).
+  Frontend: `modulo-o1-inventario.js` (nuevo) + tablero de `modulo-o1-so.js` (extendido).
+- **O2b (gasto de entrada), con dinero:** `op.op_costos.operacion_id` → **`public.operaciones`
+  (folio_op)** — el stack VIVO/histórico, NO Camino C (D-178). Motor de CxP ya probado con ENSAYO
+  ok; `v_operacion_costos`/`v_operacion_cxp` (ya usadas por `modulo-operaciones.js` desde antes de
+  O2) ahora traen la capa `'op'` vía UNION (D-179), y `v_anclas.cxp_total` pliega `op.op_costos`
+  como única fuente de CxP (D-180). Frontend: botón "Agregar gasto de entrada" en la ficha OP
+  legacy (`modulo-operaciones.js`, `verOperacion()`) — la lectura no necesitó código nuevo.
+
+**Por qué la asimetría:** O2a nace en el namespace nuevo (Camino C, hoy vacío en producción) para
+no repetir trabajo cuando el negocio migre; O2b nace anclado al stack VIVO porque el gasto de
+entrada es dinero real que debe reflejarse en la OP que Miguel ya opera hoy (`OP-00xx`). Cuando
+Camino C migre el negocio real, migrar la FK de `op.op_costos` + las vistas junto con cargas/SOs
+— pendiente parqueado.
+
+**Estado:** entregado a Miguel para prueba con datos reales (Recibir inventario → Asignar a una
+línea de Sales Order real de O1 → Agregar gasto de entrada a una OP real). Detalle fino y
+verificación (red mockeada al contrato exacto) en `REPORTE-FRONTEND.md` (E127) y
+`BITACORA-DECISIONES.md` (D-177..180).
