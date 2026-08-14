@@ -21,6 +21,18 @@
   const num = v => (v === null || v === undefined || v === '') ? null : Number(v);
   const inicial = s => String(s || '?').trim().charAt(0).toUpperCase();
   const iniciales = s => String(s || '?').trim().split(/\s+/).slice(0, 2).map(w => w.charAt(0)).join('').toUpperCase() || '?';
+  const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  const mesOpts = sel => '<option value="">—</option>' + MESES.map((m, i) => `<option value="${i + 1}"${Number(sel) === i + 1 ? ' selected' : ''}>${m}</option>`).join('');
+
+  async function existeNombre(vista, nombre) {
+    const filas = await q(vista, '&order=nombre.asc').catch(() => []);
+    const n = ERP.norm(nombre);
+    return (filas || []).some(x => ERP.norm(x.nombre) === n);
+  }
+  async function confirmarSiDuplicado(vista, nombre) {
+    if (!(await existeNombre(vista, nombre))) return true;
+    return confirm(`Ya existe "${nombre}". ¿Crear otro de todas formas?`);
+  }
 
   // Campos canónicos por entidad (= encabezados de las plantillas .xlsx, sin " *").
   const CAMPOS_IMPORT = {
@@ -108,10 +120,12 @@
           <div class="catc-lh">
             <div class="catc-sb"><i class="ti ti-search"></i><input id="catcBuscar" type="search" placeholder="Buscar" value="${esc(fTexto)}"></div>
             <div class="catc-lh-btns">
-              ${puedeCap() ? `<button class="btn-primary catc-nuevo" id="catcNuevo"><i class="ti ti-plus"></i><span>${esc(nuevoLabel())}</span></button>` : ''}
-              <div class="catc-lh-secondary">
-                ${puedeCap() ? `<button class="catc-sec-btn" id="catcImportar"><i class="ti ti-file-spreadsheet"></i>Importar</button>` : ''}
-                <button class="catc-sec-btn" id="catcExportar" title="Bajar este catálogo en .xlsx"><i class="ti ti-file-export"></i>Exportar</button>
+              <div class="catc-lh-fila">
+                ${puedeCap() ? `<button class="btn-mini" id="catcNuevo"><i class="ti ti-plus"></i>${esc(nuevoLabel())}</button>` : ''}
+              </div>
+              <div class="catc-lh-fila">
+                ${puedeCap() ? `<button class="btn-mini gris" id="catcImportar"><i class="ti ti-file-spreadsheet"></i>Importar</button>` : ''}
+                <button class="btn-mini gris" id="catcExportar" title="Bajar este catálogo en .xlsx"><i class="ti ti-file-export"></i>Exportar</button>
               </div>
             </div>
           </div>
@@ -269,8 +283,6 @@
           <div class="f"><label>Orgánico</label><select id="p_organico"${ro}><option value="false" ${!p.organico ? 'selected' : ''}>No</option><option value="true" ${p.organico ? 'selected' : ''}>Sí</option></select></div>
         </div>
         <div class="catc-g3" style="margin-top:10px">
-          <div class="f"><label>Temporada desde (mes)</label><input id="p_tdesde" type="number" min="1" max="12" value="${esc(p.temporada_desde ?? '')}"${ro}></div>
-          <div class="f"><label>Temporada hasta (mes)</label><input id="p_thasta" type="number" min="1" max="12" value="${esc(p.temporada_hasta ?? '')}"${ro}></div>
           <div class="f"><label>Estado</label><select id="p_estado"${ro}><option value="activo" ${String(p.estado||'activo')==='activo'?'selected':''}>Activo</option><option value="inactivo" ${String(p.estado)==='inactivo'?'selected':''}>Inactivo</option></select></div>
         </div>
         <div class="f" style="margin-top:10px"><label>Nota</label><input id="p_nota" value="${esc(p.nota || '')}"${ro}></div>
@@ -293,9 +305,17 @@
       </div>
 
       <div class="catc-card"><h4>Proveedores que lo surten ${puedeCap() ? '<span class="catc-add" data-vprov><i class="ti ti-plus"></i>Vincular</span>' : ''}</h4>
-        <div style="display:flex;flex-wrap:wrap;gap:7px">${det.proveedores.length
-          ? det.proveedores.map(v => `<span class="catc-chip">${esc(v.contraparte_nombre)}${puedeCap() ? `<i class="ti ti-x" data-unlinkprov="${esc(v.contraparte_id)}" title="Desvincular proveedor"></i>` : ''}</span>`).join('')
-          : '<span class="catc-hint">Sin proveedores vinculados.</span>'}</div>
+        ${det.proveedores.length
+          ? det.proveedores.map(v => `<div class="catc-linkline">
+              <div style="flex:1"><div class="cn">${esc(v.contraparte_nombre)}</div></div>
+              <span class="catc-hint" style="margin:0 3px">Temporada</span>
+              <select data-provtemp="${esc(v.contraparte_id)}" data-k="desde" style="height:28px;width:70px"${puedeCap() ? '' : ' disabled'}>${mesOpts(v.temporada_desde)}</select>
+              <span class="catc-hint">–</span>
+              <select data-provtemp="${esc(v.contraparte_id)}" data-k="hasta" style="height:28px;width:70px"${puedeCap() ? '' : ' disabled'}>${mesOpts(v.temporada_hasta)}</select>
+              ${puedeCap() ? `<i class="ti ti-device-floppy catc-go" data-saveprovtemp="${esc(v.contraparte_id)}" title="Guardar temporada"></i>
+              <i class="ti ti-x catc-go" data-unlinkprov="${esc(v.contraparte_id)}" title="Desvincular proveedor"></i>` : ''}
+            </div>`).join('')
+          : '<span class="catc-hint">Sin proveedores vinculados.</span>'}
       </div>
 
       <div class="catc-hint" style="margin-top:6px">Todo editable · eliminar va a papelera (recuperable) · si tiene movimientos, se archiva.</div>
@@ -314,6 +334,7 @@
     const bNewSku = $det().querySelector('[data-newsku]'); if (bNewSku) bNewSku.addEventListener('click', () => armadorSku(p));
     const bVprov = $det().querySelector('[data-vprov]'); if (bVprov) bVprov.addEventListener('click', () => vincularProveedor(p));
     $det().querySelectorAll('[data-unlinkprov]').forEach(el => el.addEventListener('click', () => desvincularProveedor(p.id, el.dataset.unlinkprov)));
+    $det().querySelectorAll('[data-saveprovtemp]').forEach(el => el.addEventListener('click', () => guardarTemporadaProveedor(p.id, el.dataset.saveprovtemp)));
     $det().querySelectorAll('[data-savesku]').forEach(el => el.addEventListener('click', () => guardarSku(el.dataset.savesku)));
     $det().querySelectorAll('[data-delsku]').forEach(el => el.addEventListener('click', () => {
       const sk = det.skus.find(x => String(x.id) === String(el.dataset.delsku));
@@ -330,7 +351,7 @@
     await escribir('fn_cat_producto_editar', {
       p_id: Number(det.reg.id), p_nombre: v('p_nombre').trim() || null, p_codigo_item: v('p_codigo').trim() || null,
       p_categoria: v('p_categoria') || null, p_pais_origen: v('p_pais').trim() || null,
-      p_organico: v('p_organico') === 'true', p_temporada_desde: num(v('p_tdesde')), p_temporada_hasta: num(v('p_thasta')),
+      p_organico: v('p_organico') === 'true',
       p_estado: v('p_estado') || null, p_nota: v('p_nota').trim() || null
     }, 'Producto guardado', true);
   }
@@ -450,11 +471,19 @@
     const provs = (await q('v_catc_contrapartes', '&es_proveedor=eq.true&order=nombre.asc').catch(() => []))
       .filter(x => !det.proveedores.some(v => String(v.contraparte_id) === String(x.id)));
     vistaPicker('Vincular proveedor · ' + p.nombre, provs.map(x => ({ id: x.id, label: x.nombre })), async sel => {
-      await escribir('fn_cat_vincular_producto_proveedor', { p_producto_id: Number(p.id), p_contraparte_id: Number(sel.id) }, 'Vinculado — aparece también en el proveedor');
+      await escribir('fn_cat_vincular_producto_proveedor', { p_producto_id: Number(p.id), p_contraparte_id: Number(sel.id), p_temporada_desde: null, p_temporada_hasta: null }, 'Vinculado — define su temporada abajo (opcional)');
     });
   }
   async function desvincularProveedor(pid, cid) {
     await escribir('fn_cat_desvincular_producto_proveedor', { p_producto_id: Number(pid), p_contraparte_id: Number(cid) }, 'Desvinculado');
+  }
+  async function guardarTemporadaProveedor(pid, cid) {
+    const desde = (document.querySelector(`[data-provtemp="${cid}"][data-k="desde"]`) || {}).value;
+    const hasta = (document.querySelector(`[data-provtemp="${cid}"][data-k="hasta"]`) || {}).value;
+    await escribir('fn_cat_vincular_producto_proveedor_editar', {
+      p_producto_id: Number(pid), p_contraparte_id: Number(cid),
+      p_temporada_desde: desde ? Number(desde) : null, p_temporada_hasta: hasta ? Number(hasta) : null
+    }, 'Temporada actualizada');
   }
   async function vincularClienteSku(sid) {
     const clis = (await q('v_catc_contrapartes', '&es_cliente=eq.true&order=nombre.asc').catch(() => []));
@@ -479,7 +508,7 @@
         // proveedor surte a nivel PRODUCTO: resolver el producto del SKU vía v_catc_skus
         const sku = uno(await q('v_catc_skus', `&id=eq.${Number(sel.id)}`).catch(() => []));
         if (!sku.producto_id) { ERP.toast('err', 'No se pudo resolver el producto del SKU.'); return; }
-        await escribir('fn_cat_vincular_producto_proveedor', { p_producto_id: Number(sku.producto_id), p_contraparte_id: Number(c.id) }, 'Vinculado a nivel producto');
+        await escribir('fn_cat_vincular_producto_proveedor', { p_producto_id: Number(sku.producto_id), p_contraparte_id: Number(c.id), p_temporada_desde: null, p_temporada_hasta: null }, 'Vinculado a nivel producto');
       }
     });
   }
@@ -642,6 +671,7 @@
       const v = id => (document.getElementById(id) || {}).value;
       const nombre = v('n_nombre').trim();
       if (!nombre) { ERP.toast('err', 'El nombre es obligatorio.'); return; }
+      if (!(await confirmarSiDuplicado('v_catc_productos', nombre))) return;
       try {
         const r = uno(await rpc('fn_cat_producto_alta', {
           p_nombre: nombre, p_codigo_item: v('n_codigo').trim() || null, p_categoria: v('n_cat') || null,
@@ -696,6 +726,7 @@
       const chk = id => !!(document.getElementById(id) || {}).checked;
       const nombre = v('x_nombre').trim();
       if (!nombre) { ERP.toast('err', 'El nombre es obligatorio.'); return; }
+      if (!(await confirmarSiDuplicado('v_catc_contrapartes', nombre))) return;
       try {
         const r = uno(await rpc('fn_cat_contraparte_alta', {
           p_nombre: nombre, p_razon_social: v('x_razon').trim() || null, p_es_cliente: chk('x_cli'), p_es_proveedor: chk('x_prov'),
