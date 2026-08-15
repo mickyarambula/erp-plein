@@ -81,6 +81,10 @@
     contrapartes: ['nombre', 'razon_social', 'es_cliente', 'es_proveedor', 'rfc_tax_id', 'paca_licencia', 'certificaciones', 'pais', 'ciudad', 'direccion_facturacion', 'direccion_envio', 'dias_credito', 'limite_credito', 'pct_anticipo', 'metodo_pago', 'moneda', 'contacto_nombre', 'contacto_rol', 'email', 'telefono_whatsapp', 'email_facturacion', 'estado', 'nota']
   };
   const PLANTILLA = { productos: 'plantilla_productos.xlsx', skus: 'plantilla_skus_presentaciones.xlsx', contrapartes: 'plantilla_contrapartes.xlsx' };
+  // Campos que existen en la plantilla/export pero el RPC de import correspondiente no acepta —
+  // se ocultan solo del mapeo (no del export, que sigue leyendo la vista completa).
+  const CAMPOS_IMPORT_IGNORAR = { skus: ['estado', 'nota'] };
+  const camposMapeo = entidad => CAMPOS_IMPORT[entidad].filter(c => !(CAMPOS_IMPORT_IGNORAR[entidad] || []).includes(c));
 
   /* ================= Estado ================= */
   let tab = 'prod';       // 'prod' | 'prov' | 'cli'
@@ -344,7 +348,7 @@
       <div class="catc-card"><h4>SKUs · variedad + presentación
         <span style="display:flex;align-items:center;gap:10px;text-transform:none;letter-spacing:0">
           <span class="catc-segtog"><button class="${skuMode === 'cards' ? 'on' : ''}" data-mode="cards">Tarjetas</button><button class="${skuMode === 'matriz' ? 'on' : ''}" data-mode="matriz">Matriz</button></span>
-          ${puedeCap() ? '<span class="catc-add" data-newsku><i class="ti ti-plus"></i>Nuevo SKU</span>' : ''}
+          ${puedeCap() ? '<span class="catc-add" data-newsku><i class="ti ti-plus"></i>Nuevo SKU</span><span class="catc-add" data-impsku><i class="ti ti-file-spreadsheet"></i>Importar</span>' : ''}
         </span></h4>
         ${det.skus.length
           ? (skuMode === 'matriz' ? matrizHTML(det.skus) : det.skus.map((s, i) => skuCardHTML(s, i, clientesDe)).join(''))
@@ -385,6 +389,7 @@
       eliminar('variedad', el.dataset.delvar, 'la variedad "' + (vv ? vv.nombre : '') + '"', true);
     }));
     const bNewSku = $det().querySelector('[data-newsku]'); if (bNewSku) bNewSku.addEventListener('click', () => armadorSku(p));
+    const bImpSku = $det().querySelector('[data-impsku]'); if (bImpSku) bImpSku.addEventListener('click', () => vistaImportar('skus'));
     const bVprov = $det().querySelector('[data-vprov]'); if (bVprov) bVprov.addEventListener('click', () => vincularProveedor(p));
     $det().querySelectorAll('[data-unlinkprov]').forEach(el => el.addEventListener('click', () => desvincularProveedor(p.id, el.dataset.unlinkprov)));
     $det().querySelectorAll('[data-saveprovtemp]').forEach(el => el.addEventListener('click', () => guardarTemporadaProveedor(p.id, el.dataset.saveprovtemp)));
@@ -902,19 +907,24 @@
   }
 
   /* ================= Importar Excel ================= */
-  function vistaImportar() {
-    const entidadDefault = esProd() ? 'productos' : 'contrapartes';
+  function vistaImportar(entidadForzada) {
+    const entidadDefault = entidadForzada || (esProd() ? 'productos' : 'contrapartes');
     let entidad = entidadDefault, parsed = null, mapeo = {};
     const cont = $det();
 
     function pintar() {
-      const campos = CAMPOS_IMPORT[entidad];
+      const campos = camposMapeo(entidad);
       const req = { productos: ['nombre'], skus: ['producto', 'empaque'], contrapartes: ['nombre'] }[entidad];
       cont.innerHTML = `<div class="catc-dwrap">
         <button class="catc-act" data-back style="margin-bottom:14px"><i class="ti ti-arrow-left"></i>Volver</button>
         <div style="font-size:18px;font-weight:600;margin-bottom:2px">Importar de Excel</div>
         <div class="catc-hint" style="margin-bottom:14px">Baja la plantilla, llénala, súbela. Se cuadran columnas y previsualizas antes de guardar. Nada se guarda hasta confirmar.</div>
-        ${esProd() ? `<div class="catc-segtog" style="margin-bottom:12px"><button class="${entidad === 'productos' ? 'on' : ''}" data-ent="productos">Productos</button><button class="${entidad === 'skus' ? 'on' : ''}" data-ent="skus">Presentaciones (SKUs)</button></div>` : ''}
+        <div class="catc-hint" style="margin-bottom:6px">¿Qué importas?</div>
+        <div class="catc-segtog" style="margin-bottom:12px">
+          <button class="${entidad === 'productos' ? 'on' : ''}" data-ent="productos">Productos</button>
+          <button class="${entidad === 'skus' ? 'on' : ''}" data-ent="skus">SKUs</button>
+          <button class="${entidad === 'contrapartes' ? 'on' : ''}" data-ent="contrapartes">Contrapartes</button>
+        </div>
         <div style="display:flex;gap:8px;margin-bottom:12px"><a class="catc-act" href="${PLANTILLA[entidad]}" download><i class="ti ti-download"></i>Descargar plantilla</a></div>
         <div class="catc-dz" id="imp_dz"><i class="ti ti-file-spreadsheet" style="font-size:32px;color:var(--brand)"></i>
           <div style="font-size:13px;font-weight:500;margin-top:8px">Arrastra tu archivo aquí</div>
@@ -948,7 +958,7 @@
         const datos = rows.slice(1).filter(r => r.some(c => c != null && String(c).trim() !== ''));
         parsed = { headers, datos };
         // auto-mapeo: header normalizado === campo canónico
-        const campos = CAMPOS_IMPORT[entidad];
+        const campos = camposMapeo(entidad);
         mapeo = {};
         headers.forEach((h, i) => { const n = ERP.norm(h).replace(/\s+/g, '_'); const m = campos.find(c => ERP.norm(c) === n); if (m) mapeo[i] = m; });
         pintar();
@@ -956,7 +966,7 @@
     }
 
     function pintarMapeoYPreview() {
-      const campos = CAMPOS_IMPORT[entidad];
+      const campos = camposMapeo(entidad);
       const res = document.getElementById('imp_res');
       const opts = sel => ['<option value="">Ignorar</option>', ...campos.map(c => `<option ${sel === c ? 'selected' : ''}>${esc(c)}</option>`)].join('');
       // preview: nuevas vs existentes por nombre contra la lista cargada (si aplica a la pestaña)
@@ -1008,8 +1018,23 @@
         const r = uno(await rpc(fn, args));
         ERP.limpiarCache();
         ERP.toast('ok', `${r.insertados ?? 0} ${entidad} importados${r.existentes ? ' · ' + r.existentes + ' ya existían' : ''}.`);
-        await recargarLista(); abrirDetalle(selId);
+        await recargarLista();
+        pintarResultado(r);
       } catch (e) { if (!(ERP.avisarSiPermiso && ERP.avisarSiPermiso(e))) ERP.toast('err', 'La importación falló: ' + esc(e.message)); }
+    }
+
+    function pintarResultado(r) {
+      const res = document.getElementById('imp_res');
+      const detalle = Array.isArray(r.detalle) ? r.detalle : null;
+      res.innerHTML = `
+        <div class="catc-card"><h4>Resultado</h4>
+          <div class="catc-hint" style="margin-bottom:10px">${esc(r.insertados ?? 0)} insertados${r.existentes ? ' · ' + esc(r.existentes) + ' ya existían' : ''}.</div>
+          ${detalle && detalle.length ? `<table class="catc-tbl"><thead><tr><th>Producto</th><th>Estado</th><th>ID</th></tr></thead><tbody>
+            ${detalle.map(d => `<tr><td>${esc(d.producto ?? '—')}</td><td>${esc(d.estado ?? '—')}</td><td class="mono">${esc(d.id ?? '—')}</td></tr>`).join('')}
+          </tbody></table>` : ''}
+        </div>
+        <div class="catc-dfoot"><span></span><button class="btn-primary catc-act" id="imp_listo"><i class="ti ti-check"></i>Listo</button></div>`;
+      document.getElementById('imp_listo').addEventListener('click', () => abrirDetalle(selId));
     }
 
     pintar();
