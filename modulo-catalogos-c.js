@@ -112,15 +112,16 @@
   }
 
   async function cargarDetalleProducto(id) {
-    const [variedades, skus, proveedores] = await Promise.all([
+    const [variedades, skus, proveedores, clientes] = await Promise.all([
       q('v_catc_variedades', `&producto_id=eq.${id}&order=nombre.asc`).catch(() => []),
       q('v_catc_skus', `&producto_id=eq.${id}&order=id.asc`).catch(() => []),
-      q('v_catc_producto_proveedores', `&producto_id=eq.${id}`).catch(() => [])
+      q('v_catc_producto_proveedores', `&producto_id=eq.${id}`).catch(() => []),
+      q('v_catc_producto_clientes', `&producto_id=eq.${id}`).catch(() => [])
     ]);
     let skuClientes = [];
     const ids = (skus || []).map(s => s.id);
     if (ids.length) skuClientes = await q('v_catc_sku_clientes', `&sku_id=in.(${ids.join(',')})`).catch(() => []);
-    return { variedades: variedades || [], skus: skus || [], proveedores: proveedores || [], skuClientes: skuClientes || [] };
+    return { variedades: variedades || [], skus: skus || [], proveedores: proveedores || [], skuClientes: skuClientes || [], clientesProducto: clientes || [] };
   }
 
   async function cargarDetalleContraparte(id) {
@@ -362,6 +363,12 @@
               <i class="ti ti-x catc-go" data-unlinkprov="${esc(v.contraparte_id)}" title="Desvincular proveedor"></i>` : ''}
             </div>`).join('')
           : '<span class="catc-hint">Sin proveedores vinculados.</span>'}
+      </div>
+
+      <div class="catc-card"><h4>Clientes que lo compran</h4>
+        <div style="display:flex;flex-wrap:wrap;gap:7px">${det.clientesProducto.length
+          ? det.clientesProducto.map(c => `<span class="catc-chip">${esc(c.contraparte_nombre)}${c.n_skus > 1 ? ` <span class="catc-mut">· ${esc(c.n_skus)} presentaciones</span>` : ''}</span>`).join('')
+          : '<span class="catc-hint">Sin clientes aún.</span>'}</div>
       </div>
 
       <div class="catc-hint" style="margin-top:6px">Todo editable · eliminar va a papelera (recuperable) · si tiene movimientos, se archiva.</div>
