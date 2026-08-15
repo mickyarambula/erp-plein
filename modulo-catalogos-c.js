@@ -917,16 +917,17 @@
         ${esProd() ? `<div class="catc-segtog" style="margin-bottom:12px"><button class="${entidad === 'productos' ? 'on' : ''}" data-ent="productos">Productos</button><button class="${entidad === 'skus' ? 'on' : ''}" data-ent="skus">Presentaciones (SKUs)</button></div>` : ''}
         <div style="display:flex;gap:8px;margin-bottom:12px"><a class="catc-act" href="${PLANTILLA[entidad]}" download><i class="ti ti-download"></i>Descargar plantilla</a></div>
         <div class="catc-dz" id="imp_dz"><i class="ti ti-file-spreadsheet" style="font-size:32px;color:var(--brand)"></i>
-          <div style="font-size:13px;font-weight:500;margin-top:8px">Arrastra tu .xlsx aquí o <span style="color:var(--brand);cursor:pointer" id="imp_pick">búscalo</span></div>
-          <div class="catc-hint" style="margin-top:3px">Primera fila = encabezados. Campos: ${campos.map(c => esc(c) + (req.includes(c) ? '*' : '')).join(', ')}</div>
-          <input type="file" id="imp_file" accept=".xlsx,.xls" style="display:none">
+          <div style="font-size:13px;font-weight:500;margin-top:8px">Arrastra tu archivo aquí</div>
+          <button type="button" class="catc-act" id="imp_pick_btn" style="margin-top:10px"><i class="ti ti-folder-open"></i>Seleccionar archivo</button>
+          <div class="catc-hint" style="margin-top:8px">Primera fila = encabezados. Campos: ${campos.map(c => esc(c) + (req.includes(c) ? '*' : '')).join(', ')}</div>
+          <input type="file" id="imp_file" accept=".xlsx,.xls,.csv" style="display:none">
         </div>
         <div id="imp_res"></div>
       </div>`;
       cont.querySelector('[data-back]').addEventListener('click', () => abrirDetalle(selId));
       cont.querySelectorAll('[data-ent]').forEach(b => b.addEventListener('click', () => { entidad = b.dataset.ent; parsed = null; pintar(); }));
       const fileInp = document.getElementById('imp_file');
-      document.getElementById('imp_pick').addEventListener('click', () => fileInp.click());
+      document.getElementById('imp_pick_btn').addEventListener('click', () => fileInp.click());
       fileInp.addEventListener('change', e => { if (e.target.files[0]) leerArchivo(e.target.files[0]); });
       const dz = document.getElementById('imp_dz');
       dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
@@ -1001,8 +1002,10 @@
       }).filter(o => o.nombre || o.producto);
       if (!filas.length) { ERP.toast('err', 'No hay filas mapeadas con nombre.'); return; }
       const fn = { productos: 'fn_cat_import_productos', skus: 'fn_cat_import_skus', contrapartes: 'fn_cat_import_contrapartes' }[entidad];
+      const args = { p_filas: filas };
+      if (entidad === 'contrapartes') { args.p_forzar_cliente = tab === 'cli'; args.p_forzar_proveedor = tab === 'prov'; }
       try {
-        const r = uno(await rpc(fn, { p_filas: filas }));
+        const r = uno(await rpc(fn, args));
         ERP.limpiarCache();
         ERP.toast('ok', `${r.insertados ?? 0} ${entidad} importados${r.existentes ? ' · ' + r.existentes + ' ya existían' : ''}.`);
         await recargarLista(); abrirDetalle(selId);
