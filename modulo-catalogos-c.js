@@ -263,12 +263,18 @@
     return `<span class="catc-pill ${on ? 'ok' : 'off'}"><span class="catc-dot"></span>${esc(estado || 'activo')}</span>`;
   }
 
+  function tituloSku(s) {
+    const peso = [s.peso_neto, s.unidad_peso].filter(v => v != null && String(v).trim() !== '').join(' ');
+    return [s.producto, s.variedad, s.empaque, s.calibre, peso, s.marca]
+      .filter(v => v != null && String(v).trim() !== '').join(' · ');
+  }
+
   function matrizHTML(skus) {
     return `<div class="catc-hint" style="margin-bottom:8px">Todos los SKUs del producto en una vista.</div>
-      <table class="catc-tbl"><thead><tr><th>Variedad</th><th>Empaque</th><th>Calibre</th><th>Grado</th><th>GTIN</th>
+      <table class="catc-tbl"><thead><tr><th>SKU</th><th>Calibre</th><th>Grado</th><th>GTIN</th>
         <th style="text-align:right">Cajas/tar.</th><th style="text-align:right">Clientes</th></tr></thead>
       <tbody>${skus.map(s => `<tr>
-        <td>${esc(s.variedad || '—')}</td><td>${esc(s.empaque || '—')}</td>
+        <td>${esc(tituloSku(s))}</td>
         <td class="catc-sec">${esc(s.calibre || '—')}</td><td class="catc-sec">${esc(s.grado || '—')}</td>
         <td class="mono catc-mut" style="font-size:11px">${esc(s.gtin || '—')}</td>
         <td style="text-align:right" class="catc-sec">${esc(s.cajas_por_tarima ?? '—')}</td>
@@ -280,7 +286,7 @@
     const cxt = s.cajas_por_tarima ?? 0;
     return `<div class="catc-sku${i === 0 ? ' open' : ''}" data-sku="${esc(s.id)}">
       <div class="catc-sku-top"><i class="ti ti-chevron-right chev"></i>
-        <div><div class="catc-sku-nm">${esc(s.variedad || s.producto || '—')} · ${esc(s.empaque || '—')}</div>
+        <div><div class="catc-sku-nm">${esc(tituloSku(s))}</div>
           <div class="catc-sku-sb">${cli.length} cliente(s) · ${esc(cxt)} cajas/tarima</div></div>
         <div class="catc-sku-tg"><span class="mono catc-mut">GTIN ${esc(s.gtin || '—')}</span></div>
       </div>
