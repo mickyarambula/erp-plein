@@ -420,8 +420,9 @@
   /* ================= Ficha de CONTRAPARTE ================= */
   function detContraparte() {
     const c = det.reg;
-    const wa = (det.contactos.find(k => k.telefono_whatsapp) || {}).telefono_whatsapp || c.telefono_whatsapp;
-    const mailPrincipal = (det.contactos[0] || {}).email || c.email || '';
+    const principal = det.contactos.find(k => k.es_principal) || {};
+    const wa = principal.telefono_whatsapp || '';
+    const mailPrincipal = principal.email || '';
     const ro = puedeCap() ? '' : ' disabled';
     const badge = (on, ico, txt) => `<span class="catc-tag${on ? '' : ' off'}"><i class="ti ${ico}"></i>${txt}</span>`;
 
@@ -463,9 +464,10 @@
         </div>
         <div>
           <div class="catc-card"><h4>Contactos ${puedeCap() ? '<span class="catc-add" data-addcont><i class="ti ti-plus"></i>Agregar</span>' : ''}</h4>
-            ${det.contactos.length ? det.contactos.map(k => `<div class="catc-contact"><div><div class="cn">${esc(k.nombre || '—')}</div><div class="cr">${esc([k.rol, k.email].filter(Boolean).join(' · ') || '—')}</div></div>
-              <div>${k.email ? `<a href="mailto:${esc(k.email)}"><i class="ti ti-mail"></i></a>` : ''}${k.telefono_whatsapp ? `<a class="wa" href="https://wa.me/${esc(String(k.telefono_whatsapp).replace(/[^\d]/g, ''))}" target="_blank" rel="noopener"><i class="ti ti-brand-whatsapp"></i></a>` : ''}${puedeCap() ? `<i class="ti ti-x catc-go" data-delcont="${esc(k.id)}" title="Quitar"></i>` : ''}</div></div>`).join('')
+            ${det.contactos.length ? det.contactos.map(k => `<div class="catc-contact"><div><div class="cn">${esc(k.nombre || '—')} ${k.es_principal ? '<span class="catc-pill ok"><i class="ti ti-star-filled"></i>Principal</span>' : ''}</div><div class="cr">${esc([k.rol, k.email].filter(Boolean).join(' · ') || '—')}</div></div>
+              <div>${(!k.es_principal && puedeCap()) ? `<span class="catc-add" data-mkprincipal="${esc(k.id)}" style="margin-right:8px">Hacer principal</span>` : ''}${k.email ? `<a href="mailto:${esc(k.email)}"><i class="ti ti-mail"></i></a>` : ''}${k.telefono_whatsapp ? `<a class="wa" href="https://wa.me/${esc(String(k.telefono_whatsapp).replace(/[^\d]/g, ''))}" target="_blank" rel="noopener"><i class="ti ti-brand-whatsapp"></i></a>` : ''}${puedeCap() ? `<i class="ti ti-x catc-go" data-delcont="${esc(k.id)}" title="Quitar"></i>` : ''}</div></div>`).join('')
               : '<div class="catc-hint">Sin contactos.</div>'}
+            <div id="cont_nuevo" style="display:none;margin-top:10px"></div>
           </div>
           <div class="catc-card"><h4>${c.es_proveedor ? 'SKUs / productos que surte' : 'SKUs que compra'} ${puedeCap() ? '<span class="catc-add" data-vsku><i class="ti ti-plus"></i>Vincular</span>' : ''}</h4>
             <div style="display:flex;flex-wrap:wrap;gap:6px">${det.skus.length
@@ -487,6 +489,7 @@
       const kk = det.contactos.find(x => String(x.id) === String(el.dataset.delcont));
       eliminar('contacto', el.dataset.delcont, 'el contacto "' + (kk ? kk.nombre : '') + '"', true);
     }));
+    $det().querySelectorAll('[data-mkprincipal]').forEach(el => el.addEventListener('click', () => hacerPrincipal(el.dataset.mkprincipal)));
     const bVsku = $det().querySelector('[data-vsku]'); if (bVsku) bVsku.addEventListener('click', () => vincularSkuAContraparte(c));
     $det().querySelectorAll('[data-unlinksku]').forEach(el => el.addEventListener('click', () => desvincularSkuContraparte(el.dataset.unlinksku, c.id)));
   }
@@ -506,13 +509,35 @@
     }, 'Guardado', true);
   }
 
-  async function agregarContacto(cid) {
-    const nombre = (prompt('Nombre del contacto:') || '').trim();
-    if (!nombre) return;
-    const rol = (prompt('Rol (Compras / Pagos / Ventas…):') || '').trim() || null;
-    const email = (prompt('Correo:') || '').trim() || null;
-    const wa = (prompt('WhatsApp (solo dígitos, con país):') || '').trim() || null;
-    await escribir('fn_cat_contacto_alta', { p_contraparte_id: Number(cid), p_nombre: nombre, p_rol: rol, p_email: email, p_telefono_whatsapp: wa }, 'Contacto agregado');
+  function agregarContacto(cid) {
+    const cont = document.getElementById('cont_nuevo');
+    if (!cont) return;
+    cont.style.display = 'block';
+    cont.innerHTML = `
+      <div class="catc-g2" style="margin-bottom:8px">
+        <div class="f"><label>Nombre *</label><input id="cn_nombre" autofocus></div>
+        <div class="f"><label>Rol</label><input id="cn_rol" placeholder="Compras / Pagos / Ventas…"></div>
+      </div>
+      <div class="catc-g2" style="margin-bottom:8px">
+        <div class="f"><label>Correo</label><input id="cn_email"></div>
+        <div class="f"><label>WhatsApp</label><input id="cn_wa" placeholder="Solo dígitos, con país"></div>
+      </div>
+      <label class="catc-chk" style="margin-bottom:9px"><input type="checkbox" id="cn_principal">Marcar como principal</label>
+      <div style="display:flex;gap:7px"><button class="catc-act" id="cn_cancel">Cancelar</button><button class="btn-primary catc-act" id="cn_save"><i class="ti ti-check"></i>Guardar contacto</button></div>`;
+    document.getElementById('cn_cancel').addEventListener('click', () => { cont.style.display = 'none'; cont.innerHTML = ''; });
+    document.getElementById('cn_save').addEventListener('click', async () => {
+      const nombre = (document.getElementById('cn_nombre').value || '').trim();
+      if (!nombre) { ERP.toast('err', 'El nombre es obligatorio.'); return; }
+      const rol = (document.getElementById('cn_rol').value || '').trim() || null;
+      const email = (document.getElementById('cn_email').value || '').trim() || null;
+      const wa = (document.getElementById('cn_wa').value || '').trim() || null;
+      const esPrincipal = document.getElementById('cn_principal').checked;
+      await escribir('fn_cat_contacto_alta', { p_contraparte_id: Number(cid), p_nombre: nombre, p_rol: rol, p_email: email, p_telefono_whatsapp: wa, p_es_principal: esPrincipal }, 'Contacto agregado');
+    });
+  }
+
+  async function hacerPrincipal(id) {
+    await escribir('fn_cat_contacto_principal', { p_id: Number(id) }, 'Contacto principal actualizado');
   }
 
   /* ================= Vínculos ================= */
@@ -785,12 +810,12 @@
           p_pais: v('x_pais').trim() || null, p_ciudad: v('x_ciudad').trim() || null,
           p_dias_credito: num(v('x_credito')), p_limite_credito: num(v('x_limite')), p_metodo_pago: v('x_pago').trim() || null,
           p_moneda: v('x_moneda').trim() || 'USD',
-          p_email: v('x_cmail').trim() || null, p_telefono_whatsapp: v('x_cwa').trim() || null,
           p_tipos: leerTags('x_tipos')
         }));
-        // contacto principal (si el backend no lo inserta desde el alta, lo agregamos)
+        // el contacto principal se crea aparte (una sola lista de contactos; p_email/p_telefono_whatsapp
+        // sueltos ya no existen en la contraparte — viven en el contacto marcado es_principal)
         if (r.id != null && v('x_cnom').trim()) {
-          await rpc('fn_cat_contacto_alta', { p_contraparte_id: Number(r.id), p_nombre: v('x_cnom').trim(), p_rol: v('x_crol').trim() || null, p_email: v('x_cmail').trim() || null, p_telefono_whatsapp: v('x_cwa').trim() || null }).catch(() => {});
+          await rpc('fn_cat_contacto_alta', { p_contraparte_id: Number(r.id), p_nombre: v('x_cnom').trim(), p_rol: v('x_crol').trim() || null, p_email: v('x_cmail').trim() || null, p_telefono_whatsapp: v('x_cwa').trim() || null, p_es_principal: true }).catch(() => {});
         }
         ERP.limpiarCache();
         ERP.toast('ok', (esCli ? 'Cliente' : 'Proveedor') + ' creado');
