@@ -589,18 +589,42 @@
   async function desvincularClienteSku(sid, cid) {
     await escribir('fn_cat_desvincular_sku_cliente', { p_sku_id: Number(sid), p_contraparte_id: Number(cid) }, 'Desvinculado');
   }
-  async function vincularSkuAContraparte(c) {
-    const etiquetas = (await q('v_catc_sku_etiqueta', '&order=etiqueta.asc').catch(() => []));
-    const ya = det.skus.map(s => String(s.sku_id));
-    vistaPicker('Vincular SKU · ' + c.nombre, etiquetas.filter(e => !ya.includes(String(e.sku_id))).map(e => ({ id: e.sku_id, label: e.etiqueta })), async sel => {
+  function vincularSkuAContraparte(c) {
+    const yaVinculados = new Set(det.skus.map(s => String(s.sku_id)));
+    $det().innerHTML = `<div class="catc-dwrap">
+      <button class="catc-act" data-back style="margin-bottom:14px"><i class="ti ti-arrow-left"></i>${esc(c.nombre)}</button>
+      <div style="font-size:16px;font-weight:600;margin-bottom:3px">Vincular SKU · ${esc(c.nombre)}</div>
+      <div class="catc-hint" style="margin-bottom:14px">Busca por producto, variedad, empaque o calibre — tolera errores de tecleo.</div>
+      <div class="catc-card" style="max-width:460px">
+        <div class="f" style="margin-bottom:11px"><label>SKU</label><div id="vsku_picker"></div><div class="catc-hint" id="vsku_aviso" style="margin-top:5px;display:none"></div></div>
+        ${c.es_cliente ? '<div class="f" style="margin-bottom:14px"><label>Código de item del cliente (opcional)</label><input id="vsku_codigo"></div>' : ''}
+        <button class="btn-primary catc-act" id="vsku_confirmar" disabled><i class="ti ti-check"></i>Vincular</button>
+      </div>
+    </div>`;
+    $det().querySelector('[data-back]').addEventListener('click', () => abrirDetalle(selId));
+    const btn = document.getElementById('vsku_confirmar');
+    const aviso = document.getElementById('vsku_aviso');
+    const picker = ERP.crearPickerSku({
+      contenedor: document.getElementById('vsku_picker'),
+      placeholder: 'Buscar SKU…',
+      alCambiar: sel => {
+        const dup = sel && yaVinculados.has(String(sel.sku_id));
+        btn.disabled = !sel || dup;
+        aviso.style.display = dup ? 'block' : 'none';
+        aviso.textContent = dup ? 'Ese SKU ya está vinculado.' : '';
+      }
+    });
+    btn.addEventListener('click', async () => {
+      const skuId = picker.valorId();
+      if (!skuId) return;
       if (c.es_cliente) {
-        const codigo = (prompt('Código de item del cliente (opcional):') || '').trim() || null;
-        await escribir('fn_cat_vincular_sku_cliente', { p_sku_id: Number(sel.id), p_contraparte_id: Number(c.id), p_codigo_item_cliente: codigo, p_precio_contrato_ref: null }, 'Vinculado');
+        const codigo = (document.getElementById('vsku_codigo').value || '').trim() || null;
+        await escribir('fn_cat_vincular_sku_cliente', { p_sku_id: Number(skuId), p_contraparte_id: Number(c.id), p_codigo_item_cliente: codigo, p_precio_contrato_ref: null }, 'Vinculado');
       } else {
-        // proveedor surte a nivel PRODUCTO: resolver el producto del SKU vía v_catc_skus
-        const sku = uno(await q('v_catc_skus', `&id=eq.${Number(sel.id)}`).catch(() => []));
-        if (!sku.producto_id) { ERP.toast('err', 'No se pudo resolver el producto del SKU.'); return; }
-        await escribir('fn_cat_vincular_producto_proveedor', { p_producto_id: Number(sku.producto_id), p_contraparte_id: Number(c.id), p_temporada_desde: null, p_temporada_hasta: null }, 'Vinculado a nivel producto');
+        // proveedor surte a nivel PRODUCTO: el picker ya trae producto_id (fn_cat_sugerir_sku)
+        const productoId = picker.valorProductoId();
+        if (!productoId) { ERP.toast('err', 'No se pudo resolver el producto del SKU.'); return; }
+        await escribir('fn_cat_vincular_producto_proveedor', { p_producto_id: Number(productoId), p_contraparte_id: Number(c.id), p_temporada_desde: null, p_temporada_hasta: null }, 'Vinculado a nivel producto');
       }
     });
   }

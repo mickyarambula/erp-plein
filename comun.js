@@ -468,6 +468,137 @@ window.ERP = (function () {
     };
   }
 
+  /** Picker de SKU reutilizable — mismo look & feel que crearCombo (clases .combo/.combo-item)
+      pero busca en SERVIDOR vía fn_cat_sugerir_sku (ranking tolerante a typos) en vez de filtrar
+      un arreglo local, porque el universo de SKUs es demasiado grande/dinámico para precargar.
+      Primer enganche: vincular cliente↔SKU en Catálogos. Pensado para reusarse tal cual en
+      líneas de Sales Orders y Compras (pasando `productoId` cuando la línea ya trae producto). */
+  function crearPickerSku(opciones) {
+    const {
+      contenedor, placeholder = 'Buscar SKU…',
+      alCambiar = null, valorInicial = null   // valorInicial: { sku_id, etiqueta } — precarga sin RPC
+    } = opciones;
+    let productoId = opciones.productoId ?? null;
+
+    let itemsActuales = [];   // últimas filas de fn_cat_sugerir_sku
+    let seleccion = null;     // { sku_id, etiqueta }
+    let resaltado = -1;
+    let peticion = 0;         // guard de carreras: descarta respuestas que llegan fuera de orden
+    let debounceT = null;
+    let cargado = false;      // evita relanzar la carga inicial en cada focus
+
+    contenedor.classList.add('combo');
+    contenedor.innerHTML = `
+      <input type="text" class="combo-input" autocomplete="off" spellcheck="false"
+             role="combobox" aria-expanded="false" placeholder="${esc(placeholder)}">
+      <div class="combo-lista" role="listbox"></div>`;
+    const input = contenedor.querySelector('.combo-input');
+    const lista = contenedor.querySelector('.combo-lista');
+
+    function abrir() { lista.classList.add('abierta'); input.setAttribute('aria-expanded', 'true'); }
+    function cerrar() { lista.classList.remove('abierta'); input.setAttribute('aria-expanded', 'false'); }
+
+    function pintar() {
+      resaltado = itemsActuales.length ? 0 : -1;
+      lista.innerHTML = !itemsActuales.length
+        ? '<div class="combo-vacio">Nada coincide.</div>'
+        : itemsActuales.map((o, i) => `
+          <div class="combo-item ${o.es_sugerencia ? 'destacado' : ''} ${i === resaltado ? 'sel' : ''}" data-i="${i}" role="option">
+            ${o.es_sugerencia ? '<span class="combo-destacado" title="Mejor coincidencia">★</span>' : ''}
+            <span class="txt">${esc(o.etiqueta)}</span>
+          </div>`).join('');
+      abrir();
+    }
+
+    async function buscar(texto) {
+      const mio = ++peticion;
+      lista.innerHTML = '<div class="combo-vacio">Buscando…</div>';
+      abrir();
+      let filas;
+      try {
+        filas = await rpc('fn_cat_sugerir_sku', { p_texto: texto || '', p_producto_id: productoId, p_umbral: 0.3 });
+      } catch (e) {
+        if (mio !== peticion) return;
+        lista.innerHTML = `<div class="combo-vacio">No se pudo buscar: ${esc(e.message)}</div>`;
+        return;
+      }
+      if (mio !== peticion) return;   // llegó tarde, ya hay otra búsqueda en curso
+      cargado = true;
+      itemsActuales = Array.isArray(filas) ? filas : [];
+      pintar();
+    }
+
+    function elegir(i) {
+      const o = itemsActuales[i];
+      if (!o) return;
+      seleccion = { sku_id: o.sku_id, etiqueta: o.etiqueta, producto_id: o.producto_id ?? null };
+      input.value = o.etiqueta;
+      contenedor.classList.add('elegido');
+      cerrar();
+      if (alCambiar) alCambiar(seleccion);
+    }
+
+    function mover(paso) {
+      if (!itemsActuales.length) return;
+      resaltado = (resaltado + paso + itemsActuales.length) % itemsActuales.length;
+      lista.querySelectorAll('.combo-item').forEach((el, i) => el.classList.toggle('sel', i === resaltado));
+      const el = lista.querySelector('.combo-item.sel');
+      if (el) el.scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', () => {
+      seleccion = null;
+      contenedor.classList.remove('elegido');
+      if (alCambiar) alCambiar(null);
+      clearTimeout(debounceT);
+      const texto = input.value;
+      debounceT = setTimeout(() => buscar(texto), 200);   // debounce ~200ms
+    });
+
+    input.addEventListener('focus', () => { cargado ? abrir() : buscar(input.value); });
+
+    input.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (!lista.classList.contains('abierta')) buscar(input.value); else mover(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); mover(-1); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (resaltado >= 0) elegir(resaltado); }
+      else if (e.key === 'Escape') { cerrar(); }
+      else if (e.key === 'Tab') { cerrar(); }
+    });
+
+    lista.addEventListener('mousedown', e => {
+      const item = e.target.closest('.combo-item');
+      if (item) { e.preventDefault(); elegir(Number(item.dataset.i)); }
+    });
+
+    input.addEventListener('blur', () => setTimeout(cerrar, 120));
+
+    if (valorInicial && valorInicial.sku_id != null) {
+      seleccion = { sku_id: valorInicial.sku_id, etiqueta: valorInicial.etiqueta || '', producto_id: valorInicial.producto_id ?? null };
+      input.value = seleccion.etiqueta;
+      contenedor.classList.add('elegido');
+    }
+
+    return {
+      elemento: contenedor,
+      valorId: () => (seleccion ? seleccion.sku_id : null),
+      valorEtiqueta: () => (seleccion ? seleccion.etiqueta : null),
+      valorProductoId: () => (seleccion ? seleccion.producto_id : null),
+      limpiar() { seleccion = null; input.value = ''; contenedor.classList.remove('elegido'); },
+      enfocar() { input.focus(); },
+      /** Acota/cambia el producto (p.ej. la línea de la Sales Order ya eligió producto) y
+          fuerza una recarga con el texto actual — no toca la selección existente. */
+      acotarProducto(pid) { productoId = pid ?? null; cargado = false; if (lista.classList.contains('abierta')) buscar(input.value); },
+      seleccionar(item) {
+        if (!item) { this.limpiar(); return; }
+        seleccion = { sku_id: item.sku_id, etiqueta: item.etiqueta || '', producto_id: item.producto_id ?? null };
+        input.value = seleccion.etiqueta;
+        contenedor.classList.add('elegido');
+        cerrar();
+        if (alCambiar) alCambiar(seleccion);
+      }
+    };
+  }
+
   /* ============ Panel lateral (drawer) ============ */
 
   function abrirPanel(titulo, subtitulo, cuerpoHtml) {
@@ -657,7 +788,7 @@ window.ERP = (function () {
   return {
     sb, q, rpc, eq, limpiarCache, recargar,
     num, fmt, fmt0, usd, usd0, pct, MONEDAS, utilidadColor, utilidadTexto, margenTexto, cablearInfoNota, estatusCobro, chipCobroHTML, venc, fecha, mesTexto, esc, norm, semaforo, estadoEmbarque, badgeEstado, cargarEstados, catalogoEstados, estadoInfo, folioNormalizado,
-    columna, tablaAuto, etiqueta, enlazarFolios, detallePor, crearCombo,
+    columna, tablaAuto, etiqueta, enlazarFolios, detallePor, crearCombo, crearPickerSku,
     abrirPanel, panelCuerpo, cerrarPanel, panelAbierto, toast, enviarPorCorreoDoc,
     registrar, moduloExiste, ir, irModulo, rutaActual, despachar,
     alternarMenu, cerrarMenu, cargarPerfil, puede, esPermisoDenegado, avisarSiPermiso, marcarDatosSucios,
