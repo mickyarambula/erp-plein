@@ -34,6 +34,46 @@
     return confirm(`Ya existe "${nombre}". ¿Crear otro de todas formas?`);
   }
 
+  /* ================= Selector de tags múltiples (tipo_contraparte) ================= */
+  function chipsTagPicker(idBase, seleccionados) {
+    const sel = new Set((seleccionados || []).map(String));
+    const ro = !puedeCap();
+    return `<div class="catc-tagpick${ro ? ' ro' : ''}" id="${idBase}">
+      ${(listas.tipo_contraparte || []).map(t => `<span class="${sel.has(t) ? 'on' : ''}" data-tag="${esc(t)}">${esc(t)}</span>`).join('')}
+      ${ro ? '' : '<span class="add" data-tagnew><i class="ti ti-plus"></i>otro…</span>'}
+    </div>${ro ? '' : `<div id="${idBase}_new" style="display:none;margin-top:6px"></div>`}`;
+  }
+  function wireTagPicker(idBase) {
+    const cont = document.getElementById(idBase);
+    if (!cont) return;
+    cont.querySelectorAll('[data-tag]').forEach(s => s.addEventListener('click', () => s.classList.toggle('on')));
+    const addBtn = cont.querySelector('[data-tagnew]');
+    if (!addBtn) return;
+    addBtn.addEventListener('click', () => {
+      const newBox = document.getElementById(idBase + '_new');
+      newBox.style.display = 'block';
+      newBox.innerHTML = `<span class="catc-hint">Nuevo tipo:</span> <input id="${idBase}_nv" style="height:28px;width:150px;margin:0 6px;display:inline-block"><button class="catc-act" id="${idBase}_nvadd" style="height:28px">Agregar</button>`;
+      document.getElementById(idBase + '_nvadd').addEventListener('click', async () => {
+        const val = (document.getElementById(idBase + '_nv').value || '').trim();
+        if (!val) return;
+        try {
+          await rpc('fn_cat_lista_valor_alta', { p_tipo: 'tipo_contraparte', p_valor: val });
+          ERP.limpiarCache();
+          listas.tipo_contraparte = listas.tipo_contraparte || []; if (!listas.tipo_contraparte.includes(val)) listas.tipo_contraparte.push(val);
+          const s = document.createElement('span'); s.textContent = val; s.dataset.tag = val; s.classList.add('on');
+          s.addEventListener('click', () => s.classList.toggle('on'));
+          cont.insertBefore(s, addBtn);
+          newBox.style.display = 'none';
+          ERP.toast('ok', `«${esc(val)}» agregado a la lista`);
+        } catch (e) { ERP.toast('err', 'No se pudo agregar: ' + esc(e.message)); }
+      });
+    });
+  }
+  function leerTags(idBase) {
+    const cont = document.getElementById(idBase);
+    return cont ? Array.from(cont.querySelectorAll('[data-tag].on')).map(s => s.dataset.tag) : [];
+  }
+
   // Campos canónicos por entidad (= encabezados de las plantillas .xlsx, sin " *").
   const CAMPOS_IMPORT = {
     productos: ['nombre', 'codigo_item', 'categoria', 'pais_origen', 'organico', 'temporada_desde', 'temporada_hasta', 'estado', 'nota'],
@@ -47,6 +87,7 @@
   let selId = null;
   let skuMode = 'cards';  // 'cards' | 'matriz'
   let fTexto = '';
+  let fTipo = '';         // filtro por tipo_contraparte en pestañas Proveedores/Clientes
   let listaActual = [];   // filas de la pestaña activa
   let listas = null;      // { empaque:[], calibre:[], grado:[], unidad:[], categoria:[] } (cache)
   let det = null;         // bundle del registro seleccionado
@@ -58,7 +99,7 @@
   async function cargarListas() {
     if (listas) return listas;
     const filas = await q('v_catc_listas_valores', '&order=tipo.asc,orden.asc,valor.asc').catch(() => []);
-    const l = { empaque: [], calibre: [], grado: [], unidad: [], categoria: [] };
+    const l = { empaque: [], calibre: [], grado: [], unidad: [], categoria: [], tipo_contraparte: [] };
     (filas || []).filter(v => v.activo !== false).forEach(v => { if (l[v.tipo]) l[v.tipo].push(v.valor); });
     listas = l;
     return listas;
@@ -119,6 +160,7 @@
         <div class="catc-list">
           <div class="catc-lh">
             <div class="catc-sb"><i class="ti ti-search"></i><input id="catcBuscar" type="search" placeholder="Buscar" value="${esc(fTexto)}"></div>
+            ${!esProd() ? `<select id="catcFiltroTipo"><option value="">Todos los tipos</option>${(listas.tipo_contraparte || []).map(t => `<option value="${esc(t)}" ${fTipo === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>` : ''}
             <div class="catc-lh-btns">
               <div class="catc-lh-fila">
                 ${puedeCap() ? `<button class="btn-mini" id="catcNuevo"><i class="ti ti-plus"></i>${esc(nuevoLabel())}</button>` : ''}
@@ -139,6 +181,8 @@
     document.getElementById('catcListas').addEventListener('click', vistaListas);
     document.getElementById('catcPapelera').addEventListener('click', vistaPapelera);
     document.getElementById('catcBuscar').addEventListener('input', e => { fTexto = e.target.value; pintarRows(); });
+    const selTipo = document.getElementById('catcFiltroTipo');
+    if (selTipo) selTipo.addEventListener('change', e => { fTipo = e.target.value; pintarRows(); });
     const bNuevo = document.getElementById('catcNuevo');
     if (bNuevo) bNuevo.addEventListener('click', crearNuevo);
     const bImp = document.getElementById('catcImportar');
@@ -150,7 +194,7 @@
   }
 
   async function cambiarTab(t) {
-    tab = t; selId = null; fTexto = '';
+    tab = t; selId = null; fTexto = ''; fTipo = '';
     await render(document.getElementById('modContenido'));
   }
 
@@ -160,9 +204,11 @@
   }
 
   function filtradas() {
+    let rows = listaActual;
+    if (!esProd() && fTipo) rows = rows.filter(x => Array.isArray(x.tipos) && x.tipos.includes(fTipo));
     const t = ERP.norm(fTexto);
-    if (!t) return listaActual;
-    return listaActual.filter(x => [x.nombre, x.codigo_item, x.ciudad, x.categoria].some(v => ERP.norm(v).includes(t)));
+    if (!t) return rows;
+    return rows.filter(x => [x.nombre, x.codigo_item, x.ciudad, x.categoria].some(v => ERP.norm(v).includes(t)));
   }
 
   function pintarRows() {
@@ -400,6 +446,7 @@
               <label class="catc-chk"><input type="checkbox" id="c_esprov" ${c.es_proveedor ? 'checked' : ''}${ro}>Proveedor</label>
               <label class="catc-chk"><input type="checkbox" id="c_escli" ${c.es_cliente ? 'checked' : ''}${ro}>Cliente</label>
             </div>
+            <div class="f" style="margin-bottom:9px"><label>Tipo(s)</label>${chipsTagPicker('c_tipos', c.tipos)}</div>
             <div class="catc-g2" style="margin-bottom:9px"><div class="f"><label>Tax ID / RFC</label><input id="c_tax" class="mono" value="${esc(c.rfc_tax_id || '')}"${ro}></div><div class="f"><label>PACA</label><input id="c_paca" class="mono" value="${esc(c.paca_licencia || '')}"${ro}></div></div>
             <div class="f" style="margin-bottom:9px"><label>Certificaciones</label><input id="c_cert" value="${esc(c.certificaciones || '')}"${ro}></div>
             <div class="catc-g2"><div class="f"><label>País</label><input id="c_pais" value="${esc(c.pais || '')}"${ro}></div><div class="f"><label>Ciudad</label><input id="c_ciudad" value="${esc(c.ciudad || '')}"${ro}></div></div>
@@ -433,6 +480,7 @@
     </div>`;
 
     const bSave = $det().querySelector('[data-save]'); if (bSave) bSave.addEventListener('click', guardarContraparte);
+    wireTagPicker('c_tipos');
     const bDel = $det().querySelector('[data-del]'); if (bDel) bDel.addEventListener('click', () => eliminar('contraparte', c.id, 'el registro "' + (c.nombre || '') + '"'));
     const bAddCont = $det().querySelector('[data-addcont]'); if (bAddCont) bAddCont.addEventListener('click', () => agregarContacto(c.id));
     $det().querySelectorAll('[data-delcont]').forEach(el => el.addEventListener('click', () => {
@@ -453,7 +501,8 @@
       p_certificaciones: v('c_cert').trim() || null, p_pais: v('c_pais').trim() || null, p_ciudad: v('c_ciudad').trim() || null,
       p_direccion_facturacion: v('c_dirfact').trim() || null, p_direccion_envio: v('c_direnvio').trim() || null,
       p_dias_credito: num(v('c_credito')), p_limite_credito: num(v('c_limite')), p_pct_anticipo: num(v('c_anticipo')),
-      p_metodo_pago: v('c_pago').trim() || null, p_moneda: v('c_moneda').trim() || 'USD'
+      p_metodo_pago: v('c_pago').trim() || null, p_moneda: v('c_moneda').trim() || 'USD',
+      p_tipos: leerTags('c_tipos')
     }, 'Guardado', true);
   }
 
@@ -696,7 +745,8 @@
           <div class="catc-card"><h4>Identidad</h4>
             <div class="f" style="margin-bottom:9px"><label>Nombre *</label><input id="x_nombre" autofocus></div>
             <div class="f" style="margin-bottom:11px"><label>Razón social</label><input id="x_razon"></div>
-            <div style="display:flex;gap:16px"><label class="catc-chk"><input type="checkbox" id="x_prov" ${tab === 'prov' ? 'checked' : ''}>Proveedor</label><label class="catc-chk"><input type="checkbox" id="x_cli" ${esCli ? 'checked' : ''}>Cliente</label></div>
+            <div style="display:flex;gap:16px;margin-bottom:11px"><label class="catc-chk"><input type="checkbox" id="x_prov" ${tab === 'prov' ? 'checked' : ''}>Proveedor</label><label class="catc-chk"><input type="checkbox" id="x_cli" ${esCli ? 'checked' : ''}>Cliente</label></div>
+            <div class="f"><label>Tipo(s)</label>${chipsTagPicker('x_tipos', null)}</div>
           </div>
           <div class="catc-card"><h4>Fiscal</h4>
             <div class="catc-g2" style="margin-bottom:9px"><div class="f"><label>Tax ID / RFC</label><input id="x_tax" class="mono"></div><div class="f"><label>PACA</label><input id="x_paca" class="mono"></div></div>
@@ -721,6 +771,7 @@
       <div class="catc-dfoot"><span class="catc-hint">* obligatorio · más contactos y SKUs, después</span><div style="display:flex;gap:7px"><button class="catc-act" data-back>Cancelar</button><button class="btn-primary catc-act" data-create><i class="ti ti-check"></i>Crear ${esCli ? 'cliente' : 'proveedor'}</button></div></div>
     </div>`;
     $det().querySelector('[data-back]').addEventListener('click', () => abrirDetalle(selId));
+    wireTagPicker('x_tipos');
     $det().querySelector('[data-create]').addEventListener('click', async () => {
       const v = id => (document.getElementById(id) || {}).value;
       const chk = id => !!(document.getElementById(id) || {}).checked;
@@ -734,7 +785,8 @@
           p_pais: v('x_pais').trim() || null, p_ciudad: v('x_ciudad').trim() || null,
           p_dias_credito: num(v('x_credito')), p_limite_credito: num(v('x_limite')), p_metodo_pago: v('x_pago').trim() || null,
           p_moneda: v('x_moneda').trim() || 'USD',
-          p_email: v('x_cmail').trim() || null, p_telefono_whatsapp: v('x_cwa').trim() || null
+          p_email: v('x_cmail').trim() || null, p_telefono_whatsapp: v('x_cwa').trim() || null,
+          p_tipos: leerTags('x_tipos')
         }));
         // contacto principal (si el backend no lo inserta desde el alta, lo agregamos)
         if (r.id != null && v('x_cnom').trim()) {
@@ -794,12 +846,13 @@
     const filas = await q('v_catc_listas_valores', '&order=tipo.asc,orden.asc,valor.asc').catch(() => []);
     const porTipo = {};
     (filas || []).forEach(f => { (porTipo[f.tipo] = porTipo[f.tipo] || []).push(f); });
-    const TIPOS = ['empaque', 'calibre', 'grado', 'unidad', 'categoria'];
+    const TIPOS = ['empaque', 'calibre', 'grado', 'unidad', 'categoria', 'tipo_contraparte'];
+    const LABEL_TIPO = { tipo_contraparte: 'Tipo de proveedor' };
     document.getElementById('catcRows').innerHTML = '<div class="catc-hint" style="padding:16px">Listas abiertas en el detalle →</div>';
     $det().innerHTML = `<div class="catc-dwrap">
       <div style="font-size:17px;font-weight:600;margin-bottom:2px">Listas de valores</div>
-      <div class="catc-hint" style="margin-bottom:14px">Vocabularios controlados que alimentan los selectores (empaque, calibre, grado, unidad, categoría). Agregar aquí o al vuelo desde el armador de SKU.</div>
-      ${TIPOS.map(t => `<div class="catc-card"><h4>${esc(t)} ${puedeCap() ? `<span class="catc-add" data-addlv="${esc(t)}"><i class="ti ti-plus"></i>Agregar</span>` : ''}</h4>
+      <div class="catc-hint" style="margin-bottom:14px">Vocabularios controlados que alimentan los selectores (empaque, calibre, grado, unidad, categoría, tipo de proveedor). Agregar aquí o al vuelo desde el armador de SKU / la ficha de contraparte.</div>
+      ${TIPOS.map(t => `<div class="catc-card"><h4>${esc(LABEL_TIPO[t] || t)} ${puedeCap() ? `<span class="catc-add" data-addlv="${esc(t)}"><i class="ti ti-plus"></i>Agregar</span>` : ''}</h4>
         <div style="display:flex;flex-wrap:wrap;gap:7px">${(porTipo[t] || []).length
           ? porTipo[t].map(v => `<span class="catc-chip ${v.activo === false ? 'off' : ''}">${esc(v.valor)}${puedeCap() ? `<i class="ti ti-x" data-dellv="${esc(v.id)}" title="Quitar"></i>` : ''}</span>`).join('')
           : '<span class="catc-hint">Vacío.</span>'}</div></div>`).join('')}
