@@ -6,10 +6,12 @@
    Vistas:
      v_op_customer_po (id, folio, cliente_id, cliente, numero_cliente, adjunto_ref, fecha_po,
        moneda, estado, nota, created_at, updated_at)
-   Catálogo (vistas ya vivas, reusadas del resto del ERP):
-     v_catalogo_clientes (id, nombre, alias, dias_credito)
+   Catálogo (realineado a cat.*, D-1xx ago 2026): el cliente ya no viene de v_catalogo_clientes —
+   viene de v_catc_contrapartes filtrada por es_cliente=true (la misma fuente que usa Catálogos).
+   fn_op_cpo_alta recibe p_cliente_id como bigint (valida es_cliente en cat.*) y genera el folio
+   interno solo (CPO-2026-#####); el N° de PO del cliente se guarda aparte (p_numero_cliente).
    RPC (capacidad 'capturar'):
-     fn_op_cpo_alta(p_cliente_id, p_numero_cliente, p_fecha_po, p_moneda, p_adjunto_ref, p_nota, p_actor)
+     fn_op_cpo_alta(p_cliente_id bigint, p_numero_cliente, p_fecha_po, p_moneda, p_adjunto_ref, p_nota, p_actor)
        -> { customer_po_id, folio }
    El adjunto es una REFERENCIA a Storage (ruta/URL), no un archivo subido (D-162).
    Expone ERP.o1AbrirCPO(cpoId) para saltar a un CPO desde otro módulo. */
@@ -196,7 +198,7 @@
     adjuntoSubido = null;
     ERP.abrirPanel('Nuevo Customer PO', 'Captura el PO que envió el cliente', '<div class="skel">Cargando catálogos…</div>');
     try {
-      clientesCat = await q('v_catalogo_clientes', '&order=nombre.asc');
+      clientesCat = await q('v_catc_contrapartes', '&es_cliente=eq.true&order=nombre.asc');
     } catch (e) {
       ERP.abrirPanel('Nuevo Customer PO', '', `<div class="errbox">No se pudieron leer los clientes: ${esc(e.message)}</div>`);
       return;
@@ -384,9 +386,9 @@
   /* ---------------- Pantalla de revisión (prellenada, editable) ---------------- */
 
   let iaComboCliente = null, iaClienteSugerencia = null;
-  let iaLineas = [];        // [{ combo, sugerencia, alternativas, texto, cantidad, uom, precio_unitario }]
+  let iaLineas = [];        // [{ picker, sku_id, sku_etiqueta, sugerencia, alternativas, texto, marca, marca_privada, cantidad, uom, precio_unitario }]
   let iaCpoCreado = null;   // { customer_po_id, folio } una vez creado el paso A (evita duplicar en un reintento)
-  let iaExtraccion = null, iaAdjuntoRef = null, iaRevenueModels = [];
+  let iaExtraccion = null, iaAdjuntoRef = null, iaRevenueModels = [], iaMarcasCat = [];
 
   function scoreBadge(sug) {
     if (!sug) return '<span class="pill gris">sin sugerencia</span>';
@@ -407,14 +409,21 @@
 
   function cablearAlternativas(cont) {
     cont.querySelectorAll('.ia-alt').forEach(b => b.addEventListener('click', () => {
-      const combo = b.dataset.tipo === 'cliente' ? iaComboCliente : (iaLineas[Number(b.dataset.idx)] || {}).combo;
-      if (combo) combo.seleccionar({ id: Number(b.dataset.id), nombre: b.dataset.nombre });
+      if (b.dataset.tipo === 'cliente') {
+        if (iaComboCliente) iaComboCliente.seleccionar({ id: Number(b.dataset.id), nombre: b.dataset.nombre });
+        return;
+      }
+      const picker = (iaLineas[Number(b.dataset.idx)] || {}).picker;
+      if (picker) picker.seleccionar({ sku_id: Number(b.dataset.id), etiqueta: b.dataset.nombre });
     }));
   }
 
-  const iaNuevaLinea = () => ({ combo: null, sugerencia: null, alternativas: [], texto: '', cantidad: '', uom: 'CAJA', precio_unitario: '' });
+  const iaNuevaLinea = () => ({ picker: null, sku_id: null, sku_etiqueta: '', sugerencia: null, alternativas: [], texto: '', marca: '', marca_privada: '', cantidad: '', uom: 'CAJA', precio_unitario: '' });
 
-  function montarLineasIA(productosCat) {
+  const optsMarcaIA = l => '<option value="">— marca —</option>' +
+    iaMarcasCat.map(m => `<option value="${esc(m)}"${l.marca === m ? ' selected' : ''}>${esc(m)}</option>`).join('');
+
+  function montarLineasIA() {
     const body = document.getElementById('iaLineasBody');
     if (!body) return;
     body.innerHTML = iaLineas.map((l, i) => `<tr data-i="${i}">
@@ -425,6 +434,8 @@
           <div class="ia-combo-meta">${scoreBadge(l.sugerencia)}${chipsAlternativas(l.alternativas, 'linea', i)}</div>
         </div>
       </td>
+      <td><select class="ia-li" data-i="${i}" data-k="marca">${optsMarcaIA(l)}</select>
+        ${l.marca === 'Private Label' ? `<input class="ia-li" data-i="${i}" data-k="marca_privada" placeholder="Marca del cliente" value="${esc(l.marca_privada)}" style="margin-top:4px">` : ''}</td>
       <td><input class="ia-li num" data-i="${i}" data-k="cantidad" type="number" step="0.01" min="0" value="${esc(l.cantidad)}" placeholder="0"></td>
       <td><input class="ia-li" data-i="${i}" data-k="uom" type="text" value="${esc(l.uom)}" style="width:70px"></td>
       <td><input class="ia-li num" data-i="${i}" data-k="precio_unitario" type="number" step="0.01" min="0" value="${esc(l.precio_unitario)}" placeholder="opcional"></td>
@@ -432,23 +443,28 @@
     </tr>`).join('');
 
     iaLineas.forEach((l, i) => {
-      l.combo = ERP.crearCombo({
+      l.picker = ERP.crearPickerSku({
         contenedor: document.getElementById(`iaLiCombo${i}`),
-        items: productosCat.map(p => ({ id: p.id, nombre: p.nombre })),
-        placeholder: 'Busca producto…', permitirNuevo: false
+        placeholder: 'Busca SKU…',
+        valorInicial: l.sku_id ? { sku_id: l.sku_id, etiqueta: l.sku_etiqueta } : null
       });
-      if (l.sugerencia) l.combo.seleccionar({ id: l.sugerencia.id, nombre: l.sugerencia.nombre });
+      // La IA sugiere a nivel SKU si el mapeo ya trae sku_id; si no, la línea queda sin
+      // preseleccionar y el usuario elige del catálogo (nunca se inventa un SKU).
+      if (l.sugerencia && l.sugerencia.sku_id) l.picker.seleccionar({ sku_id: l.sugerencia.sku_id, etiqueta: l.sugerencia.etiqueta || l.sugerencia.nombre });
     });
 
     body.querySelectorAll('.ia-li').forEach(inp => {
       inp.addEventListener('input', e => { iaLineas[Number(e.target.dataset.i)][e.target.dataset.k] = e.target.value; });
-      inp.addEventListener('change', e => { iaLineas[Number(e.target.dataset.i)][e.target.dataset.k] = e.target.value; });
+      inp.addEventListener('change', e => {
+        iaLineas[Number(e.target.dataset.i)][e.target.dataset.k] = e.target.value;
+        if (e.target.dataset.k === 'marca') { recogerLineasIA(); montarLineasIA(); cablearAlternativas(document.getElementById('panelBody')); }
+      });
     });
     body.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
       recogerLineasIA();
       iaLineas.splice(Number(b.dataset.del), 1);
       if (!iaLineas.length) iaLineas.push(iaNuevaLinea());
-      montarLineasIA(productosCat);
+      montarLineasIA();
       cablearAlternativas(document.getElementById('panelBody'));
     }));
     cablearAlternativas(document.getElementById('panelBody'));
@@ -459,21 +475,26 @@
       const i = Number(inp.dataset.i), k = inp.dataset.k;
       if (iaLineas[i]) iaLineas[i][k] = inp.value;
     });
+    iaLineas.forEach(l => {
+      if (l.picker) { l.sku_id = l.picker.valorId(); l.sku_etiqueta = l.picker.valorEtiqueta(); }
+    });
   }
 
   // Mismo shape EXACTO que lineasPayload() de modulo-o1-so.js (fn_op_so_crear_desde_cpo → p_lineas).
   function lineasPayloadIA() {
     recogerLineasIA();
     const numOrNull = v => (v === '' || v === null || v === undefined || isNaN(Number(v))) ? null : Number(v);
-    const filasConDatos = iaLineas.filter(l => (l.combo && l.combo.valorId()) || String(l.cantidad).trim() || String(l.texto || '').trim());
-    const sinProducto = filasConDatos.filter(l => !(l.combo && l.combo.valorId()));
-    if (sinProducto.length) return { error: `${sinProducto.length} línea(s) sin producto elegido del catálogo — complétalas o quítalas.` };
+    const filasConDatos = iaLineas.filter(l => l.sku_id || String(l.cantidad).trim() || String(l.texto || '').trim());
+    const sinSku = filasConDatos.filter(l => !l.sku_id);
+    if (sinSku.length) return { error: `${sinSku.length} línea(s) sin SKU elegido del catálogo — complétalas o quítalas.` };
     return {
       payload: filasConDatos.map(l => ({
-        producto_id: Number(l.combo.valorId()),
+        sku_id: Number(l.sku_id),
         cantidad: numOrNull(l.cantidad),
         uom: String(l.uom || '').trim() || 'CAJA',
-        precio_unitario: numOrNull(l.precio_unitario)
+        precio_unitario: numOrNull(l.precio_unitario),
+        marca: (l.marca || '').trim() || null,
+        marca_privada: l.marca === 'Private Label' ? ((l.marca_privada || '').trim() || null) : null
       }))
     };
   }
@@ -495,11 +516,10 @@
     const altsCliente = (cliente.alternativas || []).filter(a => a.es_cliente);
     iaClienteSugerencia = sugCliente;
 
-    let productosCat;
     try {
-      [iaRevenueModels, productosCat] = await Promise.all([
+      [iaRevenueModels, iaMarcasCat] = await Promise.all([
         q('v_revenue_models', '&order=orden.asc').then(r => (r || []).filter(x => x.activo !== false)),
-        q('v_catalogo_productos', '&order=nombre.asc')
+        q('v_catc_listas_valores', '&tipo=eq.marca&order=orden.asc,valor.asc').then(r => (r || []).filter(v => v.activo !== false).map(v => v.valor))
       ]);
     } catch (e) {
       ERP.abrirPanel('Revisar PO leído por IA', '', `<div class="errbox">No se pudieron leer los catálogos: ${esc(e.message)}</div>`);
@@ -507,10 +527,11 @@
     }
 
     iaLineas = (mapeo.lineas && mapeo.lineas.length ? mapeo.lineas : [{}]).map(l => ({
-      combo: null,
+      picker: null, sku_id: null, sku_etiqueta: '',
       sugerencia: l.sugerencia || null,
       alternativas: l.alternativas || [],
       texto: l.producto_texto || '',
+      marca: '', marca_privada: '',
       cantidad: l.cantidad ?? '',
       uom: l.uom || 'CAJA',
       precio_unitario: l.precio ?? ''
@@ -542,7 +563,7 @@
         </div>
         <div class="seccion-head"><h4>Líneas</h4><button type="button" class="btn-mini gris" id="iaAddLinea">+ Línea</button></div>
         <div class="tabla-wrap"><table class="so-lineas ia-lineas">
-          <thead><tr><th>Texto leído</th><th>Producto (catálogo)</th><th class="num">Cantidad</th><th>UOM</th><th class="num">Precio unit.</th><th></th></tr></thead>
+          <thead><tr><th>Texto leído</th><th>SKU (catálogo)</th><th>Marca</th><th class="num">Cantidad</th><th>UOM</th><th class="num">Precio unit.</th><th></th></tr></thead>
           <tbody id="iaLineasBody"></tbody>
         </table></div>
         <div class="alias-ayuda">El precio unitario es opcional: en comisión pura va vacío (costo 0 / margen 100% es correcto).</div>
@@ -560,13 +581,13 @@
     });
     if (sugCliente) iaComboCliente.seleccionar({ id: sugCliente.id, nombre: sugCliente.etiqueta });
 
-    montarLineasIA(productosCat);
+    montarLineasIA();
     cablearAlternativas(document.getElementById('panelBody'));
 
     document.getElementById('iaAddLinea').addEventListener('click', () => {
       recogerLineasIA();
       iaLineas.push(iaNuevaLinea());
-      montarLineasIA(productosCat);
+      montarLineasIA();
       cablearAlternativas(document.getElementById('panelBody'));
     });
     document.getElementById('iaCancelar').addEventListener('click', () => { iaCpoCreado = null; ERP.cerrarPanel(); });

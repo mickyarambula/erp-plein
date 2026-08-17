@@ -4,21 +4,25 @@
    Purchased/Open; Allocated y Purchased llegan en O2/O3 (hoy en 0, en gris).
 
    SOLO FRONTEND. Lee por vistas en public, escribe por RPCs SECURITY DEFINER (op cerrado fuera del API).
+   Realineado sobre cat.* a nivel SKU (D-1xx, ago 2026): las líneas ya no eligen producto —
+   eligen SKU (cat.skus, vía ERP.crearPickerSku) + marca de línea (Plein Produce/Genérica/Private
+   Label, lista 'marca' de v_catc_listas_valores) + marca_privada si aplica.
    Vistas:
      v_op_sales_orders (id, folio, customer_po_id, cpo_folio, numero_cliente, operacion_id, op_folio,
        op_estado, cliente_id, cliente, revenue_model_id, sales_type, formula_tipo, estado, fecha,
        moneda, nota, created_at, updated_at)
-     v_op_so_lineas (id, sales_order_id, so_folio, linea_num, producto_id, producto, cantidad, uom,
-       precio_unitario, importe, nota)
-     v_op_so_tablero (sales_order_id, so_folio, linea_id, linea_num, producto_id, producto, uom,
-       required, allocated, purchased, open)
+     v_op_so_lineas (id, sales_order_id, so_folio, linea_num, sku_id, sku, producto_id, producto,
+       marca, marca_privada, cantidad, uom, precio_unitario, importe, nota)
+     v_op_so_tablero (sales_order_id, so_folio, linea_id, linea_num, sku_id, sku, producto_id,
+       producto, marca, uom, required, allocated, purchased, open)
    Catálogos (vistas ya vivas):
      v_revenue_models (id, codigo, nombre, formula_tipo, descripcion, activo, orden)
-     v_catalogo_productos (id, nombre)
+     v_catc_listas_valores (tipo='marca') — Plein Produce / Genérica / Private Label
    RPCs (capacidad 'capturar'):
      fn_op_so_crear_desde_cpo(p_customer_po_id, p_revenue_model_id, p_lineas jsonb, p_fecha, p_moneda,
        p_nota, p_actor) -> { sales_order_id, so_folio, operacion_id, op_folio, n_lineas }
-       p_lineas = [{producto_id, cantidad, uom, precio_unitario|null}]  (precio null = comisión pura, correcto)
+       p_lineas = [{sku_id, cantidad, uom, precio_unitario|null, marca, marca_privada|null}]
+       (precio null = comisión pura, correcto; marca_privada solo si marca='Private Label')
      fn_op_so_confirmar(p_so_id, p_actor) -> { so_id, estado_anterior, estado }   (Draft->Confirmed)
      fn_op_so_set_estado(p_so_id, p_nuevo, p_actor)
    Expone ERP.o1CrearSODesde(cpoId, cpoFolio) y ERP.o1VerSO(soId). */
@@ -156,27 +160,41 @@
 
   /* ================= Alta (desde un CPO) ================= */
 
-  let revenueModels = [], productos = [], lineas = [];
+  let revenueModels = [], marcasCat = [], lineas = [];
   let cpoActual = null;   // { id, folio }
 
-  const nuevaLinea = () => ({ producto_id: '', cantidad: '', uom: 'CAJA', precio_unitario: '' });
+  const nuevaLinea = () => ({ picker: null, sku_id: null, sku_etiqueta: '', marca: '', marca_privada: '', cantidad: '', uom: 'CAJA', precio_unitario: '' });
+
+  const optsMarca = l => '<option value="">— marca —</option>' +
+    marcasCat.map(m => `<option value="${esc(m)}"${l.marca === m ? ' selected' : ''}>${esc(m)}</option>`).join('');
 
   function montarLineas() {
     const body = document.getElementById('soLineasBody');
     if (!body) return;
-    const opts = l => '<option value="">— producto —</option>' +
-      productos.map(p => `<option value="${p.id}"${String(l.producto_id) === String(p.id) ? ' selected' : ''}>${esc(p.nombre)}</option>`).join('');
     body.innerHTML = lineas.map((l, i) => `<tr>
-      <td><select class="so-li" data-i="${i}" data-k="producto_id">${opts(l)}</select></td>
+      <td><div id="soLiSku${i}"></div></td>
+      <td><select class="so-li" data-i="${i}" data-k="marca">${optsMarca(l)}</select>
+        ${l.marca === 'Private Label' ? `<input class="so-li" data-i="${i}" data-k="marca_privada" placeholder="Marca del cliente" value="${esc(l.marca_privada)}" style="margin-top:4px">` : ''}</td>
       <td><input class="so-li num" data-i="${i}" data-k="cantidad" type="number" step="0.01" min="0" value="${esc(l.cantidad)}" placeholder="0"></td>
       <td><input class="so-li" data-i="${i}" data-k="uom" type="text" value="${esc(l.uom)}" style="width:70px"></td>
       <td><input class="so-li num" data-i="${i}" data-k="precio_unitario" type="number" step="0.01" min="0" value="${esc(l.precio_unitario)}" placeholder="opcional"></td>
       <td><button class="btn-cap" data-del="${i}" title="Quitar línea">✕</button></td>
     </tr>`).join('');
 
+    lineas.forEach((l, i) => {
+      l.picker = ERP.crearPickerSku({
+        contenedor: document.getElementById(`soLiSku${i}`),
+        placeholder: 'Busca SKU…',
+        valorInicial: l.sku_id ? { sku_id: l.sku_id, etiqueta: l.sku_etiqueta } : null
+      });
+    });
+
     body.querySelectorAll('.so-li').forEach(inp => {
       inp.addEventListener('input', e => { lineas[Number(e.target.dataset.i)][e.target.dataset.k] = e.target.value; });
-      inp.addEventListener('change', e => { lineas[Number(e.target.dataset.i)][e.target.dataset.k] = e.target.value; });
+      inp.addEventListener('change', e => {
+        lineas[Number(e.target.dataset.i)][e.target.dataset.k] = e.target.value;
+        if (e.target.dataset.k === 'marca') { recogerLineas(); montarLineas(); }
+      });
     });
     body.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
       recogerLineas();
@@ -191,17 +209,22 @@
       const i = Number(inp.dataset.i), k = inp.dataset.k;
       if (lineas[i]) lineas[i][k] = inp.value;
     });
+    lineas.forEach(l => {
+      if (l.picker) { l.sku_id = l.picker.valorId(); l.sku_etiqueta = l.picker.valorEtiqueta(); }
+    });
   }
 
   function lineasPayload() {
     recogerLineas();
     return lineas
-      .filter(l => l.producto_id)
+      .filter(l => l.sku_id)
       .map(l => ({
-        producto_id: Number(l.producto_id),
+        sku_id: Number(l.sku_id),
         cantidad: numOrNull(l.cantidad),
         uom: String(l.uom || '').trim() || 'CAJA',
-        precio_unitario: numOrNull(l.precio_unitario)   // null = comisión pura (correcto)
+        precio_unitario: numOrNull(l.precio_unitario),   // null = comisión pura (correcto)
+        marca: (l.marca || '').trim() || null,
+        marca_privada: l.marca === 'Private Label' ? ((l.marca_privada || '').trim() || null) : null
       }));
   }
 
@@ -215,9 +238,9 @@
     cpoActual = { id: Number(cpoId), folio: cpoFolio || '' };
     ERP.abrirPanel('Generar Sales Order', `desde Customer PO ${esc(cpoFolio || '')}`, '<div class="skel">Cargando catálogos…</div>');
     try {
-      [revenueModels, productos] = await Promise.all([
+      [revenueModels, marcasCat] = await Promise.all([
         q('v_revenue_models', '&order=orden.asc').then(r => (r || []).filter(x => x.activo !== false)),
-        q('v_catalogo_productos', '&order=nombre.asc')
+        q('v_catc_listas_valores', '&tipo=eq.marca&order=orden.asc,valor.asc').then(r => (r || []).filter(v => v.activo !== false).map(v => v.valor))
       ]);
     } catch (e) {
       ERP.abrirPanel('Generar Sales Order', '', `<div class="errbox">No se pudieron leer los catálogos: ${esc(e.message)}</div>`);
@@ -239,7 +262,7 @@
         </div>
         <div class="seccion-head"><h4>Líneas</h4><button class="btn-mini gris" id="soAddLinea">+ Línea</button></div>
         <div class="tabla-wrap"><table class="so-lineas">
-          <thead><tr><th>Producto</th><th class="num">Cantidad</th><th>UOM</th><th class="num">Precio unit.</th><th></th></tr></thead>
+          <thead><tr><th>SKU</th><th>Marca</th><th class="num">Cantidad</th><th>UOM</th><th class="num">Precio unit.</th><th></th></tr></thead>
           <tbody id="soLineasBody"></tbody>
         </table></div>
         <div class="alias-ayuda">El precio unitario es opcional: en comisión pura va vacío (costo 0 / margen 100% es correcto).</div>
@@ -319,14 +342,14 @@
     const siguientes = SIGUIENTES[est] || [];
 
     const tablero = (tab && tab.length) ? tab : (lin || []).map(l => ({
-      linea_id: l.id, producto_id: l.producto_id,
-      linea_num: l.linea_num, producto: l.producto, uom: l.uom,
+      linea_id: l.id, sku_id: l.sku_id, sku: l.sku, producto_id: l.producto_id, producto: l.producto, marca: l.marca,
+      linea_num: l.linea_num, uom: l.uom,
       required: l.cantidad, allocated: 0, purchased: 0, open: l.cantidad
     }));
 
     const filasTablero = tablero.map(t => `<tr>
       <td class="mono">${esc(t.linea_num ?? '—')}</td>
-      <td class="prod">${esc(t.producto || '—')}</td>
+      <td class="prod">${esc(t.sku || t.producto || '—')}${t.marca ? `<div class="i3" style="font-size:11px">${esc(t.marca)}</div>` : ''}</td>
       <td class="mono">${esc(t.uom || '—')}</td>
       <td class="num">${esc(num(t.required))}</td>
       <td class="num">${esc(num(t.allocated))}</td>
@@ -363,7 +386,7 @@
 
         <div class="seccion-head"><h4>Tablero de la orden</h4></div>
         <div class="tabla-wrap"><table class="so-tablero">
-          <thead><tr><th>#</th><th>Producto</th><th>UOM</th>
+          <thead><tr><th>#</th><th>SKU</th><th>UOM</th>
             <th class="num">Required</th><th class="num">Allocated</th><th class="num">Purchased</th><th class="num">Open</th><th></th></tr></thead>
           <tbody>${filasTablero || '<tr><td colspan="8" class="vacio">Sin líneas.</td></tr>'}</tbody>
         </table></div>
@@ -402,7 +425,7 @@
 
   async function abrirAsignarLote(so, t) {
     if (!ERP.puede('capturar')) return;
-    ERP.abrirPanel('Asignar inventario', `${esc(so.folio || '')} · línea #${esc(t.linea_num ?? '')} · ${esc(t.producto || '')}`, '<div class="skel">Buscando lotes disponibles…</div>');
+    ERP.abrirPanel('Asignar inventario', `${esc(so.folio || '')} · línea #${esc(t.linea_num ?? '')} · ${esc(t.sku || t.producto || '')}`, '<div class="skel">Buscando lotes disponibles…</div>');
     let inv;
     try {
       inv = await q('v_op_inventario', `&producto_id=${ERP.eq(t.producto_id)}&order=fecha.asc`);
@@ -412,7 +435,7 @@
     }
     const lotesDisp = (inv || []).filter(l => num(l.disponible) > 0.009);
 
-    ERP.abrirPanel('Asignar inventario', `${esc(so.folio || '')} · línea #${esc(t.linea_num ?? '')} · ${esc(t.producto || '')}`, `
+    ERP.abrirPanel('Asignar inventario', `${esc(so.folio || '')} · línea #${esc(t.linea_num ?? '')} · ${esc(t.sku || t.producto || '')}`, `
       <div class="form-erp">
         <div class="det-grid">
           <div class="det"><span class="l">Required</span><span class="v mono">${esc(num(t.required))}</span></div>
@@ -432,7 +455,7 @@
           <button class="btn-mini" id="alGuardar">Asignar</button>
           <button class="btn-mini gris" id="alCancelar">Cancelar</button>
         </div>` : `
-        <div class="vacio">No hay inventario disponible de <b>${esc(t.producto || 'este producto')}</b> todavía.</div>
+        <div class="vacio">No hay inventario disponible de <b>${esc(t.sku || t.producto || 'este producto')}</b> todavía.</div>
         <div class="acciones">
           <button class="btn-mini" id="alRecibir">Recibir inventario nuevo</button>
           <button class="btn-mini gris" id="alCancelar">Volver</button>
