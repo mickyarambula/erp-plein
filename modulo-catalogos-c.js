@@ -265,7 +265,7 @@
 
   function tituloSku(s) {
     const peso = [s.peso_neto, s.unidad_peso].filter(v => v != null && String(v).trim() !== '').join(' ');
-    return [s.producto, s.variedad, s.empaque, s.tamano, s.calibre, peso, s.marca]
+    return [s.producto, s.variedad, s.empaque, s.tamano, s.calibre, peso]
       .filter(v => v != null && String(v).trim() !== '').join(' · ');
   }
 
@@ -676,7 +676,6 @@
       </div>
       <div class="catc-card"><h4>Datos del SKU</h4>
         <div class="catc-g3">
-          <div class="f"><label>Marca</label><input id="k_marca" value="${v('marca')}"></div>
           <div class="f"><label>GTIN</label><input id="k_gtin" class="mono" value="${v('gtin')}"></div>
           <div class="f"><label>PLU</label><input id="k_plu" class="mono" value="${v('plu')}"></div>
           <div class="f"><label>Cajas/tarima</label><input id="k_cxt" type="number" value="${v('cajas_por_tarima')}"></div>
@@ -745,7 +744,7 @@
       p_tamano: (gv('k_tam') && gv('k_tam') !== '__new') ? gv('k_tam') : null,
       p_grado: (gv('k_gra') && gv('k_gra') !== '__new') ? gv('k_gra') : null,
       p_unidad_peso: (gv('k_uni') && gv('k_uni') !== '__new') ? gv('k_uni') : null,
-      p_peso_neto: num(gv('k_peso')), p_peso_bruto: num(gv('k_pesob')), p_marca: gv('k_marca').trim() || null,
+      p_peso_neto: num(gv('k_peso')), p_peso_bruto: num(gv('k_pesob')),
       p_gtin: gv('k_gtin').trim() || null, p_plu: gv('k_plu').trim() || null, p_cajas_por_tarima: num(gv('k_cxt')),
       p_patron_estiba: gv('k_estiba').trim() || null, p_temperatura_c: num(gv('k_temp')), p_vida_anaquel_dias: num(gv('k_vida')),
       p_es_reempaque: gv('k_reemp') === 'true'
@@ -773,7 +772,6 @@
       p_calibre: (gv('k_cal') && gv('k_cal') !== '__new') ? gv('k_cal') : null,
       p_tamano: (gv('k_tam') && gv('k_tam') !== '__new') ? gv('k_tam') : null,
       p_grado: (gv('k_gra') && gv('k_gra') !== '__new') ? gv('k_gra') : null,
-      p_marca: gv('k_marca').trim() || null,
       p_peso_neto: num(gv('k_peso')), p_unidad_peso: (gv('k_uni') && gv('k_uni') !== '__new') ? gv('k_uni') : null, p_peso_bruto: num(gv('k_pesob')),
       p_gtin: gv('k_gtin').trim() || null, p_plu: gv('k_plu').trim() || null, p_cajas_por_tarima: num(gv('k_cxt')),
       p_patron_estiba: gv('k_estiba').trim() || null, p_temperatura_c: num(gv('k_temp')), p_vida_anaquel_dias: num(gv('k_vida')),
@@ -953,12 +951,12 @@
     const filas = await q('v_catc_listas_valores', '&order=tipo.asc,orden.asc,valor.asc').catch(() => []);
     const porTipo = {};
     (filas || []).forEach(f => { (porTipo[f.tipo] = porTipo[f.tipo] || []).push(f); });
-    const TIPOS = ['empaque', 'calibre', 'tamano', 'grado', 'unidad', 'categoria', 'tipo_contraparte'];
-    const LABEL_TIPO = { tipo_contraparte: 'Tipo de proveedor', tamano: 'Tamaño' };
+    const TIPOS = ['empaque', 'calibre', 'tamano', 'grado', 'marca', 'unidad', 'categoria', 'tipo_contraparte'];
+    const LABEL_TIPO = { tipo_contraparte: 'Tipo de proveedor', tamano: 'Tamaño', marca: 'Marca' };
     document.getElementById('catcRows').innerHTML = '<div class="catc-hint" style="padding:16px">Listas abiertas en el detalle →</div>';
     $det().innerHTML = `<div class="catc-dwrap">
       <div style="font-size:17px;font-weight:600;margin-bottom:2px">Listas de valores</div>
-      <div class="catc-hint" style="margin-bottom:14px">Vocabularios controlados que alimentan los selectores (empaque, calibre, tamaño, grado, unidad, categoría, tipo de proveedor). Agregar aquí o al vuelo desde el armador de SKU / la ficha de contraparte.</div>
+      <div class="catc-hint" style="margin-bottom:14px">Vocabularios controlados que alimentan los selectores (empaque, calibre, tamaño, grado, marca, unidad, categoría, tipo de proveedor). Agregar aquí o al vuelo desde el armador de SKU / la ficha de contraparte.</div>
       ${TIPOS.map(t => `<div class="catc-card"><h4>${esc(LABEL_TIPO[t] || t)} ${puedeCap() ? `<span class="catc-add" data-addlv="${esc(t)}"><i class="ti ti-plus"></i>Agregar</span>` : ''}</h4>
         <div style="display:flex;flex-wrap:wrap;gap:7px">${(porTipo[t] || []).length
           ? porTipo[t].map(v => `<span class="catc-chip ${v.activo === false ? 'off' : ''}">${esc(v.valor)}${puedeCap() ? `<i class="ti ti-x" data-dellv="${esc(v.id)}" title="Quitar"></i>` : ''}</span>`).join('')
