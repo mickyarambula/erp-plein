@@ -272,13 +272,14 @@
   function matrizHTML(skus) {
     return `<div class="catc-hint" style="margin-bottom:8px">Todos los SKUs del producto en una vista.</div>
       <table class="catc-tbl"><thead><tr><th>SKU</th><th>Calibre</th><th>Grado</th><th>GTIN</th>
-        <th style="text-align:right">Cajas/tar.</th><th style="text-align:right">Clientes</th></tr></thead>
+        <th style="text-align:right">Cajas/tar.</th><th style="text-align:right">Clientes</th>${puedeCap() ? '<th></th>' : ''}</tr></thead>
       <tbody>${skus.map(s => `<tr>
         <td>${esc(tituloSku(s))}</td>
         <td class="catc-sec">${esc(s.calibre || '—')}</td><td class="catc-sec">${esc(s.grado || '—')}</td>
         <td class="mono catc-mut" style="font-size:11px">${esc(s.gtin || '—')}</td>
         <td style="text-align:right" class="catc-sec">${esc(s.cajas_por_tarima ?? '—')}</td>
-        <td style="text-align:right" class="catc-sec">${esc(s.n_clientes ?? 0)}</td></tr>`).join('')}</tbody></table>`;
+        <td style="text-align:right" class="catc-sec">${esc(s.n_clientes ?? 0)}</td>
+        ${puedeCap() ? `<td style="text-align:right"><i class="ti ti-pencil catc-go editar" data-editsku="${esc(s.id)}" title="Editar SKU"></i></td>` : ''}</tr>`).join('')}</tbody></table>`;
   }
 
   function skuCardHTML(s, i, clientesDe) {
@@ -301,6 +302,7 @@
         </div>
         <div class="catc-actions" style="margin-bottom:10px">
           ${puedeCap() ? `<button class="catc-act" data-savesku="${esc(s.id)}"><i class="ti ti-check"></i>Guardar SKU</button>
+          <button class="catc-act" data-editsku="${esc(s.id)}" title="Editar todos los campos"><i class="ti ti-pencil"></i>Editar</button>
           <button class="catc-act del" data-delsku="${esc(s.id)}" title="Eliminar SKU"><i class="ti ti-trash"></i></button>` : ''}
         </div>
         <div class="catc-hint" style="margin-bottom:7px">Clientes de este SKU con su <b>código de item</b>. El precio se define en cada pedido — aquí solo el de contrato/ref. Pallets → cajas = pallets × ${esc(cxt)}.</div>
@@ -400,6 +402,10 @@
     $det().querySelectorAll('[data-unlinkprov]').forEach(el => el.addEventListener('click', () => desvincularProveedor(p.id, el.dataset.unlinkprov)));
     $det().querySelectorAll('[data-saveprovtemp]').forEach(el => el.addEventListener('click', () => guardarTemporadaProveedor(p.id, el.dataset.saveprovtemp)));
     $det().querySelectorAll('[data-savesku]').forEach(el => el.addEventListener('click', () => guardarSku(el.dataset.savesku)));
+    $det().querySelectorAll('[data-editsku]').forEach(el => el.addEventListener('click', () => {
+      const sk = det.skus.find(x => String(x.id) === String(el.dataset.editsku));
+      if (sk) armadorSku(p, sk);
+    }));
     $det().querySelectorAll('[data-delsku]').forEach(el => el.addEventListener('click', () => {
       const sk = det.skus.find(x => String(x.id) === String(el.dataset.delsku));
       eliminar('sku', el.dataset.delsku, 'el SKU "' + (sk ? [sk.variedad, sk.empaque].filter(Boolean).join(' · ') : '') + '"', true);
@@ -636,49 +642,59 @@
   }
 
   /* ================= Armador de SKU ================= */
-  function armadorSku(p) {
-    const optSel = (arr, nuevoLbl) => ['<option value=""></option>', ...arr.map(o => `<option>${esc(o)}</option>`), `<option value="__new">${esc(nuevoLbl)}</option>`].join('');
+  function armadorSku(p, skuExistente) {
+    const editando = !!skuExistente;
+    const s = skuExistente || {};
+    const optSel = (arr, nuevoLbl, actual) => {
+      const lista = (actual && !arr.includes(actual)) ? [...arr, actual] : arr;
+      return ['<option value=""></option>', ...lista.map(o => `<option ${o === actual ? 'selected' : ''}>${esc(o)}</option>`), `<option value="__new">${esc(nuevoLbl)}</option>`].join('');
+    };
+    const v = campo => esc(s[campo] ?? '');
     $det().innerHTML = `<div class="catc-dwrap">
       <button class="catc-act" data-back style="margin-bottom:14px"><i class="ti ti-arrow-left"></i>${esc(p.nombre)}</button>
-      <div style="font-size:17px;font-weight:600;margin-bottom:2px">Nuevo SKU · ${esc(p.nombre)}</div>
+      <div style="font-size:17px;font-weight:600;margin-bottom:2px">${editando ? 'Editar SKU' : 'Nuevo SKU'} · ${esc(p.nombre)}</div>
       <div class="catc-hint" style="margin-bottom:14px">Arma la presentación eligiendo de listas — así no hay valores repetidos. ¿Falta uno? Elige «＋ otro…» y se agrega a la lista para todos.</div>
       <div class="catc-card"><h4>Combinación (define el SKU)</h4>
         <div class="catc-g2" style="margin-bottom:10px">
           <div class="f"><label>Variedad</label>${det.variedades.length
-            ? `<select id="k_var"><option value="">— sin variedad —</option>${det.variedades.map(v => `<option value="${esc(v.id)}">${esc(v.nombre)}</option>`).join('')}</select>`
+            ? `<select id="k_var"><option value="">— sin variedad —</option>${det.variedades.map(vv => `<option value="${esc(vv.id)}" ${editando && String(vv.id) === String(s.variedad_id) ? 'selected' : ''}>${esc(vv.nombre)}</option>`).join('')}</select>`
             : '<input id="k_var" placeholder="(sin variedades)" disabled>'}</div>
-          <div class="f"><label>Empaque *</label><select id="k_emp" data-tipo="empaque">${optSel(listas.empaque, '＋ otro empaque…')}</select></div>
+          <div class="f"><label>Empaque *</label><select id="k_emp" data-tipo="empaque">${optSel(listas.empaque, '＋ otro empaque…', s.empaque)}</select></div>
         </div>
         <div class="catc-g3">
-          <div class="f"><label>Calibre</label><select id="k_cal" data-tipo="calibre">${optSel(listas.calibre, '＋ otro calibre…')}</select></div>
-          <div class="f"><label>Grado</label><select id="k_gra" data-tipo="grado">${optSel(listas.grado, '＋ otro grado…')}</select></div>
-          <div class="f"><label>Unidad de peso</label><select id="k_uni" data-tipo="unidad">${optSel(listas.unidad, '＋ otra unidad…')}</select></div>
+          <div class="f"><label>Calibre</label><select id="k_cal" data-tipo="calibre">${optSel(listas.calibre, '＋ otro calibre…', s.calibre)}</select></div>
+          <div class="f"><label>Grado</label><select id="k_gra" data-tipo="grado">${optSel(listas.grado, '＋ otro grado…', s.grado)}</select></div>
+          <div class="f"><label>Unidad de peso</label><select id="k_uni" data-tipo="unidad">${optSel(listas.unidad, '＋ otra unidad…', s.unidad_peso)}</select></div>
         </div>
         <div class="catc-g2" style="margin-top:10px">
-          <div class="f"><label>Peso neto</label><input id="k_peso" type="number" step="0.001" placeholder="10"></div>
-          <div class="f"><label>Peso bruto</label><input id="k_pesob" type="number" step="0.001"></div>
+          <div class="f"><label>Peso neto</label><input id="k_peso" type="number" step="0.001" placeholder="10" value="${v('peso_neto')}"></div>
+          <div class="f"><label>Peso bruto</label><input id="k_pesob" type="number" step="0.001" value="${v('peso_bruto')}"></div>
         </div>
         <div id="k_newval" style="display:none;margin-top:10px"></div>
         <div class="catc-prev">Vista previa: <b id="k_prev">—</b></div>
       </div>
       <div class="catc-card"><h4>Datos del SKU</h4>
         <div class="catc-g3">
-          <div class="f"><label>Marca</label><input id="k_marca"></div>
-          <div class="f"><label>GTIN</label><input id="k_gtin" class="mono"></div>
-          <div class="f"><label>PLU</label><input id="k_plu" class="mono"></div>
-          <div class="f"><label>Cajas/tarima</label><input id="k_cxt" type="number"></div>
-          <div class="f"><label>Estiba (Ti×Hi)</label><input id="k_estiba" placeholder="8x10"></div>
-          <div class="f"><label>Temp. °C</label><input id="k_temp" type="number" step="0.1"></div>
-          <div class="f"><label>Vida anaquel (d)</label><input id="k_vida" type="number"></div>
-          <div class="f"><label>¿Reempaque?</label><select id="k_reemp"><option value="false">No</option><option value="true">Sí</option></select></div>
+          <div class="f"><label>Marca</label><input id="k_marca" value="${v('marca')}"></div>
+          <div class="f"><label>GTIN</label><input id="k_gtin" class="mono" value="${v('gtin')}"></div>
+          <div class="f"><label>PLU</label><input id="k_plu" class="mono" value="${v('plu')}"></div>
+          <div class="f"><label>Cajas/tarima</label><input id="k_cxt" type="number" value="${v('cajas_por_tarima')}"></div>
+          <div class="f"><label>Estiba (Ti×Hi)</label><input id="k_estiba" placeholder="8x10" value="${v('patron_estiba')}"></div>
+          <div class="f"><label>Temp. °C</label><input id="k_temp" type="number" step="0.1" value="${v('temperatura_c')}"></div>
+          <div class="f"><label>Vida anaquel (d)</label><input id="k_vida" type="number" value="${v('vida_anaquel_dias')}"></div>
+          <div class="f"><label>¿Reempaque?</label><select id="k_reemp"><option value="false" ${!s.es_reempaque ? 'selected' : ''}>No</option><option value="true" ${s.es_reempaque ? 'selected' : ''}>Sí</option></select></div>
+          ${editando ? `
+          <div class="f"><label>Costo caja (ref)</label><input id="k_costo" type="number" step="0.01" value="${v('costo_caja_ref')}"></div>
+          <div class="f"><label>Precio caja (ref)</label><input id="k_precio" type="number" step="0.01" value="${v('precio_caja_ref')}"></div>
+          <div class="f"><label>Estado</label><select id="k_estado"><option value="activo" ${String(s.estado || 'activo') === 'activo' ? 'selected' : ''}>Activo</option><option value="inactivo" ${s.estado === 'inactivo' ? 'selected' : ''}>Inactivo</option></select></div>` : ''}
         </div>
       </div>
-      <div class="catc-dfoot"><span class="catc-hint">* obligatorio · los clientes se vinculan después de crear el SKU</span>
-        <div style="display:flex;gap:7px"><button class="catc-act" data-back>Cancelar</button><button class="btn-primary catc-act" data-create><i class="ti ti-check"></i>Crear SKU</button></div></div>
+      <div class="catc-dfoot"><span class="catc-hint">${editando ? '* obligatorio' : '* obligatorio · los clientes se vinculan después de crear el SKU'}</span>
+        <div style="display:flex;gap:7px"><button class="catc-act" data-back>Cancelar</button><button class="btn-primary catc-act" data-create><i class="ti ti-check"></i>${editando ? 'Guardar cambios' : 'Crear SKU'}</button></div></div>
     </div>`;
 
     const gv = id => { const e = document.getElementById(id); return e ? e.value : ''; };
-    const nombreVar = () => { const s = document.getElementById('k_var'); if (!s || s.tagName !== 'SELECT' || !s.value) return ''; return s.options[s.selectedIndex].text; };
+    const nombreVar = () => { const sel = document.getElementById('k_var'); if (!sel || sel.tagName !== 'SELECT' || !sel.value) return ''; return sel.options[sel.selectedIndex].text; };
     const upd = () => {
       const e = gv('k_emp'), c = gv('k_cal');
       document.getElementById('k_prev').textContent = p.nombre + (nombreVar() ? ' · ' + nombreVar() : '') + (e && e !== '__new' ? ' · ' + e : '') + (c && c !== '__new' ? ' · cal ' + c : '');
@@ -692,7 +708,7 @@
     });
     upd();
     $det().querySelector('[data-back]').addEventListener('click', () => detProducto());
-    $det().querySelector('[data-create]').addEventListener('click', () => crearSku(p));
+    $det().querySelector('[data-create]').addEventListener('click', () => editando ? guardarSkuEditado(p, s.id) : crearSku(p));
   }
 
   function mostrarNuevoValor(sel) {
@@ -741,6 +757,27 @@
       detProducto();
       recargarLista();
     } catch (e) { if (!(ERP.avisarSiPermiso && ERP.avisarSiPermiso(e))) ERP.toast('err', 'El ERP rechazó el SKU: ' + esc(e.message)); }
+  }
+
+  async function guardarSkuEditado(p, skuId) {
+    const gv = id => { const e = document.getElementById(id); return e ? e.value : ''; };
+    const emp = gv('k_emp');
+    if (!emp || emp === '__new') { ERP.toast('err', 'El empaque es obligatorio.'); return; }
+    const varSel = document.getElementById('k_var');
+    const variedad_id = (varSel && varSel.tagName === 'SELECT' && varSel.value) ? Number(varSel.value) : null;
+    const args = {
+      p_id: Number(skuId), p_producto_id: Number(p.id), p_variedad_id: variedad_id,
+      p_empaque: emp,
+      p_calibre: (gv('k_cal') && gv('k_cal') !== '__new') ? gv('k_cal') : null,
+      p_grado: (gv('k_gra') && gv('k_gra') !== '__new') ? gv('k_gra') : null,
+      p_marca: gv('k_marca').trim() || null,
+      p_peso_neto: num(gv('k_peso')), p_unidad_peso: (gv('k_uni') && gv('k_uni') !== '__new') ? gv('k_uni') : null, p_peso_bruto: num(gv('k_pesob')),
+      p_gtin: gv('k_gtin').trim() || null, p_plu: gv('k_plu').trim() || null, p_cajas_por_tarima: num(gv('k_cxt')),
+      p_patron_estiba: gv('k_estiba').trim() || null, p_temperatura_c: num(gv('k_temp')), p_vida_anaquel_dias: num(gv('k_vida')),
+      p_es_reempaque: gv('k_reemp') === 'true',
+      p_costo_caja_ref: num(gv('k_costo')), p_precio_caja_ref: num(gv('k_precio')), p_estado: gv('k_estado') || null
+    };
+    await escribir('fn_cat_sku_editar', args, 'SKU actualizado');
   }
 
   /* ================= Picker (elegir de lo existente) ================= */

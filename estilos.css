@@ -2141,6 +2141,7 @@ tr.anulada td:nth-child(2) .enlace{text-decoration:line-through;text-decoration-
 .pantalla-catalogos-c .catc-linkline .code{font-size:10.5px;color:var(--i3);font-family:'IBM Plex Mono',monospace}
 .pantalla-catalogos-c .catc-go{color:var(--i3);font-size:15px;cursor:pointer}
 .pantalla-catalogos-c .catc-go:hover{color:var(--red)}
+.pantalla-catalogos-c .catc-go.editar:hover{color:var(--brand)}
 
 /* kv rows / contactos */
 .pantalla-catalogos-c .catc-kv{display:flex;justify-content:space-between;align-items:center;padding:3px 0}
