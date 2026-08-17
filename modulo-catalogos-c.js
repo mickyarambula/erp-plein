@@ -77,7 +77,7 @@
   // Campos canónicos por entidad (= encabezados de las plantillas .xlsx, sin " *").
   const CAMPOS_IMPORT = {
     productos: ['nombre', 'codigo_item', 'categoria', 'pais_origen', 'organico', 'temporada_desde', 'temporada_hasta', 'estado', 'nota'],
-    skus: ['producto', 'variedad', 'empaque', 'peso_neto', 'unidad_peso', 'peso_bruto', 'calibre', 'grado', 'marca', 'gtin', 'plu', 'cajas_por_tarima', 'patron_estiba', 'temperatura_c', 'vida_anaquel_dias', 'es_reempaque', 'costo_caja_ref', 'precio_caja_ref', 'estado', 'nota'],
+    skus: ['producto', 'variedad', 'empaque', 'peso_neto', 'unidad_peso', 'peso_bruto', 'calibre', 'tamano', 'grado', 'marca', 'gtin', 'plu', 'cajas_por_tarima', 'patron_estiba', 'temperatura_c', 'vida_anaquel_dias', 'es_reempaque', 'costo_caja_ref', 'precio_caja_ref', 'estado', 'nota'],
     contrapartes: ['nombre', 'razon_social', 'es_cliente', 'es_proveedor', 'rfc_tax_id', 'paca_licencia', 'certificaciones', 'pais', 'ciudad', 'direccion_facturacion', 'direccion_envio', 'dias_credito', 'limite_credito', 'pct_anticipo', 'metodo_pago', 'moneda', 'contacto_nombre', 'contacto_rol', 'email', 'telefono_whatsapp', 'email_facturacion', 'estado', 'nota']
   };
   const PLANTILLA = { productos: 'plantilla_productos.xlsx', skus: 'plantilla_skus_presentaciones.xlsx', contrapartes: 'plantilla_contrapartes.xlsx' };
@@ -103,7 +103,7 @@
   async function cargarListas() {
     if (listas) return listas;
     const filas = await q('v_catc_listas_valores', '&order=tipo.asc,orden.asc,valor.asc').catch(() => []);
-    const l = { empaque: [], calibre: [], grado: [], unidad: [], categoria: [], tipo_contraparte: [] };
+    const l = { empaque: [], calibre: [], grado: [], unidad: [], categoria: [], tipo_contraparte: [], tamano: [] };
     (filas || []).filter(v => v.activo !== false).forEach(v => { if (l[v.tipo]) l[v.tipo].push(v.valor); });
     listas = l;
     return listas;
@@ -265,7 +265,7 @@
 
   function tituloSku(s) {
     const peso = [s.peso_neto, s.unidad_peso].filter(v => v != null && String(v).trim() !== '').join(' ');
-    return [s.producto, s.variedad, s.empaque, s.calibre, peso, s.marca]
+    return [s.producto, s.variedad, s.empaque, s.tamano, s.calibre, peso, s.marca]
       .filter(v => v != null && String(v).trim() !== '').join(' · ');
   }
 
@@ -655,11 +655,12 @@
       <div style="font-size:17px;font-weight:600;margin-bottom:2px">${editando ? 'Editar SKU' : 'Nuevo SKU'} · ${esc(p.nombre)}</div>
       <div class="catc-hint" style="margin-bottom:14px">Arma la presentación eligiendo de listas — así no hay valores repetidos. ¿Falta uno? Elige «＋ otro…» y se agrega a la lista para todos.</div>
       <div class="catc-card"><h4>Combinación (define el SKU)</h4>
-        <div class="catc-g2" style="margin-bottom:10px">
+        <div class="catc-g3" style="margin-bottom:10px">
           <div class="f"><label>Variedad</label>${det.variedades.length
             ? `<select id="k_var"><option value="">— sin variedad —</option>${det.variedades.map(vv => `<option value="${esc(vv.id)}" ${editando && String(vv.id) === String(s.variedad_id) ? 'selected' : ''}>${esc(vv.nombre)}</option>`).join('')}</select>`
             : '<input id="k_var" placeholder="(sin variedades)" disabled>'}</div>
           <div class="f"><label>Empaque *</label><select id="k_emp" data-tipo="empaque">${optSel(listas.empaque, '＋ otro empaque…', s.empaque)}</select></div>
+          <div class="f"><label>Tamaño</label><select id="k_tam" data-tipo="tamano">${optSel(listas.tamano, '＋ otro tamaño…', s.tamano)}</select></div>
         </div>
         <div class="catc-g3">
           <div class="f"><label>Calibre</label><select id="k_cal" data-tipo="calibre">${optSel(listas.calibre, '＋ otro calibre…', s.calibre)}</select></div>
@@ -696,10 +697,10 @@
     const gv = id => { const e = document.getElementById(id); return e ? e.value : ''; };
     const nombreVar = () => { const sel = document.getElementById('k_var'); if (!sel || sel.tagName !== 'SELECT' || !sel.value) return ''; return sel.options[sel.selectedIndex].text; };
     const upd = () => {
-      const e = gv('k_emp'), c = gv('k_cal');
-      document.getElementById('k_prev').textContent = p.nombre + (nombreVar() ? ' · ' + nombreVar() : '') + (e && e !== '__new' ? ' · ' + e : '') + (c && c !== '__new' ? ' · cal ' + c : '');
+      const e = gv('k_emp'), t = gv('k_tam'), c = gv('k_cal');
+      document.getElementById('k_prev').textContent = p.nombre + (nombreVar() ? ' · ' + nombreVar() : '') + (e && e !== '__new' ? ' · ' + e : '') + (t && t !== '__new' ? ' · ' + t : '') + (c && c !== '__new' ? ' · cal ' + c : '');
     };
-    ['k_var', 'k_emp', 'k_cal', 'k_gra', 'k_uni'].forEach(id => {
+    ['k_var', 'k_emp', 'k_tam', 'k_cal', 'k_gra', 'k_uni'].forEach(id => {
       const el = document.getElementById(id);
       if (el && el.tagName === 'SELECT') el.addEventListener('change', () => {
         if (el.value === '__new') mostrarNuevoValor(el);
@@ -741,6 +742,7 @@
     const args = {
       p_producto_id: Number(p.id), p_variedad_id: variedad_id, p_empaque: emp,
       p_calibre: (gv('k_cal') && gv('k_cal') !== '__new') ? gv('k_cal') : null,
+      p_tamano: (gv('k_tam') && gv('k_tam') !== '__new') ? gv('k_tam') : null,
       p_grado: (gv('k_gra') && gv('k_gra') !== '__new') ? gv('k_gra') : null,
       p_unidad_peso: (gv('k_uni') && gv('k_uni') !== '__new') ? gv('k_uni') : null,
       p_peso_neto: num(gv('k_peso')), p_peso_bruto: num(gv('k_pesob')), p_marca: gv('k_marca').trim() || null,
@@ -769,6 +771,7 @@
       p_id: Number(skuId), p_producto_id: Number(p.id), p_variedad_id: variedad_id,
       p_empaque: emp,
       p_calibre: (gv('k_cal') && gv('k_cal') !== '__new') ? gv('k_cal') : null,
+      p_tamano: (gv('k_tam') && gv('k_tam') !== '__new') ? gv('k_tam') : null,
       p_grado: (gv('k_gra') && gv('k_gra') !== '__new') ? gv('k_gra') : null,
       p_marca: gv('k_marca').trim() || null,
       p_peso_neto: num(gv('k_peso')), p_unidad_peso: (gv('k_uni') && gv('k_uni') !== '__new') ? gv('k_uni') : null, p_peso_bruto: num(gv('k_pesob')),
@@ -950,12 +953,12 @@
     const filas = await q('v_catc_listas_valores', '&order=tipo.asc,orden.asc,valor.asc').catch(() => []);
     const porTipo = {};
     (filas || []).forEach(f => { (porTipo[f.tipo] = porTipo[f.tipo] || []).push(f); });
-    const TIPOS = ['empaque', 'calibre', 'grado', 'unidad', 'categoria', 'tipo_contraparte'];
-    const LABEL_TIPO = { tipo_contraparte: 'Tipo de proveedor' };
+    const TIPOS = ['empaque', 'calibre', 'tamano', 'grado', 'unidad', 'categoria', 'tipo_contraparte'];
+    const LABEL_TIPO = { tipo_contraparte: 'Tipo de proveedor', tamano: 'Tamaño' };
     document.getElementById('catcRows').innerHTML = '<div class="catc-hint" style="padding:16px">Listas abiertas en el detalle →</div>';
     $det().innerHTML = `<div class="catc-dwrap">
       <div style="font-size:17px;font-weight:600;margin-bottom:2px">Listas de valores</div>
-      <div class="catc-hint" style="margin-bottom:14px">Vocabularios controlados que alimentan los selectores (empaque, calibre, grado, unidad, categoría, tipo de proveedor). Agregar aquí o al vuelo desde el armador de SKU / la ficha de contraparte.</div>
+      <div class="catc-hint" style="margin-bottom:14px">Vocabularios controlados que alimentan los selectores (empaque, calibre, tamaño, grado, unidad, categoría, tipo de proveedor). Agregar aquí o al vuelo desde el armador de SKU / la ficha de contraparte.</div>
       ${TIPOS.map(t => `<div class="catc-card"><h4>${esc(LABEL_TIPO[t] || t)} ${puedeCap() ? `<span class="catc-add" data-addlv="${esc(t)}"><i class="ti ti-plus"></i>Agregar</span>` : ''}</h4>
         <div style="display:flex;flex-wrap:wrap;gap:7px">${(porTipo[t] || []).length
           ? porTipo[t].map(v => `<span class="catc-chip ${v.activo === false ? 'off' : ''}">${esc(v.valor)}${puedeCap() ? `<i class="ti ti-x" data-dellv="${esc(v.id)}" title="Quitar"></i>` : ''}</span>`).join('')
