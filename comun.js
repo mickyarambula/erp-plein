@@ -476,28 +476,28 @@ window.ERP = (function () {
   function crearPickerSku(opciones) {
     const {
       contenedor, placeholder = 'Buscar SKU…',
-      alCambiar = null, valorInicial = null   // valorInicial: { sku_id, etiqueta } — precarga sin RPC
+      alCambiar = null, valorInicial = null   // valorInicial: { sku_id, etiqueta, producto_id?, es_vinculado? } — precarga sin RPC
     } = opciones;
     let productoId = opciones.productoId ?? null;
+    let contraparteId = opciones.contraparteId ?? null;
+    // Con contraparteId puesto, arranca acotado a lo que ese cliente ya compra (D-1xx) —
+    // "ver todos" queda como un toggle, nunca oculta el catálogo completo permanentemente.
+    let soloVinculados = opciones.soloVinculados ?? (contraparteId != null);
 
     let itemsActuales = [];   // últimas filas de fn_cat_sugerir_sku
-    let seleccion = null;     // { sku_id, etiqueta }
+    let seleccion = null;     // { sku_id, etiqueta, producto_id, es_vinculado }
     let resaltado = -1;
     let peticion = 0;         // guard de carreras: descarta respuestas que llegan fuera de orden
     let debounceT = null;
     let cargado = false;      // evita relanzar la carga inicial en cada focus
+    let input, lista, toggleBtn;
 
-    contenedor.classList.add('combo');
-    contenedor.innerHTML = `
-      <input type="text" class="combo-input" autocomplete="off" spellcheck="false"
-             role="combobox" aria-expanded="false" placeholder="${esc(placeholder)}">
-      <div class="combo-lista" role="listbox"></div>`;
-    const input = contenedor.querySelector('.combo-input');
-    const lista = contenedor.querySelector('.combo-lista');
+    contenedor.classList.add('combo', 'picker-sku');
 
     function abrir() { lista.classList.add('abierta'); input.setAttribute('aria-expanded', 'true'); }
-    function cerrar() { lista.classList.remove('abierta'); input.setAttribute('aria-expanded', 'false'); }
+    function cerrar() { if (lista) lista.classList.remove('abierta'); if (input) input.setAttribute('aria-expanded', 'false'); }
 
+    /** Etiqueta larga y completa — nunca se corta con "…" (D-1xx: el problema original). */
     function pintar() {
       resaltado = itemsActuales.length ? 0 : -1;
       lista.innerHTML = !itemsActuales.length
@@ -506,6 +506,7 @@ window.ERP = (function () {
           <div class="combo-item ${o.es_sugerencia ? 'destacado' : ''} ${i === resaltado ? 'sel' : ''}" data-i="${i}" role="option">
             ${o.es_sugerencia ? '<span class="combo-destacado" title="Mejor coincidencia">★</span>' : ''}
             <span class="txt">${esc(o.etiqueta)}</span>
+            ${o.es_vinculado ? '<span class="picker-sku-vinc-tag">del cliente</span>' : ''}
           </div>`).join('');
       abrir();
     }
@@ -516,7 +517,10 @@ window.ERP = (function () {
       abrir();
       let filas;
       try {
-        filas = await rpc('fn_cat_sugerir_sku', { p_texto: texto || '', p_producto_id: productoId, p_umbral: 0.3 });
+        filas = await rpc('fn_cat_sugerir_sku', {
+          p_texto: texto || '', p_producto_id: productoId, p_umbral: 0.3,
+          p_contraparte_id: contraparteId, p_solo_vinculados: !!(contraparteId && soloVinculados)
+        });
       } catch (e) {
         if (mio !== peticion) return;
         lista.innerHTML = `<div class="combo-vacio">No se pudo buscar: ${esc(e.message)}</div>`;
@@ -528,16 +532,6 @@ window.ERP = (function () {
       pintar();
     }
 
-    function elegir(i) {
-      const o = itemsActuales[i];
-      if (!o) return;
-      seleccion = { sku_id: o.sku_id, etiqueta: o.etiqueta, producto_id: o.producto_id ?? null };
-      input.value = o.etiqueta;
-      contenedor.classList.add('elegido');
-      cerrar();
-      if (alCambiar) alCambiar(seleccion);
-    }
-
     function mover(paso) {
       if (!itemsActuales.length) return;
       resaltado = (resaltado + paso + itemsActuales.length) % itemsActuales.length;
@@ -546,36 +540,79 @@ window.ERP = (function () {
       if (el) el.scrollIntoView({ block: 'nearest' });
     }
 
-    input.addEventListener('input', () => {
-      seleccion = null;
+    /** Modo búsqueda: input + dropdown (idéntico a antes, más el toggle de acotado por cliente). */
+    function renderBusqueda() {
       contenedor.classList.remove('elegido');
-      if (alCambiar) alCambiar(null);
-      clearTimeout(debounceT);
-      const texto = input.value;
-      debounceT = setTimeout(() => buscar(texto), 200);   // debounce ~200ms
-    });
+      contenedor.innerHTML = `
+        <div class="picker-sku-buscador">
+          <input type="text" class="combo-input" autocomplete="off" spellcheck="false"
+                 role="combobox" aria-expanded="false" placeholder="${esc(placeholder)}">
+          ${contraparteId != null ? `<button type="button" class="picker-sku-toggle">${soloVinculados ? 'Ver todos los SKU' : 'Solo del cliente'}</button>` : ''}
+        </div>
+        <div class="combo-lista" role="listbox"></div>`;
+      input = contenedor.querySelector('.combo-input');
+      lista = contenedor.querySelector('.combo-lista');
+      toggleBtn = contenedor.querySelector('.picker-sku-toggle');
 
-    input.addEventListener('focus', () => { cargado ? abrir() : buscar(input.value); });
+      input.addEventListener('input', () => {
+        seleccion = null;
+        if (alCambiar) alCambiar(null);
+        clearTimeout(debounceT);
+        const texto = input.value;
+        debounceT = setTimeout(() => buscar(texto), 200);   // debounce ~200ms
+      });
+      input.addEventListener('focus', () => { cargado ? abrir() : buscar(input.value); });
+      input.addEventListener('keydown', e => {
+        if (e.key === 'ArrowDown') { e.preventDefault(); if (!lista.classList.contains('abierta')) buscar(input.value); else mover(1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); mover(-1); }
+        else if (e.key === 'Enter') { e.preventDefault(); if (resaltado >= 0) elegir(resaltado); }
+        else if (e.key === 'Escape') { cerrar(); }
+        else if (e.key === 'Tab') { cerrar(); }
+      });
+      lista.addEventListener('mousedown', e => {
+        const item = e.target.closest('.combo-item');
+        if (item) { e.preventDefault(); elegir(Number(item.dataset.i)); }
+      });
+      input.addEventListener('blur', () => setTimeout(cerrar, 120));
+      if (toggleBtn) toggleBtn.addEventListener('click', () => {
+        soloVinculados = !soloVinculados;
+        toggleBtn.textContent = soloVinculados ? 'Ver todos los SKU' : 'Solo del cliente';
+        cargado = false;
+        buscar(input.value);
+        input.focus();
+      });
+    }
 
-    input.addEventListener('keydown', e => {
-      if (e.key === 'ArrowDown') { e.preventDefault(); if (!lista.classList.contains('abierta')) buscar(input.value); else mover(1); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); mover(-1); }
-      else if (e.key === 'Enter') { e.preventDefault(); if (resaltado >= 0) elegir(resaltado); }
-      else if (e.key === 'Escape') { cerrar(); }
-      else if (e.key === 'Tab') { cerrar(); }
-    });
+    /** Modo elegido: chip ancho con la etiqueta COMPLETA (nunca un input diminuto) + lápiz para cambiar. */
+    function renderChip() {
+      contenedor.classList.add('elegido');
+      contenedor.innerHTML = `
+        <div class="picker-sku-chip">
+          <span class="txt">${esc(seleccion.etiqueta)}</span>
+          ${seleccion.es_vinculado ? '<span class="picker-sku-vinc" title="Este cliente ya compra este SKU">★ del cliente</span>' : ''}
+          <button type="button" class="picker-sku-editar" title="Cambiar SKU"><i class="ti ti-pencil"></i></button>
+        </div>`;
+      contenedor.querySelector('.picker-sku-editar').addEventListener('click', () => {
+        seleccion = null;
+        if (alCambiar) alCambiar(null);
+        renderBusqueda();
+        input.focus();
+      });
+    }
 
-    lista.addEventListener('mousedown', e => {
-      const item = e.target.closest('.combo-item');
-      if (item) { e.preventDefault(); elegir(Number(item.dataset.i)); }
-    });
-
-    input.addEventListener('blur', () => setTimeout(cerrar, 120));
+    function elegir(i) {
+      const o = itemsActuales[i];
+      if (!o) return;
+      seleccion = { sku_id: o.sku_id, etiqueta: o.etiqueta, producto_id: o.producto_id ?? null, es_vinculado: !!o.es_vinculado };
+      renderChip();
+      if (alCambiar) alCambiar(seleccion);
+    }
 
     if (valorInicial && valorInicial.sku_id != null) {
-      seleccion = { sku_id: valorInicial.sku_id, etiqueta: valorInicial.etiqueta || '', producto_id: valorInicial.producto_id ?? null };
-      input.value = seleccion.etiqueta;
-      contenedor.classList.add('elegido');
+      seleccion = { sku_id: valorInicial.sku_id, etiqueta: valorInicial.etiqueta || '', producto_id: valorInicial.producto_id ?? null, es_vinculado: !!valorInicial.es_vinculado };
+      renderChip();
+    } else {
+      renderBusqueda();
     }
 
     return {
@@ -583,17 +620,19 @@ window.ERP = (function () {
       valorId: () => (seleccion ? seleccion.sku_id : null),
       valorEtiqueta: () => (seleccion ? seleccion.etiqueta : null),
       valorProductoId: () => (seleccion ? seleccion.producto_id : null),
-      limpiar() { seleccion = null; input.value = ''; contenedor.classList.remove('elegido'); },
-      enfocar() { input.focus(); },
+      valorEsVinculado: () => !!(seleccion && seleccion.es_vinculado),
+      limpiar() { seleccion = null; renderBusqueda(); },
+      enfocar() { if (input) input.focus(); },
       /** Acota/cambia el producto (p.ej. la línea de la Sales Order ya eligió producto) y
           fuerza una recarga con el texto actual — no toca la selección existente. */
-      acotarProducto(pid) { productoId = pid ?? null; cargado = false; if (lista.classList.contains('abierta')) buscar(input.value); },
+      acotarProducto(pid) { productoId = pid ?? null; cargado = false; if (lista && lista.classList.contains('abierta')) buscar(input.value); },
+      /** Cambia el cliente al que se acota la búsqueda (p.ej. el CPO ya resolvió su cliente
+          después de montar el picker). Resetea soloVinculados al default de "hay cliente". */
+      acotarContraparte(cid) { contraparteId = cid ?? null; soloVinculados = contraparteId != null; cargado = false; },
       seleccionar(item) {
         if (!item) { this.limpiar(); return; }
-        seleccion = { sku_id: item.sku_id, etiqueta: item.etiqueta || '', producto_id: item.producto_id ?? null };
-        input.value = seleccion.etiqueta;
-        contenedor.classList.add('elegido');
-        cerrar();
+        seleccion = { sku_id: item.sku_id, etiqueta: item.etiqueta || '', producto_id: item.producto_id ?? null, es_vinculado: !!item.es_vinculado };
+        renderChip();
         if (alCambiar) alCambiar(seleccion);
       }
     };

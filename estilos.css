@@ -2040,6 +2040,38 @@ tr.anulada td:nth-child(2) .enlace{text-decoration:line-through;text-decoration-
 .ia-revision #iaConfirmar{background:var(--btn);color:var(--btnT)}
 .ia-revision #iaConfirmar:hover{filter:brightness(1.15)}
 
+/* Líneas de SO / CPO-IA como tarjeta (antes tabla angosta que cortaba la etiqueta del SKU,
+   ej. "Papaya · Formosa · Caja · 6 ct · 36 lb" con "…"). Una tarjeta por línea: el picker de
+   SKU ocupa el ancho completo arriba; los demás campos van en una fila debajo. */
+.so-lineas-lista{display:flex;flex-direction:column;gap:10px;margin-bottom:6px}
+.so-linea-card{border:1px solid var(--bd);border-radius:8px;padding:11px 12px;background:var(--pan)}
+.so-linea-fila{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:10px}
+.so-linea-campo{display:flex;flex-direction:column;gap:4px;min-width:110px}
+.so-linea-campo label{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--i3);font-weight:700}
+.so-linea-campo input,.so-linea-campo select{border:1px solid var(--bd);border-radius:6px;padding:7px 9px;font-size:12.5px;background:var(--bg);color:var(--ink);width:100%}
+.so-linea-campo input:focus,.so-linea-campo select:focus{outline:none;border-color:var(--brand)}
+.so-linea-campo.num{max-width:110px}
+.so-linea-quitar{border:1px solid var(--bd);background:var(--pan);color:var(--i3);border-radius:6px;width:32px;height:32px;cursor:pointer;flex:none}
+.so-linea-quitar:hover{border-color:var(--red);color:var(--red)}
+.ia-lineas-lista .ia-leido{max-width:none;margin-bottom:8px}
+
+/* Picker de SKU (ERP.crearPickerSku): chip ancho de etiqueta COMPLETA una vez elegido — nunca
+   un input diminuto con "…" — y dropdown que no trunca ni se angosta al contenedor. */
+.picker-sku{width:100%}
+.picker-sku-buscador{display:flex;gap:8px;align-items:center}
+.picker-sku-buscador .combo-input{flex:1}
+.picker-sku-toggle{flex:none;font-size:11px;font-weight:600;color:var(--brand);background:transparent;border:1px solid var(--bd);border-radius:6px;padding:6px 10px;cursor:pointer;white-space:nowrap}
+.picker-sku-toggle:hover{background:var(--gtint)}
+.picker-sku .combo-lista{right:auto;width:max-content;min-width:100%;max-width:min(640px,90vw)}
+.picker-sku .combo-item{align-items:flex-start}
+.picker-sku .combo-item .txt{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.35}
+.picker-sku-vinc-tag{flex:none;font-size:10px;font-weight:700;color:var(--money);background:color-mix(in srgb,var(--money) 16%,transparent);border-radius:20px;padding:2px 8px;white-space:nowrap}
+.picker-sku-chip{display:flex;align-items:center;gap:8px;border:1px solid var(--brand);background:var(--gtint);border-radius:8px;padding:9px 11px;min-height:38px}
+.picker-sku-chip .txt{flex:1;font-size:13px;font-weight:600;color:var(--ink);line-height:1.35;word-break:break-word}
+.picker-sku-vinc{flex:none;font-size:10.5px;font-weight:700;color:var(--money);white-space:nowrap}
+.picker-sku-editar{flex:none;border:none;background:transparent;color:var(--i3);cursor:pointer;font-size:15px;padding:2px;line-height:1}
+.picker-sku-editar:hover{color:var(--brand)}
+
 /* ================= CAMINO C · Catálogos (master-detail) — scope .pantalla-catalogos-c =================
    Portado de catalogos-completo.html a los tokens reales del proyecto (tokens.css, dark-aware, E123/E124).
    Mapeo: --panel→--pan · --panel2→--bg · --soft/--sel→--gtint · --border(2)→--bd · --ink→--ink ·

@@ -130,7 +130,7 @@
           <td>${chipEstado(c.estado)}</td>
           <td>${adjuntoHTML(c.adjunto_ref)}</td>
           <td class="acc">${abierto && puedeCap
-            ? `<button class="btn-mini gen-so" data-id="${esc(c.id)}" data-folio="${esc(c.folio)}">Generar Sales Order</button>`
+            ? `<button class="btn-mini gen-so" data-id="${esc(c.id)}" data-folio="${esc(c.folio)}" data-cliente-id="${esc(c.cliente_id)}">Generar Sales Order</button>`
             : ''}</td>
         </tr>`;
       }).join('')}</tbody>
@@ -138,7 +138,7 @@
 
     cont.querySelectorAll('button.gen-so').forEach(b => b.addEventListener('click', e => {
       e.stopPropagation();
-      if (ERP.o1CrearSODesde) ERP.o1CrearSODesde(Number(b.dataset.id), b.dataset.folio);
+      if (ERP.o1CrearSODesde) ERP.o1CrearSODesde(Number(b.dataset.id), b.dataset.folio, b.dataset.clienteId ? Number(b.dataset.clienteId) : null);
       else ERP.toast('err', 'El módulo de Sales Orders no está cargado.');
     }));
     cont.querySelectorAll('tr.clic[data-id]').forEach(tr =>
@@ -418,39 +418,60 @@
     }));
   }
 
-  const iaNuevaLinea = () => ({ picker: null, sku_id: null, sku_etiqueta: '', sugerencia: null, alternativas: [], texto: '', marca: '', marca_privada: '', cantidad: '', uom: 'CAJA', precio_unitario: '' });
+  const iaNuevaLinea = () => ({ picker: null, sku_id: null, sku_etiqueta: '', sku_vinculado: false, autoMatchIntentado: false, sugerencia: null, alternativas: [], texto: '', marca: '', marca_privada: '', cantidad: '', uom: 'CAJA', precio_unitario: '' });
 
   const optsMarcaIA = l => '<option value="">— marca —</option>' +
     iaMarcasCat.map(m => `<option value="${esc(m)}"${l.marca === m ? ' selected' : ''}>${esc(m)}</option>`).join('');
 
+  // Auto-match por SKU (D-1xx): la línea llega de la IA solo con el texto leído (nivel línea,
+  // no siempre con sku_id). Busca ese texto acotado al cliente ya elegido; si hay una mejor
+  // coincidencia con score alto, la preselecciona — el usuario solo confirma o la cambia.
+  // Nunca inventa un SKU: si no hay sugerencia fuerte, la línea queda para elegir a mano.
+  async function autoMatchLinea(l) {
+    const clienteId = iaComboCliente ? iaComboCliente.valorId() : null;
+    try {
+      const sugs = await rpc('fn_cat_sugerir_sku', {
+        p_texto: l.texto, p_producto_id: null, p_umbral: 0.3, p_contraparte_id: clienteId, p_solo_vinculados: false
+      });
+      const mejor = (sugs || []).find(s => s.es_sugerencia);
+      if (mejor && Number(mejor.score || 0) >= 0.7 && l.picker && !l.picker.valorId()) {
+        l.picker.seleccionar({ sku_id: mejor.sku_id, etiqueta: mejor.etiqueta, producto_id: mejor.producto_id, es_vinculado: mejor.es_vinculado });
+      }
+    } catch (_) { /* silencioso — el usuario siempre puede buscar a mano */ }
+  }
+
   function montarLineasIA() {
     const body = document.getElementById('iaLineasBody');
     if (!body) return;
-    body.innerHTML = iaLineas.map((l, i) => `<tr data-i="${i}">
-      <td class="ia-leido">${esc(l.texto || '—')}</td>
-      <td>
-        <div class="ia-combo-cell">
-          <div id="iaLiCombo${i}"></div>
-          <div class="ia-combo-meta">${scoreBadge(l.sugerencia)}${chipsAlternativas(l.alternativas, 'linea', i)}</div>
-        </div>
-      </td>
-      <td><select class="ia-li" data-i="${i}" data-k="marca">${optsMarcaIA(l)}</select>
-        ${l.marca === 'Private Label' ? `<input class="ia-li" data-i="${i}" data-k="marca_privada" placeholder="Marca del cliente" value="${esc(l.marca_privada)}" style="margin-top:4px">` : ''}</td>
-      <td><input class="ia-li num" data-i="${i}" data-k="cantidad" type="number" step="0.01" min="0" value="${esc(l.cantidad)}" placeholder="0"></td>
-      <td><input class="ia-li" data-i="${i}" data-k="uom" type="text" value="${esc(l.uom)}" style="width:70px"></td>
-      <td><input class="ia-li num" data-i="${i}" data-k="precio_unitario" type="number" step="0.01" min="0" value="${esc(l.precio_unitario)}" placeholder="opcional"></td>
-      <td><button class="btn-cap" data-del="${i}" title="Quitar línea">✕</button></td>
-    </tr>`).join('');
+    const clienteId = iaComboCliente ? iaComboCliente.valorId() : null;
+    body.innerHTML = iaLineas.map((l, i) => `<div class="so-linea-card" data-i="${i}">
+      <div class="ia-leido">Texto leído: ${esc(l.texto || '—')}</div>
+      <div id="iaLiCombo${i}"></div>
+      <div class="ia-combo-meta">${scoreBadge(l.sugerencia)}${chipsAlternativas(l.alternativas, 'linea', i)}</div>
+      <div class="so-linea-fila">
+        <div class="so-linea-campo"><label>Marca</label><select class="ia-li" data-i="${i}" data-k="marca">${optsMarcaIA(l)}</select></div>
+        ${l.marca === 'Private Label' ? `<div class="so-linea-campo"><label>Marca del cliente</label><input class="ia-li" data-i="${i}" data-k="marca_privada" placeholder="Marca del cliente" value="${esc(l.marca_privada)}"></div>` : ''}
+        <div class="so-linea-campo num"><label>Cantidad</label><input class="ia-li num" data-i="${i}" data-k="cantidad" type="number" step="0.01" min="0" value="${esc(l.cantidad)}" placeholder="0"></div>
+        <div class="so-linea-campo num"><label>UOM</label><input class="ia-li" data-i="${i}" data-k="uom" type="text" value="${esc(l.uom)}"></div>
+        <div class="so-linea-campo num"><label>Precio unit.</label><input class="ia-li num" data-i="${i}" data-k="precio_unitario" type="number" step="0.01" min="0" value="${esc(l.precio_unitario)}" placeholder="opcional"></div>
+        <button type="button" class="so-linea-quitar" data-del="${i}" title="Quitar línea">✕</button>
+      </div>
+    </div>`).join('');
 
     iaLineas.forEach((l, i) => {
       l.picker = ERP.crearPickerSku({
         contenedor: document.getElementById(`iaLiCombo${i}`),
         placeholder: 'Busca SKU…',
-        valorInicial: l.sku_id ? { sku_id: l.sku_id, etiqueta: l.sku_etiqueta } : null
+        contraparteId: clienteId,
+        valorInicial: l.sku_id ? { sku_id: l.sku_id, etiqueta: l.sku_etiqueta, es_vinculado: l.sku_vinculado } : null
       });
-      // La IA sugiere a nivel SKU si el mapeo ya trae sku_id; si no, la línea queda sin
-      // preseleccionar y el usuario elige del catálogo (nunca se inventa un SKU).
+      // La IA sugiere a nivel SKU si el mapeo ya trae sku_id; si no, se intenta el auto-match
+      // por texto (una sola vez por línea — autoMatchIntentado evita repetirlo en cada re-render).
       if (l.sugerencia && l.sugerencia.sku_id) l.picker.seleccionar({ sku_id: l.sugerencia.sku_id, etiqueta: l.sugerencia.etiqueta || l.sugerencia.nombre });
+      else if (!l.sku_id && !l.autoMatchIntentado && l.texto && l.texto.trim()) {
+        l.autoMatchIntentado = true;
+        autoMatchLinea(l);
+      }
     });
 
     body.querySelectorAll('.ia-li').forEach(inp => {
@@ -476,7 +497,7 @@
       if (iaLineas[i]) iaLineas[i][k] = inp.value;
     });
     iaLineas.forEach(l => {
-      if (l.picker) { l.sku_id = l.picker.valorId(); l.sku_etiqueta = l.picker.valorEtiqueta(); }
+      if (l.picker) { l.sku_id = l.picker.valorId(); l.sku_etiqueta = l.picker.valorEtiqueta(); l.sku_vinculado = l.picker.valorEsVinculado(); }
     });
   }
 
@@ -562,10 +583,7 @@
             <div class="alias-ayuda">No lo sugiere la IA — Margen, Consignación o Comisión definen cómo se reconoce el ingreso.</div></div>
         </div>
         <div class="seccion-head"><h4>Líneas</h4><button type="button" class="btn-mini gris" id="iaAddLinea">+ Línea</button></div>
-        <div class="tabla-wrap"><table class="so-lineas ia-lineas">
-          <thead><tr><th>Texto leído</th><th>SKU (catálogo)</th><th>Marca</th><th class="num">Cantidad</th><th>UOM</th><th class="num">Precio unit.</th><th></th></tr></thead>
-          <tbody id="iaLineasBody"></tbody>
-        </table></div>
+        <div id="iaLineasBody" class="so-lineas-lista ia-lineas-lista"></div>
         <div class="alias-ayuda">El precio unitario es opcional: en comisión pura va vacío (costo 0 / margen 100% es correcto).</div>
         <div class="acciones">
           <button type="button" class="btn-mini" id="iaConfirmar">Confirmar y guardar</button>
@@ -698,7 +716,7 @@
     document.getElementById('cpoCerrar').addEventListener('click', ERP.cerrarPanel);
     const bGen = document.getElementById('cpoGenSO');
     if (bGen) bGen.addEventListener('click', () => {
-      if (ERP.o1CrearSODesde) ERP.o1CrearSODesde(Number(c.id), c.folio);
+      if (ERP.o1CrearSODesde) ERP.o1CrearSODesde(Number(c.id), c.folio, c.cliente_id != null ? Number(c.cliente_id) : null);
       else ERP.toast('err', 'El módulo de Sales Orders no está cargado.');
     });
   }

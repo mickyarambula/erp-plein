@@ -161,9 +161,9 @@
   /* ================= Alta (desde un CPO) ================= */
 
   let revenueModels = [], marcasCat = [], lineas = [];
-  let cpoActual = null;   // { id, folio }
+  let cpoActual = null;   // { id, folio, clienteId }
 
-  const nuevaLinea = () => ({ picker: null, sku_id: null, sku_etiqueta: '', marca: '', marca_privada: '', cantidad: '', uom: 'CAJA', precio_unitario: '' });
+  const nuevaLinea = () => ({ picker: null, sku_id: null, sku_etiqueta: '', sku_vinculado: false, marca: '', marca_privada: '', cantidad: '', uom: 'CAJA', precio_unitario: '' });
 
   const optsMarca = l => '<option value="">— marca —</option>' +
     marcasCat.map(m => `<option value="${esc(m)}"${l.marca === m ? ' selected' : ''}>${esc(m)}</option>`).join('');
@@ -171,21 +171,25 @@
   function montarLineas() {
     const body = document.getElementById('soLineasBody');
     if (!body) return;
-    body.innerHTML = lineas.map((l, i) => `<tr>
-      <td><div id="soLiSku${i}"></div></td>
-      <td><select class="so-li" data-i="${i}" data-k="marca">${optsMarca(l)}</select>
-        ${l.marca === 'Private Label' ? `<input class="so-li" data-i="${i}" data-k="marca_privada" placeholder="Marca del cliente" value="${esc(l.marca_privada)}" style="margin-top:4px">` : ''}</td>
-      <td><input class="so-li num" data-i="${i}" data-k="cantidad" type="number" step="0.01" min="0" value="${esc(l.cantidad)}" placeholder="0"></td>
-      <td><input class="so-li" data-i="${i}" data-k="uom" type="text" value="${esc(l.uom)}" style="width:70px"></td>
-      <td><input class="so-li num" data-i="${i}" data-k="precio_unitario" type="number" step="0.01" min="0" value="${esc(l.precio_unitario)}" placeholder="opcional"></td>
-      <td><button class="btn-cap" data-del="${i}" title="Quitar línea">✕</button></td>
-    </tr>`).join('');
+    const clienteId = cpoActual && cpoActual.clienteId != null ? Number(cpoActual.clienteId) : null;
+    body.innerHTML = lineas.map((l, i) => `<div class="so-linea-card" data-i="${i}">
+      <div id="soLiSku${i}"></div>
+      <div class="so-linea-fila">
+        <div class="so-linea-campo"><label>Marca</label><select class="so-li" data-i="${i}" data-k="marca">${optsMarca(l)}</select></div>
+        ${l.marca === 'Private Label' ? `<div class="so-linea-campo"><label>Marca del cliente</label><input class="so-li" data-i="${i}" data-k="marca_privada" placeholder="Marca del cliente" value="${esc(l.marca_privada)}"></div>` : ''}
+        <div class="so-linea-campo num"><label>Cantidad</label><input class="so-li num" data-i="${i}" data-k="cantidad" type="number" step="0.01" min="0" value="${esc(l.cantidad)}" placeholder="0"></div>
+        <div class="so-linea-campo num"><label>UOM</label><input class="so-li" data-i="${i}" data-k="uom" type="text" value="${esc(l.uom)}"></div>
+        <div class="so-linea-campo num"><label>Precio unit.</label><input class="so-li num" data-i="${i}" data-k="precio_unitario" type="number" step="0.01" min="0" value="${esc(l.precio_unitario)}" placeholder="opcional"></div>
+        <button type="button" class="so-linea-quitar" data-del="${i}" title="Quitar línea">✕</button>
+      </div>
+    </div>`).join('');
 
     lineas.forEach((l, i) => {
       l.picker = ERP.crearPickerSku({
         contenedor: document.getElementById(`soLiSku${i}`),
         placeholder: 'Busca SKU…',
-        valorInicial: l.sku_id ? { sku_id: l.sku_id, etiqueta: l.sku_etiqueta } : null
+        contraparteId: clienteId,
+        valorInicial: l.sku_id ? { sku_id: l.sku_id, etiqueta: l.sku_etiqueta, es_vinculado: l.sku_vinculado } : null
       });
     });
 
@@ -210,7 +214,7 @@
       if (lineas[i]) lineas[i][k] = inp.value;
     });
     lineas.forEach(l => {
-      if (l.picker) { l.sku_id = l.picker.valorId(); l.sku_etiqueta = l.picker.valorEtiqueta(); }
+      if (l.picker) { l.sku_id = l.picker.valorId(); l.sku_etiqueta = l.picker.valorEtiqueta(); l.sku_vinculado = l.picker.valorEsVinculado(); }
     });
   }
 
@@ -233,9 +237,9 @@
     if (el) { el.className = 'aviso visible ' + tipo; el.innerHTML = html; }
   }
 
-  async function crearSODesde(cpoId, cpoFolio) {
+  async function crearSODesde(cpoId, cpoFolio, clienteId) {
     if (!ERP.puede('capturar')) return;
-    cpoActual = { id: Number(cpoId), folio: cpoFolio || '' };
+    cpoActual = { id: Number(cpoId), folio: cpoFolio || '', clienteId: clienteId != null ? Number(clienteId) : null };
     ERP.abrirPanel('Generar Sales Order', `desde Customer PO ${esc(cpoFolio || '')}`, '<div class="skel">Cargando catálogos…</div>');
     try {
       [revenueModels, marcasCat] = await Promise.all([
@@ -261,10 +265,7 @@
           <div class="campo ancho"><label>Nota</label><textarea id="soNota" rows="2"></textarea></div>
         </div>
         <div class="seccion-head"><h4>Líneas</h4><button class="btn-mini gris" id="soAddLinea">+ Línea</button></div>
-        <div class="tabla-wrap"><table class="so-lineas">
-          <thead><tr><th>SKU</th><th>Marca</th><th class="num">Cantidad</th><th>UOM</th><th class="num">Precio unit.</th><th></th></tr></thead>
-          <tbody id="soLineasBody"></tbody>
-        </table></div>
+        <div id="soLineasBody" class="so-lineas-lista"></div>
         <div class="alias-ayuda">El precio unitario es opcional: en comisión pura va vacío (costo 0 / margen 100% es correcto).</div>
         <div class="acciones">
           <button class="btn-mini" id="soCrear">Crear Sales Order (borrador) + OP</button>
