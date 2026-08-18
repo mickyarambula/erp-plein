@@ -2442,3 +2442,28 @@ con `p_contraparte_id`/`p_solo_vinculados`/`es_vinculado` antes de esta sesión 
 CxP/JPM. **Pendiente real para cerrar O1:** correr el checkpoint (D-181 §9 de
 `DISENO-O1-REALINEAMIENTO.md`) — registrar un Customer PO real → generar y confirmar su Sales Order →
 ver tablero Required/Open. Esto lo hace el chat de backend/Miguel con Supabase MCP, no este chat.
+
+## Sesión (2026-08-18) — fix centralizado de "paneles montados" (D-184)
+_Miguel siguió viendo el overlap en producción después de D-182 (commits 8209ff0/37ea21e/337dee4),
+que solo cubrió los entry points de O1. Frontend (Claude Code) — sin acceso a Supabase MCP._
+
+- **D-184 (frontend/bug, fix centralizado):** D-182 parcheó `ERP.cerrarPanel()` en los ~9 puntos de
+  entrada de `modulo-o1-cpo.js`/`modulo-o1-so.js`, pero ~25 módulos MÁS comparten el mismo drawer
+  (`#panel`/`#panelOv`) y ninguno llamaba `cerrarPanel()` antes de encadenar a otro panel (cargas,
+  cobranza, pagos, tesorería, facturas, ventas, lotes, loads, liquidaciones, órdenes...) — parchar
+  módulo por módulo nunca iba a cerrar el hueco completo. Fix real: nueva `desmontarPanel()` en
+  `comun.js` que **remueve nodo por nodo** el contenido anterior de `#panelBody` (no solo lo oculta
+  con la clase CSS `abierto` ni depende de que el próximo `innerHTML=` lo pise a tiempo), llamada
+  tanto al inicio de `abrirPanel()` (así ningún módulo necesita acordarse de `cerrarPanel()` primero)
+  como dentro de `cerrarPanel()`. Un solo lugar, cubre los ~30 módulos que usan el drawer.
+  **Nota de honestidad:** el bug NO se reprodujo visualmente en ningún intento (Chrome DevTools,
+  latencia realista simulada, doble apertura simultánea) — este es un endurecimiento preventivo de
+  la causa más probable (contenido viejo vivo en el DOM bajo ciertas condiciones de timing), no una
+  reproducción-y-cura puntual. Verificado con hard-refresh en 2 módulos no tocados en sesiones
+  previas (`modulo-usuarios.js`, `modulo-o1-inventario.js`): cada transición de panel deja
+  `panelBody` con exactamente 1 hijo (cero residuo), cierre deja 0 hijos, nunca más de 1 `#panel`/
+  `#panelOv` en el DOM. `node --check` limpio.
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/Cuadre/CxC/CxP/JPM. **Si Miguel lo sigue viendo
+tras desplegar y hard-refresh:** pedir captura de pantalla — sin eso, seguir adivinando el mecanismo
+visual exacto ya no es productivo.
