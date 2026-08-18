@@ -1,22 +1,30 @@
-/* Módulo Inventario (ruta 'o1-inventario') — CAMINO C · Fase O2a.
+/* Módulo Inventario (ruta 'o1-inventario') — CAMINO C · Fase O2a/O2b.
    Recepción de inventario (lotes) contra el stack Camino C (op.lots), STANDALONE — un lote NO
    está ligado a ninguna operación al recibirlo; se liga a una línea de Sales Order al asignarlo
    (ver "Asignar" en el tablero de la ficha de Sales Order, modulo-o1-so.js, que llama
    fn_op_alloc_crear). Realineado a nivel SKU (D-1xx, ago 2026 — mismo picker que O1 CPO/SO):
      - op.lots (recibir aquí)               → a nivel SKU (cat.skus), sin operacion_id.
      - op.inventory_allocations→op.so_lineas → depende de que existan Sales Orders Camino C (O1).
+   O2b (D-1xx, ago 2026): costo por lote, opcional al recibir (ej. consignación: se sabe después) o
+   agregado/editado después con "Costear". El backend siempre guarda costo UNITARIO — si el usuario
+   captura el TOTAL del lote, el frontend lo divide entre la cantidad antes de mandarlo.
 
    SOLO FRONTEND. Lee por vistas en public, escribe por RPCs SECURITY DEFINER (op cerrado fuera del API).
    Vistas:
      v_op_inventario (lot_id, folio, sku_id, sku, producto_id, producto, location_id, location_codigo,
-       location_nombre, uom, estado, on_hand, reservado, disponible, proveedor_id, proveedor, fecha)
+       location_nombre, uom, estado, on_hand, reservado, disponible, proveedor_id, proveedor, fecha,
+       costo_unitario, costo_moneda, valor_lote, valor_disponible) — costo_unitario NULL = "sin
+       costear" (dato faltante, NUNCA se muestra como $0, que sería costo real de cero).
    Catálogos (vistas ya vivas, reusadas del resto del ERP/O1):
      v_catc_contrapartes (id, nombre, alias, es_proveedor, ...) — picker de proveedor, mismo patrón que O1.
      Picker de SKU: ERP.crearPickerSku (fn_cat_sugerir_sku), mismo componente que las líneas de O1-SO.
    RPCs (capacidad 'capturar'):
      fn_op_location_alta(p_codigo, p_nombre) -> jsonb
      fn_op_lot_recibir(p_sku_id, p_location_id, p_on_hand, p_uom='CAJA', p_proveedor_id=NULL,
-       p_origen_ref=NULL, p_fecha=NULL) -> { lot_id, folio, on_hand }   (folio formato LOT-26-001)
+       p_origen_ref=NULL, p_fecha=NULL, p_costo_unitario=NULL, p_costo_moneda='USD') ->
+       { lot_id, folio, on_hand, valor_lote }   (folio formato LOT-26-001)
+     fn_op_lot_set_costo(p_lot_id, p_costo_unitario, p_costo_moneda) -> { ok, lot_id,
+       costo_unitario, valor_lote } — pone o corrige el costo de un lote ya recibido.
    NOTA (sin vista dedicada de ubicaciones todavía): el picker de ubicación se arma a partir de
    las ubicaciones que YA aparecen en v_op_inventario (dedupe en frontend) + "+ Nueva ubicación"
    inline. Con el inventario en 0 (arranque), el picker empieza vacío — se resuelve solo en cuanto
@@ -75,10 +83,12 @@
     if (conteo) conteo.textContent = `${rows.length} de ${lotes.length} lotes`;
     if (!rows.length) { cont.innerHTML = '<div class="vacio">Ningún lote coincide con el filtro.</div>'; return; }
 
+    const puedeCap = ERP.puede('capturar');
     cont.innerHTML = `<div class="tabla-wrap"><table>
       <thead><tr><th>Lote</th><th>SKU</th><th>Ubicación</th><th>UOM</th><th>Estado</th>
         <th class="num">On hand</th><th class="num">Reservado</th><th class="num">Disponible</th>
-        <th>Proveedor</th><th>Fecha</th></tr></thead>
+        <th class="num">Costo unit.</th><th class="num">Valor lote</th><th class="num">Valor disp.</th>
+        <th>Proveedor</th><th>Fecha</th><th></th></tr></thead>
       <tbody>${rows.map(l => `<tr>
         <td class="mono">${esc(l.folio || '—')}</td>
         <td class="ent">${esc(l.sku || l.producto || '—')}</td>
@@ -88,10 +98,19 @@
         <td class="num">${esc(ERP.fmt0(l.on_hand))}</td>
         <td class="num">${esc(ERP.fmt0(l.reservado))}</td>
         <td class="num" style="font-weight:600">${esc(ERP.fmt0(l.disponible))}</td>
+        <td class="num">${dinero(l.costo_unitario, l.costo_moneda)}</td>
+        <td class="num">${dinero(l.valor_lote, l.costo_moneda)}</td>
+        <td class="num">${dinero(l.valor_disponible, l.costo_moneda)}</td>
         <td>${esc(l.proveedor || '—')}</td>
         <td>${esc(fecha(l.fecha))}</td>
+        <td>${puedeCap ? `<button class="btn-mini gris" data-costear="${esc(l.lot_id)}">${l.costo_unitario != null ? 'Editar costo' : 'Costear'}</button>` : ''}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
+
+    cont.querySelectorAll('[data-costear]').forEach(b => b.addEventListener('click', () => {
+      const lot = lotes.find(x => String(x.lot_id) === b.dataset.costear);
+      if (lot) abrirCostearLote(lot);
+    }));
   }
 
   async function render(cont) {
@@ -189,6 +208,19 @@
           <div class="campo"><label>Referencia de origen</label>
             <input id="invOrigenRef" type="text" maxlength="60" placeholder="Ej. OC-0123 (opcional)"></div>
           <div class="campo"><label>Fecha</label><input id="invFecha" type="date" value="${hoyISO()}"></div>
+          <div class="campo ancho"><label>Costo (opcional)</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <select id="invCostoTipo" style="width:150px">
+                <option value="unitario">Por caja (UOM)</option>
+                <option value="total">Total del lote</option>
+              </select>
+              <input id="invCostoMonto" class="mono" type="number" step="0.01" min="0" placeholder="0.00" style="max-width:160px">
+              <select id="invCostoMoneda" style="width:90px">
+                <option value="USD" selected>USD</option>
+                <option value="MXN">MXN</option>
+              </select>
+            </div>
+            <div class="alias-ayuda">Déjalo vacío si el costo se sabrá después (típico en consignación) — se puede agregar luego con "Costear" desde la lista.</div></div>
         </div>
         <div class="acciones">
           <button class="btn-mini" id="invGuardar">Recibir inventario</button>
@@ -256,6 +288,9 @@
 
   const uno = d => Array.isArray(d) ? (d[0] || {}) : (d || {});
   const numOrNull = v => (v === '' || v === null || v === undefined || isNaN(Number(v))) ? null : Number(v);
+  // NULL = "sin costear" (dato faltante) — NUNCA se muestra como $0, que sería un costo real de
+  // cero. Distinguir esto es intencional (Tarea 3).
+  const dinero = (n, mon) => (n === null || n === undefined) ? '—' : `${ERP.usd(n)} ${esc(mon || 'USD')}`;
 
   async function guardarRecibir() {
     const sku_id = pickerSkuInv && pickerSkuInv.valorId();
@@ -266,6 +301,13 @@
     const cantidad = numOrNull(v('invCantidad'));
     if (!(cantidad > 0)) { avisoInv('err', 'La cantidad debe ser mayor a cero.'); return; }
 
+    // Costo opcional: "por caja" se manda tal cual; "total del lote" se divide entre la cantidad
+    // porque el backend siempre guarda el costo UNITARIO. Vacío = null (válido — se costea después).
+    const costoMonto = numOrNull(v('invCostoMonto'));
+    const costoUnitario = (costoMonto != null && costoMonto > 0)
+      ? (v('invCostoTipo') === 'total' ? costoMonto / cantidad : costoMonto)
+      : null;
+
     const args = {
       p_sku_id: Number(sku_id),
       p_location_id: Number(location_id),
@@ -273,7 +315,9 @@
       p_uom: (v('invUom') || '').trim() || 'CAJA',
       p_proveedor_id: (() => { const id = comboProveedorInv && comboProveedorInv.valorId(); return id ? Number(id) : null; })(),
       p_origen_ref: (v('invOrigenRef') || '').trim() || null,
-      p_fecha: v('invFecha') || null
+      p_fecha: v('invFecha') || null,
+      p_costo_unitario: costoUnitario,
+      p_costo_moneda: v('invCostoMoneda') || 'USD'
     };
 
     const btn = document.getElementById('invGuardar');
@@ -281,7 +325,8 @@
     avisoInv('warn', 'Recibiendo inventario…');
     try {
       const r = uno(await rpc('fn_op_lot_recibir', args));
-      ERP.toast('ok', `Inventario recibido — lote <b>${esc(r.folio || '')}</b> (${esc(ERP.fmt0(r.on_hand))} ${esc((v('invUom') || '').trim() || 'CAJA')}).`);
+      const valorTxt = r.valor_lote != null ? ` · valor ${dinero(r.valor_lote, args.p_costo_moneda)}` : '';
+      ERP.toast('ok', `Inventario recibido — lote <b>${esc(r.folio || '')}</b> (${esc(ERP.fmt0(r.on_hand))} ${esc((v('invUom') || '').trim() || 'CAJA')})${valorTxt}.`);
       ERP.marcarDatosSucios();
       await recargar();
       render(document.getElementById('modContenido'));
@@ -289,6 +334,63 @@
     } catch (e) {
       if (ERP.avisarSiPermiso && ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
       avisoInv('err', `El ERP rechazó la recepción: ${esc(e.message)}`);
+      btn.disabled = false;
+    }
+  }
+
+  /* ================= Costear / editar costo de un lote (O2b) ================= */
+  // Para consignación el costo casi nunca se sabe al recibir — este panel lo agrega o corrige
+  // después. Prellena si el lote ya tiene costo (fn_op_lot_set_costo también sirve para editar).
+
+  function avisoCosteo(tipo, html) {
+    const el = document.getElementById('costLoteAviso');
+    if (el) { el.className = 'aviso visible ' + tipo; el.innerHTML = html; }
+  }
+
+  function abrirCostearLote(lot) {
+    if (!ERP.puede('capturar')) return;
+    ERP.cerrarPanel();
+    const tieneCosto = lot.costo_unitario != null;
+    ERP.abrirPanel(tieneCosto ? 'Editar costo del lote' : 'Costear lote', `${esc(lot.folio || '')} · ${esc(lot.sku || lot.producto || '')}`, `
+      <div class="form-erp">
+        <div class="campos">
+          <div class="campo"><label>Costo por ${esc(lot.uom || 'unidad')} <span class="req">*</span></label>
+            <input id="costLoteMonto" class="mono" type="number" step="0.01" min="0" placeholder="0.00" value="${tieneCosto ? esc(lot.costo_unitario) : ''}"></div>
+          <div class="campo"><label>Moneda</label>
+            <select id="costLoteMoneda">
+              <option value="USD" ${lot.costo_moneda !== 'MXN' ? 'selected' : ''}>USD</option>
+              <option value="MXN" ${lot.costo_moneda === 'MXN' ? 'selected' : ''}>MXN</option>
+            </select></div>
+        </div>
+        <div class="acciones">
+          <button class="btn-mini" id="costLoteGuardar">Guardar costo</button>
+          <button class="btn-mini gris" id="costLoteCancelar">Cancelar</button>
+        </div>
+        <div class="aviso" id="costLoteAviso"></div>
+      </div>`);
+    document.getElementById('costLoteCancelar').addEventListener('click', ERP.cerrarPanel);
+    document.getElementById('costLoteGuardar').addEventListener('click', () => guardarCostoLote(lot.lot_id));
+  }
+
+  async function guardarCostoLote(lotId) {
+    const v = id => (document.getElementById(id) || {}).value;
+    const monto = numOrNull(v('costLoteMonto'));
+    if (!(monto > 0)) { avisoCosteo('err', 'El costo debe ser mayor a cero.'); return; }
+    const moneda = v('costLoteMoneda') || 'USD';
+
+    const btn = document.getElementById('costLoteGuardar');
+    btn.disabled = true;
+    avisoCosteo('warn', 'Guardando…');
+    try {
+      const r = uno(await rpc('fn_op_lot_set_costo', { p_lot_id: Number(lotId), p_costo_unitario: monto, p_costo_moneda: moneda }));
+      ERP.toast('ok', `Costo guardado — valor del lote: ${dinero(r.valor_lote, moneda)}.`);
+      ERP.marcarDatosSucios();
+      await recargar();
+      render(document.getElementById('modContenido'));
+      ERP.cerrarPanel();
+    } catch (e) {
+      if (ERP.avisarSiPermiso && ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
+      avisoCosteo('err', `El ERP rechazó el costo: ${esc(e.message)}`);
       btn.disabled = false;
     }
   }

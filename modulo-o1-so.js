@@ -16,6 +16,11 @@
        marca, marca_privada, cantidad, uom, precio_unitario, importe, nota)
      v_op_so_tablero (sales_order_id, so_folio, linea_id, linea_num, sku_id, sku, producto_id,
        producto, marca, uom, required, allocated, purchased, open)
+     v_op_margen (O2b, por línea): required, precio_unitario, asignado, venta_asignada,
+       costo_asignado, margen, costo_completo, reconoce_ingreso, modalidad_nombre, monedas_costo.
+       margen NULL + costo_completo=false → falta costear inventario (NO mostrar $0). margen NULL +
+       costo_completo=true → mezcla de monedas, requiere conversión FX. reconoce_ingreso=
+       'liquidacion' (consignación) → margen provisional, firme solo al liquidar.
    Catálogos (vistas ya vivas):
      v_revenue_models (id, codigo, nombre, formula_tipo, descripcion, activo, orden)
      v_catc_listas_valores (tipo='marca') — Plein Produce / Genérica / Private Label
@@ -335,12 +340,13 @@
   async function verSO(id) {
     ERP.cerrarPanel();
     ERP.abrirPanel('Sales Order', 'Cargando…', '<div class="skel">Cargando sales order…</div>');
-    let so, lin, tab;
+    let so, lin, tab, marg;
     try {
-      [so, lin, tab] = await Promise.all([
+      [so, lin, tab, marg] = await Promise.all([
         q('v_op_sales_orders', `&id=eq.${Number(id)}`).then(r => r && r[0]),
         q('v_op_so_lineas', `&sales_order_id=eq.${Number(id)}&order=linea_num.asc`).catch(() => []),
-        q('v_op_so_tablero', `&sales_order_id=eq.${Number(id)}&order=linea_num.asc`).catch(() => [])
+        q('v_op_so_tablero', `&sales_order_id=eq.${Number(id)}&order=linea_num.asc`).catch(() => []),
+        q('v_op_margen', `&sales_order_id=eq.${Number(id)}&order=linea_num.asc`).catch(() => [])
       ]);
     } catch (e) {
       ERP.abrirPanel('Sales Order', '', `<div class="errbox">No se pudo cargar la sales order: ${esc(e.message)}</div>`);
@@ -359,7 +365,41 @@
       required: l.cantidad, allocated: 0, purchased: 0, open: l.cantidad
     }));
 
-    const filasTablero = tablero.map(t => `<tr>
+    // v_op_margen es por línea — se une por linea_id (clave del tablero) con fallback a linea_num
+    // por si el nombre de la FK difiere entre vistas.
+    const margenPorLinea = new Map();
+    (marg || []).forEach(m => {
+      const clave = m.linea_id ?? m.so_linea_id ?? m.linea_num;
+      if (clave != null) margenPorLinea.set(String(clave), m);
+    });
+    const margenDe = t => margenPorLinea.get(String(t.linea_id)) || margenPorLinea.get(String(t.linea_num)) || null;
+
+    // monedas_costo: no se conoce la forma exacta (array vs texto) — se normaliza a lista para
+    // el aviso "Requiere conversión FX (USD/MXN)".
+    function monedasTxt(monedas) {
+      if (!monedas) return '';
+      const arr = Array.isArray(monedas) ? monedas : String(monedas).split(/[,;/]/).map(s => s.trim()).filter(Boolean);
+      return arr.length ? ` (${esc(arr.join('/'))})` : '';
+    }
+    // Reglas de display (pedidas explícitas): margen NULL + costo_completo=false → falta costear
+    // (no mostrar $0); margen NULL + costo_completo=true → probable mezcla de monedas, requiere FX;
+    // reconoce_ingreso='liquidacion' (consignación) → el margen es provisional hasta liquidar.
+    function celdaMargen(m) {
+      if (!m) return '<span class="i3">—</span>';
+      if (m.margen == null) {
+        return m.costo_completo === false
+          ? '<span class="i3">Falta costear inventario</span>'
+          : `<span class="i3">Requiere conversión FX${monedasTxt(m.monedas_costo)}</span>`;
+      }
+      const cls = Number(m.margen) < 0 ? 'neg' : 'pos';
+      const pctTxt = (m.venta_asignada && Number(m.venta_asignada) !== 0)
+        ? ` <span class="i3">(${esc(ERP.pct(Number(m.margen) / Number(m.venta_asignada) * 100))})</span>` : '';
+      const provisional = m.reconoce_ingreso === 'liquidacion'
+        ? '<div class="i3" style="font-size:10px">Provisional (liquidación)</div>' : '';
+      return `<span class="${cls}">${esc(ERP.usd(m.margen))}</span>${pctTxt}${provisional}`;
+    }
+
+    const filasTablero = tablero.map(t => { const m = margenDe(t); return `<tr>
       <td class="mono">${esc(t.linea_num ?? '—')}</td>
       <td class="prod">${esc(t.sku || t.producto || '—')}${t.marca ? `<div class="i3" style="font-size:11px">${esc(t.marca)}</div>` : ''}</td>
       <td class="mono">${esc(t.uom || '—')}</td>
@@ -367,9 +407,12 @@
       <td class="num">${esc(num(t.allocated))}</td>
       <td class="num futuro">${esc(num(t.purchased))}</td>
       <td class="num open">${esc(num(t.open))}</td>
+      <td class="num">${m && m.venta_asignada != null ? esc(ERP.usd(m.venta_asignada)) : '<span class="i3">—</span>'}</td>
+      <td class="num">${m && m.costo_asignado != null ? esc(ERP.usd(m.costo_asignado)) : '<span class="i3">—</span>'}</td>
+      <td class="num">${celdaMargen(m)}</td>
       <td>${puedeCap && num(t.open) > 0 && t.linea_id != null
         ? `<button type="button" class="btn-cap asignar-lote" data-linea-id="${esc(t.linea_id)}">Asignar</button>` : ''}</td>
-    </tr>`).join('');
+    </tr>`; }).join('');
 
     const gestionEstado = (puedeCap && String(est).toLowerCase() !== 'cancelled' && String(est).toLowerCase() !== 'sourced' && String(est).toLowerCase() !== 'ready')
       ? `<div class="so-estados">
@@ -399,10 +442,11 @@
         <div class="seccion-head"><h4>Tablero de la orden</h4></div>
         <div class="tabla-wrap"><table class="so-tablero">
           <thead><tr><th>#</th><th>SKU</th><th>UOM</th>
-            <th class="num">Required</th><th class="num">Allocated</th><th class="num">Purchased</th><th class="num">Open</th><th></th></tr></thead>
-          <tbody>${filasTablero || '<tr><td colspan="8" class="vacio">Sin líneas.</td></tr>'}</tbody>
+            <th class="num">Required</th><th class="num">Allocated</th><th class="num">Purchased</th><th class="num">Open</th>
+            <th class="num">Venta</th><th class="num">Costo</th><th class="num">Margen</th><th></th></tr></thead>
+          <tbody>${filasTablero || '<tr><td colspan="11" class="vacio">Sin líneas.</td></tr>'}</tbody>
         </table></div>
-        <div class="alias-ayuda">Allocated sube al "Asignar" un lote de Inventario (O2a) — <b>Open</b> = lo que falta por surtir. Purchased llega en O3 (por eso sigue en 0 y en gris).</div>
+        <div class="alias-ayuda">Allocated sube al "Asignar" un lote de Inventario (O2a) — <b>Open</b> = lo que falta por surtir. Purchased llega en O3 (por eso sigue en 0 y en gris). Costo/Margen se calculan del inventario ya asignado — <b>"Falta costear inventario"</b> = hay lote(s) asignados sin costo capturado (ir a Inventario → Costear).</div>
 
         <div class="acciones">
           ${gestionEstado}
