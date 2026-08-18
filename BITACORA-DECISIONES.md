@@ -2492,3 +2492,37 @@ Code) — sin acceso a Supabase MCP._
   refresh funcione perfecto.
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-18, continuación) — O2a Recibir inventario a SKU, Asignar con límite visible,
+adjunto real al editar CPO (D-186)
+_Backend confirmó 3 piezas ya probadas: `fn_op_lot_recibir`/`fn_op_alloc_crear` sobre SKU (no
+producto), `v_op_inventario` con `sku`/`sku_id`, `v_op_so_tablero.allocated` ya real. Frontend
+(Claude Code) — sin acceso a Supabase MCP._
+
+- **D-186 (frontend, RPCs YA existían/actualizados en backend):**
+  - **Recibir inventario** (`modulo-o1-inventario.js`) realineado a SKU: picker de producto →
+    `ERP.crearPickerSku`, `fn_op_lot_recibir` con `p_sku_id`, proveedor sobre `v_catc_contrapartes`
+    (mismo patrón `cat.*` que O1), folio devuelto (`LOT-26-9501` en la prueba) mostrado en el toast.
+  - **Asignar en tablero** (`modulo-o1-so.js`): filtro de `v_op_inventario` por `sku_id` +
+    `estado=Disponible` (antes solo `producto_id` + `disponible>0` client-side); límite visible en
+    el input (`min(disponible del lote, Open de la línea)`, dinámico por lote elegido); toast de
+    confirmación enriquecido con `disponible_lote_restante`/`pendiente_linea` de la respuesta del
+    RPC. **"Liberar" (bonus) NO implementado** — mismo bloqueo ya documentado arriba:
+    `fn_op_alloc_liberar` existe pero no hay vista con `allocation_id` individuales.
+  - **Adjunto real al editar CPO** (`modulo-o1-cpo.js`): antes solo se podía subir archivo al
+    *crear*; ahora `editarCPO()` reusa el mismo patrón de subida (Storage, bucket `cpo-adjuntos`),
+    con tarjeta "Archivo actual" (Ver/Reemplazar/Quitar) cuando ya hay un `storage:` ref. Ver
+    adjunto con URL firmada ya existía desde antes, sin cambios ahí.
+  - **Hallazgo operativo (refuerza D-185):** reusar el mismo `isolatedContext` de pruebas sirve JS
+    cacheado **incluso con el mismo `?v=`** sin cambiar — solo un contexto de navegador
+    genuinamente nuevo (o subir el `?v=`) trae el archivo real. Se confirmó con la Performance API
+    (`transferSize:0` vs. `15923` en la misma sesión). `?v=` de `index.html` subido a `20260818b`
+    (2ª tanda de cambios el mismo día).
+
+**Verificado en navegador (contexto nuevo, mock realista):** recibir inventario end-to-end
+(ubicación nueva inline → SKU → proveedor → guardar → folio en el toast); asignar el inventario
+recién recibido al mismo SKU de una línea (máximo mostrado, payload exacto, tablero refrescado
+Allocated 60/Open 40 tras Required 100); editar CPO reemplazando adjunto y quitándolo (payload
+`p_adjunto_ref` exacto en ambos casos). `node --check` limpio en los 3 archivos.
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
