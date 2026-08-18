@@ -640,7 +640,22 @@ window.ERP = (function () {
 
   /* ============ Panel lateral (drawer) ============ */
 
+  /* Desmontaje REAL del contenido del panel — no solo ocultarlo con una clase CSS. Destruye el
+     subárbol (removeChild nodo por nodo, no solo innerHTML='') para que cualquier picker/combo/
+     listener que hubiera quedado vivo ahí se pierda con el nodo, y no dependa de que el próximo
+     abrirPanel() lo pise a tiempo. Se llama tanto al cerrar como, defensivamente, al INICIO de
+     todo abrirPanel() — así ningún módulo necesita acordarse de llamar cerrarPanel() primero
+     antes de encadenar a otro panel (causa más probable de "paneles montados uno sobre otro").
+     Centralizado aquí: cubre los ~30 módulos que usan el drawer, no solo el que reportó el bug. */
+  function desmontarPanel() {
+    const panelBody = document.getElementById('panelBody');
+    while (panelBody.firstChild) panelBody.removeChild(panelBody.firstChild);
+    document.getElementById('panelTitulo').innerHTML = '—';
+    document.getElementById('panelSub').innerHTML = '';
+  }
+
   function abrirPanel(titulo, subtitulo, cuerpoHtml) {
+    desmontarPanel();
     document.getElementById('panelTitulo').innerHTML = titulo;
     document.getElementById('panelSub').innerHTML = subtitulo || '';
     document.getElementById('panelBody').innerHTML = cuerpoHtml;
@@ -701,6 +716,7 @@ window.ERP = (function () {
     const estabaAbierto = document.getElementById('panel').classList.contains('abierto');
     document.getElementById('panelOv').classList.remove('abierto');
     document.getElementById('panel').classList.remove('abierto');
+    desmontarPanel();
     document.body.style.overflow = '';
     // Si se escribió algo mientras el panel estaba abierto, el módulo de fondo está viejo.
     if (estabaAbierto && datosSucios) { datosSucios = false; despachar(); }
