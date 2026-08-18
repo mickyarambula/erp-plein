@@ -384,6 +384,15 @@
     // Reglas de display (pedidas explícitas): margen NULL + costo_completo=false → falta costear
     // (no mostrar $0); margen NULL + costo_completo=true → probable mezcla de monedas, requiere FX;
     // reconoce_ingreso='liquidacion' (consignación) → el margen es provisional hasta liquidar.
+    // Igual que celdaMargen: costo_completo es la señal autoritativa, no un chequeo ingenuo de
+    // costo_asignado != null — un costo_asignado de 0 numérico (parcial, o el backend lo manda así
+    // mientras falta costear) NO es lo mismo que "sin costear" y NUNCA debe leerse como "$0.00".
+    function celdaCosto(m) {
+      if (!m) return '<span class="i3">—</span>';
+      if (m.costo_completo === false) return '<span class="i3">Falta costear</span>';
+      return m.costo_asignado != null ? esc(ERP.usd(m.costo_asignado)) : '<span class="i3">—</span>';
+    }
+
     function celdaMargen(m) {
       if (!m) return '<span class="i3">—</span>';
       if (m.margen == null) {
@@ -408,7 +417,7 @@
       <td class="num futuro">${esc(num(t.purchased))}</td>
       <td class="num open">${esc(num(t.open))}</td>
       <td class="num">${m && m.venta_asignada != null ? esc(ERP.usd(m.venta_asignada)) : '<span class="i3">—</span>'}</td>
-      <td class="num">${m && m.costo_asignado != null ? esc(ERP.usd(m.costo_asignado)) : '<span class="i3">—</span>'}</td>
+      <td class="num">${celdaCosto(m)}</td>
       <td class="num">${celdaMargen(m)}</td>
       <td>${puedeCap && num(t.open) > 0 && t.linea_id != null
         ? `<button type="button" class="btn-cap asignar-lote" data-linea-id="${esc(t.linea_id)}">Asignar</button>` : ''}</td>

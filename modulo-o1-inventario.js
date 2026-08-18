@@ -78,6 +78,7 @@
 
   function pintarTabla() {
     const cont = document.getElementById('invTabla');
+    if (!cont) return;   // el usuario ya navegó a otro módulo — nada que pintar (mismo guard que pintarKpis)
     const conteo = document.getElementById('invConteo');
     const rows = filtrados();
     if (conteo) conteo.textContent = `${rows.length} de ${lotes.length} lotes`;
@@ -119,9 +120,15 @@
     try {
       filas = await q('v_op_inventario', '&order=fecha.desc');
     } catch (e) {
-      cont.innerHTML = `<div class="errbox">No se pudo leer el inventario: ${esc(e.message)}</div>`;
+      // Si el usuario ya navegó a otro módulo mientras esto cargaba, `cont` sigue siendo el nodo
+      // <div id="modContenido"> de ANTES — ya no está en el documento (el router creó uno nuevo al
+      // despachar la siguiente ruta). Escribir en él es inofensivo pero inútil; lo importante es
+      // NO seguir de largo a pintarKpis()/pintarTabla(), que buscan por id en el documento VIVO y
+      // truenan con "Cannot set properties of null" si el módulo ya no está montado.
+      if (document.body.contains(cont)) cont.innerHTML = `<div class="errbox">No se pudo leer el inventario: ${esc(e.message)}</div>`;
       return;
     }
+    if (!document.body.contains(cont)) return;   // navegó fuera mientras el fetch estaba en vuelo
     lotes = filas || [];
     fTexto = '';
 
