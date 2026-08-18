@@ -2655,3 +2655,48 @@ autenticado localmente (`npx vercel project ls`) para inspeccionar el deploy rea
   (config de infraestructura, no cacheado por navegador) y documentación.
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-18, continuación) — 2 bugs de producción: carrera en Inventario + "$0.00" falso en costo del SO (D-191)
+_Miguel reportó 3 cosas con evidencia de consola: (1) TypeError al pintar Inventario, (2) Compras
+sigue sin aparecer, (3) el tablero del SO muestra "$0.00" en vez de "Falta costear". Pidió
+diagnosticar el #1 y #2 juntos por si estaban relacionados. Frontend (Claude Code)._
+
+- **D-191a — Bug 1, condición de carrera real (no relacionada con Bug 2):** `pintarTabla()` en
+  `modulo-o1-inventario.js` tronaba con `Cannot set properties of null (setting 'innerHTML')`.
+  Causa: `render(cont)` recibe el nodo `#modContenido` vigente al momento de invocarse, pero el
+  `await q('v_op_inventario', ...)` puede tardar; si el usuario navega a otro módulo mientras
+  tanto, el router reemplaza `#app` por completo y el `cont` que este `render()` sigue sosteniendo
+  queda huérfano (fuera del documento). Cuando el fetch por fin resuelve, `pintarKpis()`/
+  `pintarTabla()` buscan sus ids por `document.getElementById(...)` en el documento VIVO — que ya
+  no los tiene — y truenan. **No lo introdujeron las columnas de costo/valor de O2b** (esas solo
+  agregaron `<td>`s dentro del mismo `innerHTML` ya existente) — el hueco es arquitectónico y
+  probablemente preexistía; agregar más columnas a la consulta pudo ensanchar la ventana de la
+  carrera (respuesta más pesada = más tiempo para navegar fuera antes de que resuelva), haciéndolo
+  más frecuente en la práctica. Fix de 2 capas: `render()` gana un guard
+  `if (!document.body.contains(cont)) return;` justo después del fetch (éxito y error);
+  `pintarTabla()` gana `if (!cont) return;` — ahora simétrico con `pintarKpis()`, que YA tenía ese
+  guard (por eso el crash era específicamente en `pintarTabla`, nunca en `pintarKpis`).
+- **D-191b — Bug 2 (Compras oculto), CONFIRMADO independiente del Bug 1, no relacionado:** se
+  verificó en el código de `app.js` que `aplicarMenuDinamico()` (que filtra el menú por
+  `ERP.perfil.modulos`) corre en la secuencia de arranque **antes** de `ERP.despachar()` (que es
+  lo único que podría disparar el crash de Inventario) — el menú ya queda pintado/filtrado antes
+  de que el bug 1 pudiera siquiera ejecutarse. Reverificado también contra producción real
+  (`https://erp-plein-dashboard.vercel.app`, Vercel CLI): 0 errores de consola al cargar,
+  `index.html` desplegado trae el `<a data-modulo="o3-compras">` correcto, el script carga en 200.
+  Diagnóstico ya cerrado en D-190 (sesión anterior) sigue siendo la explicación correcta: falta
+  dar de alta `'o3-compras'` en `modulos_erp`/`rol_modulos` (Supabase) — tarea exclusiva de
+  backend, anotada en `PENDIENTES-BACKEND.md`, sin tocar desde el frontend.
+- **D-191c — Bug 3, "$0.00" falso en columna Costo del tablero del SO:** el chequeo era ingenuo
+  (`costo_asignado != null`) — un `costo_asignado` que llega como `0` numérico (parcial, o el
+  backend lo manda así mientras falta costear) pasaba ese chequeo y se veía como `$0.00`,
+  indistinguible de un costo real de cero. `celdaCosto(m)` nueva usa `costo_completo` (la misma
+  señal autoritativa que ya usaba `celdaMargen` para la columna Margen) — `costo_completo===false`
+  siempre muestra "Falta costear", nunca un monto.
+
+**Verificado en navegador (contexto nuevo en cada caso):** navegar a Inventario y de inmediato a
+otro módulo antes de que resuelva un fetch simulado de 1.5s → 0 errores en consola, pantalla
+destino intacta. Tablero del SO con 2 líneas (una sin costear, otra con costo real) → "Falta
+costear" vs. "$200.00 / $100.00 (33.33%)", exacto. `node --check` limpio en los 2 archivos. `?v=`
+de `index.html` subido a `20260818f` (D-185).
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
