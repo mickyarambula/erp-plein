@@ -1,7 +1,8 @@
 /* Módulo Sales Orders (ruta 'o1-so') — CAMINO C · Fase O1 (D-160/161/162).
    La SO nace SIEMPRE desde un Customer PO (modulo-o1-cpo.js). Al crearla, el backend también crea
    la OP (espinazo op.operaciones) — grain 1 OP/SO en v1 (D-161). El tablero muestra Required/Allocated/
-   Purchased/Open; Allocated y Purchased llegan en O2/O3 (hoy en 0, en gris).
+   Purchased/Open; Allocated ya es real (sube al "Asignar" — O2a). Purchased llega en O3 (sigue en 0
+   y en gris).
 
    SOLO FRONTEND. Lee por vistas en public, escribe por RPCs SECURITY DEFINER (op cerrado fuera del API).
    Realineado sobre cat.* a nivel SKU (D-1xx, ago 2026): las líneas ya no eligen producto —
@@ -28,6 +29,8 @@
      fn_op_so_editar(p_id, p_revenue_model_id, p_fecha, p_moneda, p_nota, p_actor) — solo header,
        no líneas; p_revenue_model_id (Sales Type) solo cambiable en estado Draft
      fn_op_so_eliminar(p_id, p_actor) — borra SO/líneas/OP y regresa el CPO a 'Abierto'
+     fn_op_alloc_crear(p_so_linea_id, p_lot_id, p_cantidad) -> { allocation_id,
+       disponible_lote_restante, pendiente_linea } — asignar lote a línea (O2a, ver abajo)
    Expone ERP.o1CrearSODesde(cpoId, cpoFolio) y ERP.o1VerSO(soId). */
 
 (function () {
@@ -437,7 +440,11 @@
      op.inventory_allocations liga un lote de Inventario (op.lots, standalone, ver
      modulo-o1-inventario.js) a ESTA línea de Sales Order. Toma sobre el panel completo (mismo
      patrón que "Agregar compra"/"Registrar embarque" en modulo-operaciones.js): Cancelar vuelve
-     a verSO(). Solo se ofrecen lotes del MISMO producto con disponible > 0. */
+     a verSO(). Solo se ofrecen lotes del MISMO sku_id, estado='Disponible' y disponible > 0.
+     fn_op_alloc_crear(p_so_linea_id, p_lot_id, p_cantidad) -> { allocation_id,
+     disponible_lote_restante, pendiente_linea }. Sin "Liberar" todavía (fn_op_alloc_liberar
+     existe pero no hay vista que exponga allocation_id individuales — solo el agregado de
+     v_op_so_tablero — parqueado hasta que exista esa vista). */
 
   async function abrirAsignarLote(so, t) {
     if (!ERP.puede('capturar')) return;
@@ -445,19 +452,20 @@
     ERP.abrirPanel('Asignar inventario', `${esc(so.folio || '')} · línea #${esc(t.linea_num ?? '')} · ${esc(t.sku || t.producto || '')}`, '<div class="skel">Buscando lotes disponibles…</div>');
     let inv;
     try {
-      inv = await q('v_op_inventario', `&producto_id=${ERP.eq(t.producto_id)}&order=fecha.asc`);
+      inv = await q('v_op_inventario', `&sku_id=${ERP.eq(t.sku_id)}&estado=eq.Disponible&order=fecha.asc`);
     } catch (e) {
       ERP.abrirPanel('Asignar inventario', '', `<div class="errbox">No se pudo leer el inventario: ${esc(e.message)}</div>`);
       return;
     }
     const lotesDisp = (inv || []).filter(l => num(l.disponible) > 0.009);
+    const openLinea = num(t.open);
 
     ERP.abrirPanel('Asignar inventario', `${esc(so.folio || '')} · línea #${esc(t.linea_num ?? '')} · ${esc(t.sku || t.producto || '')}`, `
       <div class="form-erp">
         <div class="det-grid">
           <div class="det"><span class="l">Required</span><span class="v mono">${esc(num(t.required))}</span></div>
           <div class="det"><span class="l">Allocated</span><span class="v mono">${esc(num(t.allocated))}</span></div>
-          <div class="det"><span class="l">Open</span><span class="v mono">${esc(num(t.open))}</span></div>
+          <div class="det"><span class="l">Open</span><span class="v mono">${esc(openLinea)}</span></div>
         </div>
         ${lotesDisp.length ? `
         <div class="campos">
@@ -466,13 +474,14 @@
               `<option value="${esc(l.lot_id)}" data-disp="${esc(num(l.disponible))}">${esc(l.folio || ('Lote ' + l.lot_id))} · ${esc([l.location_codigo, l.location_nombre].filter(Boolean).join(' — '))} · disponible ${esc(ERP.fmt0(l.disponible))}</option>`).join('')}
             </select></div>
           <div class="campo"><label>Cantidad a asignar <span class="req">*</span></label>
-            <input id="alCantidad" class="mono" type="number" step="0.01" min="0" placeholder="0"></div>
+            <input id="alCantidad" class="mono" type="number" step="0.01" min="0" placeholder="0">
+            <div class="alias-ayuda" id="alMaxAyuda"></div></div>
         </div>
         <div class="acciones">
           <button class="btn-mini" id="alGuardar">Asignar</button>
           <button class="btn-mini gris" id="alCancelar">Cancelar</button>
         </div>` : `
-        <div class="vacio">No hay inventario disponible de <b>${esc(t.sku || t.producto || 'este producto')}</b> todavía.</div>
+        <div class="vacio">Sin inventario disponible para este SKU (<b>${esc(t.sku || t.producto || '—')}</b>) todavía.</div>
         <div class="acciones">
           <button class="btn-mini" id="alRecibir">Recibir inventario nuevo</button>
           <button class="btn-mini gris" id="alCancelar">Volver</button>
@@ -483,9 +492,20 @@
     document.getElementById('alCancelar').addEventListener('click', () => verSO(so.id));
     const bRecibir = document.getElementById('alRecibir');
     if (bRecibir) bRecibir.addEventListener('click', () => {
-      if (ERP.o1AbrirRecibirInventario) ERP.o1AbrirRecibirInventario(t.producto_id);
+      if (ERP.o1AbrirRecibirInventario) ERP.o1AbrirRecibirInventario(t.sku_id != null ? { sku_id: t.sku_id, etiqueta: t.sku || t.producto || '' } : null);
       else ERP.toast('err', 'El módulo de Inventario no está cargado.');
     });
+    const selLote = document.getElementById('alLote');
+    const inpCantidad = document.getElementById('alCantidad');
+    function actualizarMax() {
+      if (!selLote || !inpCantidad) return;
+      const dispLote = Number((selLote.selectedOptions[0] || {}).dataset.disp || 0);
+      const max = Math.min(dispLote, openLinea);
+      inpCantidad.max = max > 0 ? String(max) : '0';
+      const ayuda = document.getElementById('alMaxAyuda');
+      if (ayuda) ayuda.textContent = `Máximo ${ERP.fmt0(max)} (menor entre disponible del lote y Open de la línea).`;
+    }
+    if (selLote) { selLote.addEventListener('change', actualizarMax); actualizarMax(); }
     const bGuardar = document.getElementById('alGuardar');
     if (bGuardar) bGuardar.addEventListener('click', () => guardarAsignacion(so, t));
   }
@@ -509,8 +529,10 @@
     btn.disabled = true;
     avisoAsignar('warn', 'Asignando…');
     try {
-      await rpc('fn_op_alloc_crear', { p_so_linea_id: Number(t.linea_id), p_lot_id: Number(lotId), p_cantidad: cantidad });
-      ERP.toast('ok', `Inventario asignado a la línea #${esc(t.linea_num ?? '')}.`);
+      const r = uno(await rpc('fn_op_alloc_crear', { p_so_linea_id: Number(t.linea_id), p_lot_id: Number(lotId), p_cantidad: cantidad }));
+      const restante = r.disponible_lote_restante != null ? ` · lote queda con ${esc(ERP.fmt0(r.disponible_lote_restante))} disponible` : '';
+      const pendiente = r.pendiente_linea != null ? ` · línea sigue con ${esc(ERP.fmt0(r.pendiente_linea))} pendiente` : '';
+      ERP.toast('ok', `Inventario asignado a la línea #${esc(t.linea_num ?? '')}${restante}${pendiente}.`);
       ERP.marcarDatosSucios();
       verSO(so.id);
     } catch (e) {

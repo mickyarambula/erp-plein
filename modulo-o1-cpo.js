@@ -759,6 +759,11 @@
       }
     }
 
+    // Estado del adjunto en ESTA edición: arranca con el ref que ya tenía el CPO; "quitar" lo pone
+    // en null, subir un archivo nuevo lo reemplaza. pintarAdjuntoEd() decide el modo de render
+    // (tarjeta "archivo actual" con Ver/Quitar si es storage:, o input de texto editable si no).
+    let adjuntoActual = c.adjunto_ref || null;
+
     ERP.abrirPanel(`Editar Customer PO <span class="mono">${esc(c.folio || '')}</span>`, esc(c.cliente || ''), `
       <div class="form-erp">
         <div class="campos">
@@ -773,8 +778,8 @@
             <input id="cpoEdFecha" type="date" value="${esc(String(c.fecha_po || '').slice(0, 10))}"></div>
           <div class="campo"><label>Moneda</label>
             <select id="cpoEdMoneda">${ERP.MONEDAS.map(m => `<option value="${m}" ${m === c.moneda ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
-          <div class="campo ancho"><label>Adjunto del PO</label>
-            <input id="cpoEdAdjunto" class="mono" type="text" placeholder="URL/ruta del PDF…" value="${esc(c.adjunto_ref || '')}"></div>
+          <div class="campo ancho"><label>Adjunto del PO</label><div id="cpoEdAdjuntoWrap"></div>
+            <div class="alias-ayuda">Pega la URL/ruta, <b>o</b> sube el archivo (máx 20 MB: PDF, PNG, JPG, WEBP).</div></div>
           <div class="campo ancho"><label>Nota</label><textarea id="cpoEdNota" rows="2">${esc(c.nota || '')}</textarea></div>
         </div>
         <div class="acciones">
@@ -793,11 +798,63 @@
         valorInicial: c.cliente || null
       });
     }
+
+    function pintarAdjuntoEd() {
+      const wrap = document.getElementById('cpoEdAdjuntoWrap');
+      if (!wrap) return;
+      const esSt = !!parseStorageRef(adjuntoActual);
+      wrap.innerHTML = `
+        ${esSt
+          ? `<div class="adjunto-estado"><i class="ti ti-file-check"></i> Archivo actual — ${adjuntoHTML(adjuntoActual)} · <a class="enlace quitar" id="cpoEdAdjQuitar">quitar</a></div>`
+          : `<input id="cpoEdAdjunto" class="mono" type="text" placeholder="Pega una URL… o sube un archivo abajo" value="${esc(adjuntoActual || '')}">`}
+        <div class="adjunto-sube">
+          <label class="btn-file" for="cpoEdArchivo"><i class="ti ti-upload"></i> ${esSt ? 'Reemplazar archivo' : 'o subir archivo (PDF/imagen)'}</label>
+          <input id="cpoEdArchivo" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" style="display:none">
+          <span class="adjunto-estado" id="cpoEdArchivoEstado"></span>
+        </div>`;
+      cablearVerAdjunto(wrap, false);
+      document.getElementById('cpoEdArchivo').addEventListener('change', onArchivoCPOEditar);
+      const bQ = document.getElementById('cpoEdAdjQuitar');
+      if (bQ) bQ.addEventListener('click', () => { adjuntoActual = null; pintarAdjuntoEd(); });
+    }
+
+    async function onArchivoCPOEditar(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      if (!MIMES_CPO.includes(file.type)) { avisoEdCPO('err', 'Tipo no permitido. Sube PDF, PNG, JPG o WEBP.'); e.target.value = ''; return; }
+      if (file.size > MAX_CPO) { avisoEdCPO('err', 'El archivo supera el máximo de 20 MB.'); e.target.value = ''; return; }
+      const estado = document.getElementById('cpoEdArchivoEstado');
+      if (estado) estado.textContent = 'Subiendo…';
+      const nombreSaneado = file.name.replace(/[^\w.\-]+/g, '_');
+      const anio = hoyISO().slice(0, 4);
+      const ruta = `${anio}/${crypto.randomUUID()}-${nombreSaneado}`;
+      try {
+        const up = await ERP.sb.storage.from(BUCKET_CPO).upload(ruta, file, { contentType: file.type, upsert: false });
+        if (up.error) throw new Error(up.error.message);
+        adjuntoActual = `storage:${BUCKET_CPO}/${ruta}`;
+        pintarAdjuntoEd();
+        avisoEdCPO('ok', 'Archivo subido. Se guardará al aplicar los cambios.');
+      } catch (err) {
+        if (estado) estado.textContent = '';
+        avisoEdCPO('err', `No se pudo subir el archivo: ${esc(err.message)}`);
+      }
+    }
+
+    function avisoEdCPO(tipo, html) {
+      const el = document.getElementById('cpoEdAviso');
+      if (el) { el.className = 'aviso visible ' + tipo; el.innerHTML = html; }
+    }
+
+    pintarAdjuntoEd();
     document.getElementById('cpoEdCancelar').addEventListener('click', () => verCPO(c.id));
-    document.getElementById('cpoEdGuardar').addEventListener('click', () => guardarEdicionCPO(c, comboClienteEd, puedeCambiarCliente));
+    document.getElementById('cpoEdGuardar').addEventListener('click', () => {
+      const inputTxt = document.getElementById('cpoEdAdjunto');
+      const refFinal = inputTxt ? ((inputTxt.value || '').trim() || null) : adjuntoActual;
+      guardarEdicionCPO(c, comboClienteEd, puedeCambiarCliente, refFinal);
+    });
   }
 
-  async function guardarEdicionCPO(c, comboClienteEd, puedeCambiarCliente) {
+  async function guardarEdicionCPO(c, comboClienteEd, puedeCambiarCliente, adjuntoRef) {
     const v = id => (document.getElementById(id) || {}).value;
     const btn = document.getElementById('cpoEdGuardar');
     const aviso = document.getElementById('cpoEdAviso');
@@ -810,7 +867,7 @@
         p_numero_cliente: (v('cpoEdNumCliente') || '').trim() || null,
         p_fecha_po: v('cpoEdFecha') || null,
         p_moneda: v('cpoEdMoneda') || 'USD',
-        p_adjunto_ref: (v('cpoEdAdjunto') || '').trim() || null,
+        p_adjunto_ref: adjuntoRef,
         p_nota: (v('cpoEdNota') || '').trim() || null,
         p_cliente_id: puedeCambiarCliente ? Number(comboClienteEd.valorId()) : Number(c.cliente_id),
         p_actor: actor()

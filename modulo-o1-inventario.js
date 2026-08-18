@@ -2,26 +2,28 @@
    Recepción de inventario (lotes) contra el stack Camino C (op.lots), STANDALONE — un lote NO
    está ligado a ninguna operación al recibirlo; se liga a una línea de Sales Order al asignarlo
    (ver "Asignar" en el tablero de la ficha de Sales Order, modulo-o1-so.js, que llama
-   fn_op_alloc_crear). Ambos stacks conviven (contrato verificado en vivo, 2026-08-13):
-     - op.lots (recibir aquí)               → usable YA, sin operacion_id.
+   fn_op_alloc_crear). Realineado a nivel SKU (D-1xx, ago 2026 — mismo picker que O1 CPO/SO):
+     - op.lots (recibir aquí)               → a nivel SKU (cat.skus), sin operacion_id.
      - op.inventory_allocations→op.so_lineas → depende de que existan Sales Orders Camino C (O1).
 
    SOLO FRONTEND. Lee por vistas en public, escribe por RPCs SECURITY DEFINER (op cerrado fuera del API).
    Vistas:
-     v_op_inventario (lot_id, folio, producto_id, producto, location_id, location_codigo,
-       location_nombre, uom, estado, on_hand, reservado, disponible, proveedor_id, fecha)
-   Catálogos (vistas ya vivas, reusadas del resto del ERP):
-     v_catalogo_productos (id, nombre) · v_directorio_contrapartes (id, nombre, es_proveedor, ...)
+     v_op_inventario (lot_id, folio, sku_id, sku, producto_id, producto, location_id, location_codigo,
+       location_nombre, uom, estado, on_hand, reservado, disponible, proveedor_id, proveedor, fecha)
+   Catálogos (vistas ya vivas, reusadas del resto del ERP/O1):
+     v_catc_contrapartes (id, nombre, alias, es_proveedor, ...) — picker de proveedor, mismo patrón que O1.
+     Picker de SKU: ERP.crearPickerSku (fn_cat_sugerir_sku), mismo componente que las líneas de O1-SO.
    RPCs (capacidad 'capturar'):
      fn_op_location_alta(p_codigo, p_nombre) -> jsonb
-     fn_op_lot_recibir(p_producto_id, p_location_id, p_on_hand, p_uom='CAJA', p_proveedor_id=NULL,
-       p_origen_ref=NULL, p_fecha=NULL) -> jsonb
+     fn_op_lot_recibir(p_sku_id, p_location_id, p_on_hand, p_uom='CAJA', p_proveedor_id=NULL,
+       p_origen_ref=NULL, p_fecha=NULL) -> { lot_id, folio, on_hand }   (folio formato LOT-26-001)
    NOTA (sin vista dedicada de ubicaciones todavía): el picker de ubicación se arma a partir de
    las ubicaciones que YA aparecen en v_op_inventario (dedupe en frontend) + "+ Nueva ubicación"
    inline. Con el inventario en 0 (arranque), el picker empieza vacío — se resuelve solo en cuanto
    exista al menos un lote por ubicación. Limitación conocida, anotada en REPORTE-FRONTEND.md.
-   Expone ERP.o1AbrirRecibirInventario(productoIdPrefill) para saltar aquí desde otro módulo
-   (ej. "Asignar a línea" en el tablero de Sales Orders cuando no hay lote disponible). */
+   Expone ERP.o1AbrirRecibirInventario(skuPrefill) para saltar aquí desde otro módulo (ej. "Asignar
+   a línea" en el tablero de Sales Orders cuando no hay lote disponible) — skuPrefill es
+   { sku_id, etiqueta } o null. */
 
 (function () {
   'use strict';
@@ -51,7 +53,7 @@
   function filtrados() {
     const t = ERP.norm(fTexto);
     if (!t) return lotes;
-    return lotes.filter(l => [l.folio, l.producto, l.location_codigo, l.location_nombre].some(v => ERP.norm(v).includes(t)));
+    return lotes.filter(l => [l.folio, l.sku, l.producto, l.location_codigo, l.location_nombre].some(v => ERP.norm(v).includes(t)));
   }
 
   function pintarKpis() {
@@ -74,12 +76,12 @@
     if (!rows.length) { cont.innerHTML = '<div class="vacio">Ningún lote coincide con el filtro.</div>'; return; }
 
     cont.innerHTML = `<div class="tabla-wrap"><table>
-      <thead><tr><th>Lote</th><th>Producto</th><th>Ubicación</th><th>UOM</th><th>Estado</th>
+      <thead><tr><th>Lote</th><th>SKU</th><th>Ubicación</th><th>UOM</th><th>Estado</th>
         <th class="num">On hand</th><th class="num">Reservado</th><th class="num">Disponible</th>
         <th>Proveedor</th><th>Fecha</th></tr></thead>
       <tbody>${rows.map(l => `<tr>
         <td class="mono">${esc(l.folio || '—')}</td>
-        <td class="ent">${esc(l.producto || '—')}</td>
+        <td class="ent">${esc(l.sku || l.producto || '—')}</td>
         <td>${esc([l.location_codigo, l.location_nombre].filter(Boolean).join(' — ') || '—')}</td>
         <td class="mono">${esc(l.uom || '—')}</td>
         <td><span class="pill gris">${esc(l.estado || '—')}</span></td>
@@ -129,8 +131,8 @@
 
   /* ================= Recibir inventario ================= */
 
-  let comboProductoInv = null, comboUbicacionInv = null;
-  let productosCat = [], proveedoresCat = [];
+  let pickerSkuInv = null, comboUbicacionInv = null, comboProveedorInv = null;
+  let proveedoresCat = [];
   let ubicacionesEnMemoria = [];   // dedupe de v_op_inventario + las que se creen inline en esta sesión
 
   function avisoInv(tipo, html) {
@@ -138,16 +140,16 @@
     if (el) { el.className = 'aviso visible ' + tipo; el.innerHTML = html; }
   }
 
-  async function abrirRecibir(productoIdPrefill) {
+  // skuPrefill: { sku_id, etiqueta } | null — viene de "Asignar" en el tablero del SO cuando no
+  // hay lote disponible de ese SKU (ver modulo-o1-so.js → abrirAsignarLote).
+  async function abrirRecibir(skuPrefill) {
     if (!ERP.puede('capturar')) return;
     ERP.abrirPanel('Recibir inventario', 'Crea un lote nuevo (sin ligar a ninguna venta todavía)', '<div class="skel">Cargando catálogos…</div>');
     try {
-      const [prods, provs, inv] = await Promise.all([
-        q('v_catalogo_productos', '&order=nombre.asc'),
-        q('v_directorio_contrapartes', '&es_proveedor=eq.true&order=nombre.asc'),
+      const [provs, inv] = await Promise.all([
+        q('v_catc_contrapartes', '&es_proveedor=eq.true&order=nombre.asc'),
         lotes.length ? Promise.resolve(lotes) : q('v_op_inventario', '&order=fecha.desc').catch(() => [])
       ]);
-      productosCat = prods || [];
       proveedoresCat = provs || [];
       lotes = inv || lotes;
     } catch (e) {
@@ -159,7 +161,7 @@
     ERP.abrirPanel('Recibir inventario', 'Crea un lote nuevo (sin ligar a ninguna venta todavía)', `
       <div class="form-erp">
         <div class="campos">
-          <div class="campo ancho"><label>Producto <span class="req">*</span></label><div id="invProducto"></div></div>
+          <div class="campo ancho"><label>SKU <span class="req">*</span></label><div id="invSku"></div></div>
           <div class="campo ancho">
             <label>Ubicación <span class="req">*</span></label>
             <div id="invUbicacion"></div>
@@ -195,11 +197,10 @@
         <div class="aviso" id="invNvAviso"></div>
       </div>`);
 
-    comboProductoInv = ERP.crearCombo({
-      contenedor: document.getElementById('invProducto'),
-      items: productosCat.map(p => ({ id: p.id, nombre: p.nombre })),
-      placeholder: 'Busca producto…', permitirNuevo: false,
-      valorInicial: productoIdPrefill ? (productosCat.find(p => String(p.id) === String(productoIdPrefill)) || {}).nombre : null
+    pickerSkuInv = ERP.crearPickerSku({
+      contenedor: document.getElementById('invSku'),
+      placeholder: 'Busca SKU…',
+      valorInicial: (skuPrefill && skuPrefill.sku_id != null) ? skuPrefill : null
     });
     montarComboUbicacion();
     comboProveedorInv = ERP.crearCombo({
@@ -218,8 +219,6 @@
     document.getElementById('invCancelar').addEventListener('click', ERP.cerrarPanel);
     document.getElementById('invGuardar').addEventListener('click', guardarRecibir);
   }
-
-  let comboProveedorInv = null;
 
   function montarComboUbicacion(preseleccionar) {
     comboUbicacionInv = ERP.crearCombo({
@@ -259,8 +258,8 @@
   const numOrNull = v => (v === '' || v === null || v === undefined || isNaN(Number(v))) ? null : Number(v);
 
   async function guardarRecibir() {
-    const producto_id = comboProductoInv && comboProductoInv.valorId();
-    if (!producto_id) { avisoInv('err', 'Elige un producto del catálogo.'); return; }
+    const sku_id = pickerSkuInv && pickerSkuInv.valorId();
+    if (!sku_id) { avisoInv('err', 'Elige un SKU.'); return; }
     const location_id = comboUbicacionInv && comboUbicacionInv.valorId();
     if (!location_id) { avisoInv('err', 'Elige o crea una ubicación.'); return; }
     const v = id => (document.getElementById(id) || {}).value;
@@ -268,7 +267,7 @@
     if (!(cantidad > 0)) { avisoInv('err', 'La cantidad debe ser mayor a cero.'); return; }
 
     const args = {
-      p_producto_id: Number(producto_id),
+      p_sku_id: Number(sku_id),
       p_location_id: Number(location_id),
       p_on_hand: cantidad,
       p_uom: (v('invUom') || '').trim() || 'CAJA',
@@ -281,8 +280,8 @@
     btn.disabled = true;
     avisoInv('warn', 'Recibiendo inventario…');
     try {
-      await rpc('fn_op_lot_recibir', args);
-      ERP.toast('ok', 'Inventario recibido.');
+      const r = uno(await rpc('fn_op_lot_recibir', args));
+      ERP.toast('ok', `Inventario recibido — lote <b>${esc(r.folio || '')}</b> (${esc(ERP.fmt0(r.on_hand))} ${esc((v('invUom') || '').trim() || 'CAJA')}).`);
       ERP.marcarDatosSucios();
       await recargar();
       render(document.getElementById('modContenido'));
