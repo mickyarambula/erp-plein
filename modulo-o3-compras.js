@@ -1,0 +1,635 @@
+/* Módulo Compras / Supplier PO (ruta 'o3-compras') — CAMINO C · Fase O3a.
+   Espejo invertido del Customer PO (O1): en vez de "el cliente nos manda un PO", aquí "nosotros le
+   mandamos un PO al proveedor". Cada línea, al recibirse, hace NACER un lote de Inventario (O2) —
+   ya no se captura suelto desde "Recibir inventario"; ese flujo sigue vivo para inventario que
+   llega sin una compra formal detrás (ver modulo-o1-inventario.js).
+
+   SOLO FRONTEND. Lee por vistas en public, escribe por RPCs SECURITY DEFINER (op cerrado fuera del API).
+   Vistas:
+     v_op_supplier_po (supplier_po_id, folio, proveedor, numero_proveedor, fecha, moneda, estado,
+       so_folio, adjunto_ref, nota, num_lineas, total_costo)
+     v_op_spo_lineas (linea_id, supplier_po_id, spo_folio, linea_num, sku_id, sku, cantidad, uom,
+       costo_unitario, costo_moneda, costo_linea, recibido, lot_id, lot_folio, recibida)
+   Catálogos (vistas ya vivas, reusadas del resto de O1/O2):
+     v_catc_contrapartes (id, nombre, alias, es_proveedor, ...) — picker de proveedor.
+     v_op_sales_orders — dropdown opcional para ligar la compra a una venta (trazabilidad).
+     Picker de SKU: ERP.crearPickerSku (fn_cat_sugerir_sku), mismo componente que O1-SO.
+   RPCs (capacidad 'capturar'):
+     fn_op_spo_alta(p_proveedor_id, p_lineas jsonb, p_numero_proveedor, p_fecha, p_moneda,
+       p_sales_order_id, p_adjunto_ref, p_nota) -> { supplier_po_id, folio, lineas }
+       p_lineas = [{sku_id, cantidad, uom, costo_unitario|null, costo_moneda, nota}]
+       (costo_unitario null = consignación, se costea al recibir o después, igual que O2b)
+     fn_op_spo_recibir_linea(p_spo_linea_id, p_location_id, p_fecha) -> { ok, lot_id, lot_folio }
+       — nace el lote de Inventario (O2) DESDE esta línea.
+     fn_op_spo_eliminar(p_id) -> ok (el backend bloquea si ya hay líneas recibidas — mensaje
+       legible, se muestra tal cual).
+   NOTA proveedor picker: se usa ERP.crearCombo sobre v_catc_contrapartes&es_proveedor=eq.true —
+   el MISMO patrón real que usa O1-CPO para el cliente (búsqueda cliente-side sobre la lista
+   completa). fn_op_sugerir_contraparte NO se usa aquí a propósito: está documentada como RPC
+   CERRADA (D-171 — sin GRANT a authenticated, solo invocable desde dentro de la Edge Function
+   extraer-po). Llamarla directo desde el frontend tronaría por permisos.
+   Adjunto: mismo patrón de O1-CPO (bucket cpo-adjuntos, subida real + ver por URL firmada).
+   Ubicación al recibir: mismo patrón de "Recibir inventario" (dedupe de v_op_inventario +
+   "+ Nueva ubicación" inline vía fn_op_location_alta).
+   Expone ERP.o3AbrirSPO(id) para saltar aquí desde otro módulo. */
+
+(function () {
+  'use strict';
+  const { q, rpc, esc, fecha } = ERP;
+
+  const BUCKET_CPO = 'cpo-adjuntos';   // mismo bucket privado que O1-CPO (20 MB; pdf/png/jpeg/webp)
+
+  const actor = () => (ERP.perfil && ERP.perfil.socio_codigo) || null;
+  const uno = d => Array.isArray(d) ? (d[0] || {}) : (d || {});
+  const numOrNull = v => (v === '' || v === null || v === undefined || isNaN(Number(v))) ? null : Number(v);
+  const hoyISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const mesActual = () => hoyISO().slice(0, 7);
+
+  // Pastilla de estado de la compra.
+  function chipEstado(est) {
+    const e = String(est || '').toLowerCase();
+    const cls = e === 'recibido' ? 'verde' : e.includes('parcial') ? 'azul' : e === 'abierto' ? 'ambar' : e.includes('cancel') ? 'rojo' : 'gris';
+    return `<span class="pill ${cls}">${esc(est || '—')}</span>`;
+  }
+
+  /* ---- Adjunto (idéntico a O1-CPO, mismo bucket) ---- */
+  function parseStorageRef(ref) {
+    const r = String(ref || '').trim();
+    if (!r.startsWith('storage:')) return null;
+    const resto = r.slice('storage:'.length);
+    const i = resto.indexOf('/');
+    if (i < 1) return null;
+    return { bucket: resto.slice(0, i), ruta: resto.slice(i + 1) };
+  }
+  function adjuntoHTML(ref) {
+    const r = String(ref || '').trim();
+    if (!r) return '<span class="i3">—</span>';
+    const st = parseStorageRef(r);
+    if (st) return `<button class="btn-mini gris ver-adjunto" data-bucket="${esc(st.bucket)}" data-ruta="${esc(st.ruta)}">Ver adjunto</button>`;
+    if (/^https?:\/\//i.test(r)) return `<a class="enlace" href="${esc(r)}" target="_blank" rel="noopener">Ver adjunto</a>`;
+    return `<span class="mono" title="${esc(r)}">${esc(r)}</span>`;
+  }
+  async function abrirAdjuntoFirmado(bucket, ruta, boton) {
+    const txt = boton.textContent; boton.disabled = true; boton.textContent = 'Abriendo…';
+    try {
+      const { data, error } = await ERP.sb.storage.from(bucket).createSignedUrl(ruta, 3600);
+      if (error) throw new Error(error.message);
+      const a = document.createElement('a');
+      a.href = data.signedUrl; a.target = '_blank'; a.rel = 'noopener';
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) {
+      ERP.toast('err', `No se pudo abrir el adjunto: ${esc(e.message)}`);
+    }
+    boton.disabled = false; boton.textContent = txt;
+  }
+  function cablearVerAdjunto(cont, dentroDeFila) {
+    (cont || document).querySelectorAll('button.ver-adjunto').forEach(b => {
+      if (b._verAdjWired) return; b._verAdjWired = true;
+      b.addEventListener('click', e => {
+        if (dentroDeFila) e.stopPropagation();
+        abrirAdjuntoFirmado(b.dataset.bucket, b.dataset.ruta, b);
+      });
+    });
+  }
+
+  /* ================= Lista ================= */
+
+  let spos = [];
+  let fEstado = '', fTexto = '';
+
+  function filtrados() {
+    const t = ERP.norm(fTexto);
+    return spos.filter(s => {
+      if (fEstado && String(s.estado || '') !== fEstado) return false;
+      if (!t) return true;
+      return [s.folio, s.proveedor, s.numero_proveedor, s.so_folio].some(v => ERP.norm(v).includes(t));
+    });
+  }
+
+  function pintarKpis() {
+    const abiertas = spos.filter(s => String(s.estado || '').toLowerCase() === 'abierto').length;
+    const recibidas = spos.filter(s => String(s.estado || '').toLowerCase() === 'recibido').length;
+    const mes = mesActual();
+    const delMes = spos.filter(s => String(s.fecha || '').slice(0, 7) === mes).length;
+    const el = document.getElementById('spoKpis');
+    if (!el) return;
+    el.innerHTML = `
+      <div class="kpi"><div class="k">Abiertas</div><div class="v">${abiertas}</div></div>
+      <div class="kpi"><div class="k">Recibidas</div><div class="v ink">${recibidas}</div></div>
+      <div class="kpi"><div class="k">Del mes</div><div class="v ink">${delMes}</div></div>`;
+  }
+
+  function pintarTabla() {
+    const cont = document.getElementById('spoTabla');
+    const conteo = document.getElementById('spoConteo');
+    const rows = filtrados();
+    if (conteo) conteo.textContent = `${rows.length} de ${spos.length} compras`;
+    if (!rows.length) { cont.innerHTML = '<div class="vacio">Ninguna compra coincide con el filtro.</div>'; return; }
+
+    cont.innerHTML = `<div class="tabla-wrap"><table>
+      <thead><tr><th>Folio</th><th>Proveedor</th><th>N° proveedor</th><th>Fecha</th><th>Moneda</th>
+        <th>Estado</th><th class="num">Total costo</th><th>SO</th><th>Adjunto</th></tr></thead>
+      <tbody>${rows.map(s => `<tr class="clic" data-id="${esc(s.supplier_po_id)}">
+          <td class="mono"><span class="enlace">${esc(s.folio || '—')}</span></td>
+          <td class="ent">${esc(s.proveedor || '—')}</td>
+          <td class="mono">${esc(s.numero_proveedor || '—')}</td>
+          <td>${esc(fecha(s.fecha))}</td>
+          <td class="mono">${esc(s.moneda || '—')}</td>
+          <td>${chipEstado(s.estado)}</td>
+          <td class="num">${esc(ERP.usd(s.total_costo))}</td>
+          <td class="mono">${esc(s.so_folio || '—')}</td>
+          <td>${adjuntoHTML(s.adjunto_ref)}</td>
+        </tr>`).join('')}</tbody>
+    </table></div>`;
+
+    cont.querySelectorAll('tr.clic[data-id]').forEach(tr =>
+      tr.addEventListener('click', () => verSPO(Number(tr.dataset.id))));
+    cablearVerAdjunto(cont, true);
+  }
+
+  async function render(cont) {
+    const puedeCap = ERP.puede('capturar');
+    let filas;
+    try {
+      filas = await q('v_op_supplier_po', '&order=fecha.desc');
+    } catch (e) {
+      cont.innerHTML = `<div class="errbox">No se pudieron leer las compras: ${esc(e.message)}</div>`;
+      return;
+    }
+    spos = filas || [];
+    fEstado = ''; fTexto = '';
+
+    cont.innerHTML = `<div class="pantalla-o3-compras">
+      <div class="kpistrip" id="spoKpis"></div>
+      <div class="filtros">
+        ${puedeCap ? '<button class="btn-mini" id="spoNuevo">Nueva compra</button>' : ''}
+        <select class="busca" id="spoFEstado" style="max-width:170px">
+          <option value="">Todos los estados</option>
+          <option value="Abierto">Abierto</option>
+          <option value="Recibido parcial">Recibido parcial</option>
+          <option value="Recibido">Recibido</option>
+          <option value="Cancelado">Cancelado</option>
+        </select>
+        <input class="busca" id="spoBuscar" type="search" placeholder="Buscar folio, proveedor, N° proveedor o SO…" style="flex:1;min-width:180px">
+        <span class="conteo" id="spoConteo"></span>
+      </div>
+      <div id="spoTabla"></div>
+    </div>`;
+
+    pintarKpis();
+    pintarTabla();
+
+    const bNuevo = document.getElementById('spoNuevo');
+    if (bNuevo) bNuevo.addEventListener('click', nuevaSPO);
+    document.getElementById('spoFEstado').addEventListener('change', e => { fEstado = e.target.value; pintarTabla(); });
+    document.getElementById('spoBuscar').addEventListener('input', e => { fTexto = e.target.value; pintarTabla(); });
+  }
+
+  async function recargar() {
+    ERP.limpiarCache();
+    try { spos = (await q('v_op_supplier_po', '&order=fecha.desc')) || []; } catch (_) { /* la ficha muestra su propio error */ }
+  }
+
+  /* ================= Alta ================= */
+
+  let proveedoresCat = [], sosCat = [], comboProveedor = null;
+  let lineas = [];
+  let adjuntoSubido = null;   // 'storage:cpo-adjuntos/<ruta>' si se subió un archivo en esta alta
+
+  const nuevaLinea = () => ({ picker: null, sku_id: null, sku_etiqueta: '', cantidad: '', uom: 'CAJA', costo_unitario: '', costo_moneda: 'USD', nota: '' });
+
+  function avisoNv(tipo, html) {
+    const el = document.getElementById('spoNvAviso');
+    if (el) { el.className = 'aviso visible ' + tipo; el.innerHTML = html; }
+  }
+
+  async function nuevaSPO() {
+    if (!ERP.puede('capturar')) return;
+    ERP.cerrarPanel();
+    adjuntoSubido = null;
+    ERP.abrirPanel('Nueva compra', 'Registra el PO que le mandamos al proveedor', '<div class="skel">Cargando catálogos…</div>');
+    try {
+      [proveedoresCat, sosCat] = await Promise.all([
+        q('v_catc_contrapartes', '&es_proveedor=eq.true&order=nombre.asc'),
+        q('v_op_sales_orders', '&order=created_at.desc').catch(() => [])
+      ]);
+    } catch (e) {
+      ERP.abrirPanel('Nueva compra', '', `<div class="errbox">No se pudieron leer los catálogos: ${esc(e.message)}</div>`);
+      return;
+    }
+    lineas = [nuevaLinea()];
+
+    ERP.abrirPanel('Nueva compra', 'Registra el PO que le mandamos al proveedor', `
+      <div class="form-erp">
+        <div class="campos">
+          <div class="campo ancho"><label>Proveedor <span class="req">*</span></label><div id="spoProveedor"></div>
+            <div class="alias-ayuda">Contraparte marcada como proveedor en el Directorio.</div></div>
+          <div class="campo"><label>N° de PO / referencia del proveedor</label>
+            <input id="spoNumProveedor" type="text" maxlength="60" placeholder="Ej. EST-1001 (opcional)"></div>
+          <div class="campo"><label>Fecha</label>
+            <input id="spoFecha" type="date" value="${hoyISO()}"></div>
+          <div class="campo"><label>Moneda</label>
+            <select id="spoMoneda">${ERP.MONEDAS.map(m => `<option value="${m}">${m}</option>`).join('')}</select></div>
+          <div class="campo ancho"><label>Ligar a una Sales Order (opcional)</label>
+            <select id="spoSO"><option value="">— sin ligar —</option>${sosCat.map(s => `<option value="${esc(s.id)}">${esc(s.folio)} — ${esc(s.cliente || '')}</option>`).join('')}</select>
+            <div class="alias-ayuda">Solo trazabilidad — puede quedar vacío.</div></div>
+          <div class="campo ancho"><label>Adjunto (Estimate/Invoice del proveedor)</label>
+            <input id="spoAdjunto" class="mono" type="text" placeholder="Pega una URL… o sube un archivo abajo">
+            <div class="adjunto-sube">
+              <label class="btn-file" for="spoArchivo"><i class="ti ti-upload"></i> o subir archivo (PDF/imagen)</label>
+              <input id="spoArchivo" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" style="display:none">
+              <span class="adjunto-estado" id="spoArchivoEstado"></span>
+            </div>
+            <div class="alias-ayuda">Pega la URL/ruta, <b>o</b> sube el archivo (máx 20 MB: PDF, PNG, JPG, WEBP).</div></div>
+          <div class="campo ancho"><label>Nota</label><textarea id="spoNota" rows="2"></textarea></div>
+        </div>
+        <div class="seccion-head"><h4>Líneas</h4><button class="btn-mini gris" id="spoAddLinea">+ Línea</button></div>
+        <div id="spoLineasBody" class="so-lineas-lista"></div>
+        <div class="alias-ayuda">El costo unitario es opcional: déjalo vacío en consignación — se captura después con "Costear" en Inventario, o al recibir la línea aquí.</div>
+        <div class="acciones">
+          <button class="btn-mini" id="spoCrear">Crear compra</button>
+          <button class="btn-mini gris" id="spoCancelar">Cancelar</button>
+        </div>
+        <div class="aviso" id="spoNvAviso"></div>
+      </div>`);
+
+    comboProveedor = ERP.crearCombo({
+      contenedor: document.getElementById('spoProveedor'),
+      items: proveedoresCat.map(p => ({ id: p.id, nombre: p.nombre, alias: p.alias || [] })),
+      placeholder: 'Busca proveedor por nombre o alias…', permitirNuevo: false
+    });
+    montarLineas();
+
+    document.getElementById('spoAddLinea').addEventListener('click', () => { recogerLineas(); lineas.push(nuevaLinea()); montarLineas(); });
+    document.getElementById('spoArchivo').addEventListener('change', onArchivoSPO);
+    document.getElementById('spoCancelar').addEventListener('click', ERP.cerrarPanel);
+    document.getElementById('spoCrear').addEventListener('click', crearSPO);
+  }
+
+  function montarLineas() {
+    const body = document.getElementById('spoLineasBody');
+    if (!body) return;
+    body.innerHTML = lineas.map((l, i) => `<div class="so-linea-card" data-i="${i}">
+      <div id="spoLiSku${i}"></div>
+      <div class="so-linea-fila">
+        <div class="so-linea-campo num"><label>Cantidad</label><input class="spo-li num" data-i="${i}" data-k="cantidad" type="number" step="0.01" min="0" value="${esc(l.cantidad)}" placeholder="0"></div>
+        <div class="so-linea-campo num"><label>UOM</label><input class="spo-li" data-i="${i}" data-k="uom" type="text" value="${esc(l.uom)}"></div>
+        <div class="so-linea-campo num"><label>Costo unit.</label><input class="spo-li num" data-i="${i}" data-k="costo_unitario" type="number" step="0.01" min="0" value="${esc(l.costo_unitario)}" placeholder="opcional"></div>
+        <div class="so-linea-campo"><label>Moneda</label>
+          <select class="spo-li" data-i="${i}" data-k="costo_moneda">${ERP.MONEDAS.map(m => `<option value="${m}" ${l.costo_moneda === m ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+        <button type="button" class="so-linea-quitar" data-del="${i}" title="Quitar línea">✕</button>
+      </div>
+    </div>`).join('');
+
+    lineas.forEach((l, i) => {
+      l.picker = ERP.crearPickerSku({
+        contenedor: document.getElementById(`spoLiSku${i}`),
+        placeholder: 'Busca SKU…',
+        valorInicial: l.sku_id ? { sku_id: l.sku_id, etiqueta: l.sku_etiqueta } : null
+      });
+    });
+
+    body.querySelectorAll('.spo-li').forEach(inp => {
+      inp.addEventListener('input', e => { lineas[Number(e.target.dataset.i)][e.target.dataset.k] = e.target.value; });
+      inp.addEventListener('change', e => { lineas[Number(e.target.dataset.i)][e.target.dataset.k] = e.target.value; });
+    });
+    body.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
+      recogerLineas();
+      lineas.splice(Number(b.dataset.del), 1);
+      if (!lineas.length) lineas.push(nuevaLinea());
+      montarLineas();
+    }));
+  }
+
+  function recogerLineas() {
+    document.querySelectorAll('#spoLineasBody .spo-li').forEach(inp => {
+      const i = Number(inp.dataset.i), k = inp.dataset.k;
+      if (lineas[i]) lineas[i][k] = inp.value;
+    });
+    lineas.forEach(l => {
+      if (l.picker) { l.sku_id = l.picker.valorId(); l.sku_etiqueta = l.picker.valorEtiqueta(); }
+    });
+  }
+
+  function lineasPayload() {
+    recogerLineas();
+    return lineas
+      .filter(l => l.sku_id)
+      .map(l => ({
+        sku_id: Number(l.sku_id),
+        cantidad: numOrNull(l.cantidad),
+        uom: String(l.uom || '').trim() || 'CAJA',
+        costo_unitario: numOrNull(l.costo_unitario),   // null = consignación, correcto
+        costo_moneda: String(l.costo_moneda || '').trim() || 'USD',
+        nota: null
+      }));
+  }
+
+  // Sube el Estimate/Invoice del proveedor a cpo-adjuntos (mismo bucket que O1-CPO) — patrón idéntico.
+  const MIMES_CPO = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
+  const MAX_CPO = 20 * 1024 * 1024;
+  async function onArchivoSPO(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (!MIMES_CPO.includes(file.type)) { avisoNv('err', 'Tipo no permitido. Sube PDF, PNG, JPG o WEBP.'); e.target.value = ''; return; }
+    if (file.size > MAX_CPO) { avisoNv('err', 'El archivo supera el máximo de 20 MB.'); e.target.value = ''; return; }
+
+    const estado = document.getElementById('spoArchivoEstado');
+    if (estado) estado.textContent = 'Subiendo…';
+    const nombreSaneado = file.name.replace(/[^\w.\-]+/g, '_');
+    const anio = hoyISO().slice(0, 4);
+    const ruta = `${anio}/${crypto.randomUUID()}-${nombreSaneado}`;
+    try {
+      const up = await ERP.sb.storage.from(BUCKET_CPO).upload(ruta, file, { contentType: file.type, upsert: false });
+      if (up.error) throw new Error(up.error.message);
+      adjuntoSubido = `storage:${BUCKET_CPO}/${ruta}`;
+      const txt = document.getElementById('spoAdjunto');
+      if (txt) { txt.value = ''; txt.disabled = true; txt.placeholder = '(usando el archivo subido)'; }
+      if (estado) {
+        estado.innerHTML = `<i class="ti ti-file-check"></i> ${esc(file.name)} · <a class="enlace quitar" id="spoArchivoQuitar">quitar</a>`;
+        const q2 = document.getElementById('spoArchivoQuitar');
+        if (q2) q2.addEventListener('click', quitarArchivoSPO);
+      }
+      avisoNv('ok', 'Archivo subido. Se guardará al crear la compra.');
+    } catch (err) {
+      adjuntoSubido = null;
+      if (estado) estado.textContent = '';
+      e.target.value = '';
+      avisoNv('err', `No se pudo subir el archivo: ${esc(err.message)}`);
+    }
+  }
+  function quitarArchivoSPO() {
+    adjuntoSubido = null;
+    const estado = document.getElementById('spoArchivoEstado'); if (estado) estado.textContent = '';
+    const inp = document.getElementById('spoArchivo'); if (inp) inp.value = '';
+    const txt = document.getElementById('spoAdjunto');
+    if (txt) { txt.disabled = false; txt.placeholder = 'Pega una URL… o sube un archivo abajo'; }
+  }
+
+  async function crearSPO() {
+    const proveedor_id = comboProveedor && comboProveedor.valorId();
+    if (!proveedor_id) { avisoNv('err', 'Elige el proveedor.'); return; }
+    const payload = lineasPayload();
+    if (!payload.length) { avisoNv('err', 'Agrega al menos una línea con SKU.'); return; }
+    for (const l of payload) {
+      if (!(l.cantidad > 0)) { avisoNv('err', 'Cada línea necesita una cantidad mayor a cero.'); return; }
+    }
+
+    const v = id => (document.getElementById(id) || {}).value;
+    const adjRef = adjuntoSubido || (v('spoAdjunto') || '').trim() || null;
+    const soVal = v('spoSO');
+    const args = {
+      p_proveedor_id: Number(proveedor_id),
+      p_lineas: payload,
+      p_numero_proveedor: (v('spoNumProveedor') || '').trim() || null,
+      p_fecha: v('spoFecha') || null,
+      p_moneda: v('spoMoneda') || 'USD',
+      p_sales_order_id: soVal ? Number(soVal) : null,
+      p_adjunto_ref: adjRef,
+      p_nota: (v('spoNota') || '').trim() || null
+    };
+
+    const btn = document.getElementById('spoCrear');
+    btn.disabled = true;
+    avisoNv('warn', 'Creando compra…');
+    try {
+      const r = uno(await rpc('fn_op_spo_alta', args));
+      if (!r.supplier_po_id) throw new Error('El ERP no devolvió la compra.');
+      ERP.toast('ok', `Compra <b>${esc(r.folio || '')}</b> creada.`);
+      ERP.marcarDatosSucios();
+      await recargar();
+      verSPO(Number(r.supplier_po_id));
+    } catch (e) {
+      if (ERP.avisarSiPermiso && ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
+      avisoNv('err', `El ERP rechazó la compra: ${esc(e.message)}`);
+      btn.disabled = false;
+    }
+  }
+
+  /* ================= Ficha + recibir línea ================= */
+
+  function fichaAviso(tipo, html) {
+    const el = document.getElementById('spoFichaAviso');
+    if (el) { el.className = 'aviso visible ' + tipo; el.innerHTML = html; }
+  }
+
+  async function verSPO(id) {
+    ERP.cerrarPanel();
+    ERP.abrirPanel('Compra', 'Cargando…', '<div class="skel">Cargando compra…</div>');
+    let s, lin;
+    try {
+      [s, lin] = await Promise.all([
+        q('v_op_supplier_po', `&supplier_po_id=eq.${Number(id)}`).then(r => r && r[0]),
+        q('v_op_spo_lineas', `&supplier_po_id=eq.${Number(id)}&order=linea_num.asc`).catch(() => [])
+      ]);
+    } catch (e) {
+      ERP.abrirPanel('Compra', '', `<div class="errbox">No se pudo cargar la compra: ${esc(e.message)}</div>`);
+      return;
+    }
+    if (!s) { ERP.abrirPanel('Compra', '', '<div class="errbox">No se encontró la compra.</div>'); return; }
+
+    const puedeCap = ERP.puede('capturar');
+    const lineasF = lin || [];
+    const hayRecibidas = lineasF.some(l => l.recibida);
+
+    const filasLineas = lineasF.map(l => `<tr>
+      <td class="mono">${esc(l.linea_num ?? '—')}</td>
+      <td class="ent">${esc(l.sku || '—')}</td>
+      <td class="mono">${esc(l.uom || '—')}</td>
+      <td class="num">${esc(ERP.fmt0(l.cantidad))}</td>
+      <td class="num">${l.costo_unitario != null ? esc(ERP.usd(l.costo_unitario)) + ' ' + esc(l.costo_moneda || 'USD') : '<span class="i3">—</span>'}</td>
+      <td class="num">${l.costo_linea != null ? esc(ERP.usd(l.costo_linea)) : '<span class="i3">—</span>'}</td>
+      <td>${l.recibida ? `<span class="pill verde">Recibida</span><div class="i3" style="font-size:11px">${esc(l.lot_folio || '')}</div>` : '<span class="pill ambar">Pendiente</span>'}</td>
+      <td>${(!l.recibida && puedeCap) ? `<button type="button" class="btn-cap recibir-linea" data-linea-id="${esc(l.linea_id)}">Recibir</button>` : ''}</td>
+    </tr>`).join('');
+
+    ERP.abrirPanel(`Compra <span class="mono">${esc(s.folio || '')}</span>`, esc(s.proveedor || ''), `
+      <div class="so-ficha">
+        <div class="det-grid">
+          <div class="det"><span class="l">Proveedor</span><span class="v">${esc(s.proveedor || '—')}</span></div>
+          <div class="det"><span class="l">N° proveedor</span><span class="v mono">${esc(s.numero_proveedor || '—')}</span></div>
+          <div class="det"><span class="l">Fecha</span><span class="v">${esc(fecha(s.fecha))}</span></div>
+          <div class="det"><span class="l">Moneda</span><span class="v mono">${esc(s.moneda || '—')}</span></div>
+          <div class="det"><span class="l">Estado</span><span class="v">${chipEstado(s.estado)}</span></div>
+          <div class="det"><span class="l">Sales Order</span><span class="v mono">${esc(s.so_folio || '—')}</span></div>
+          <div class="det"><span class="l">Total costo</span><span class="v mono">${esc(ERP.usd(s.total_costo))}</span></div>
+          <div class="det"><span class="l">Adjunto</span><span class="v">${adjuntoHTML(s.adjunto_ref)}</span></div>
+        </div>
+        ${s.nota ? `<div class="so-nota"><span class="l">Nota</span> ${esc(s.nota)}</div>` : ''}
+
+        <div class="seccion-head"><h4>Líneas</h4></div>
+        <div class="tabla-wrap"><table class="so-tablero">
+          <thead><tr><th>#</th><th>SKU</th><th>UOM</th><th class="num">Cantidad</th>
+            <th class="num">Costo unit.</th><th class="num">Costo línea</th><th>Recepción</th><th></th></tr></thead>
+          <tbody>${filasLineas || '<tr><td colspan="8" class="vacio">Sin líneas.</td></tr>'}</tbody>
+        </table></div>
+        <div class="alias-ayuda">"Recibir" crea el lote de Inventario (O2) desde esta línea — ya no se captura suelto.</div>
+
+        <div class="acciones">
+          ${puedeCap ? '<button class="btn-mini gris" id="spoEliminar">Eliminar</button>' : ''}
+          <button class="btn-mini gris" id="spoCerrar">Cerrar</button>
+        </div>
+        <div class="aviso" id="spoFichaAviso"></div>
+      </div>`);
+
+    cablearVerAdjunto(document.getElementById('panelBody'), false);
+    document.getElementById('spoCerrar').addEventListener('click', ERP.cerrarPanel);
+    const bDel = document.getElementById('spoEliminar');
+    if (bDel) bDel.addEventListener('click', () => eliminarSPO(s));
+    document.querySelectorAll('.recibir-linea').forEach(b => b.addEventListener('click', () => {
+      const l = lineasF.find(x => String(x.linea_id) === b.dataset.lineaId);
+      if (l) abrirRecibirLinea(s, l);
+    }));
+  }
+
+  async function eliminarSPO(s) {
+    if (!confirm(`¿Eliminar la compra ${s.folio}? Esta acción no se puede deshacer.`)) return;
+    try {
+      await rpc('fn_op_spo_eliminar', { p_id: Number(s.supplier_po_id) });
+      ERP.toast('ok', `Compra <b>${esc(s.folio || '')}</b> eliminada.`);
+      ERP.marcarDatosSucios();
+      await recargar();
+      ERP.cerrarPanel();
+    } catch (e) {
+      // El backend bloquea con mensaje legible si ya hay líneas recibidas — se muestra tal cual,
+      // es información útil, no un error genérico.
+      if (!(ERP.avisarSiPermiso && ERP.avisarSiPermiso(e))) ERP.toast('err', esc(e.message), 9000);
+    }
+  }
+
+  /* ---- Recibir línea: mismo picker de ubicación que "Recibir inventario" (dedupe de
+     v_op_inventario + "+ Nueva ubicación" inline) ---- */
+
+  let comboUbicacionRec = null, ubicacionesEnMemoria = [];
+
+  function avisoRec(tipo, html) {
+    const el = document.getElementById('recLiAviso');
+    if (el) { el.className = 'aviso visible ' + tipo; el.innerHTML = html; }
+  }
+
+  async function abrirRecibirLinea(s, l) {
+    if (!ERP.puede('capturar')) return;
+    ERP.cerrarPanel();
+    ERP.abrirPanel('Recibir línea', `${esc(s.folio || '')} · ${esc(l.sku || '')}`, '<div class="skel">Cargando ubicaciones…</div>');
+    let inv;
+    try {
+      inv = await q('v_op_inventario', '&order=fecha.desc').catch(() => []);
+    } catch (e) {
+      ERP.abrirPanel('Recibir línea', '', `<div class="errbox">No se pudo leer el inventario: ${esc(e.message)}</div>`);
+      return;
+    }
+    const mapa = new Map();
+    (inv || []).forEach(x => {
+      if (x.location_id != null && !mapa.has(x.location_id)) {
+        mapa.set(x.location_id, { id: x.location_id, nombre: [x.location_codigo, x.location_nombre].filter(Boolean).join(' — ') || `Ubicación ${x.location_id}` });
+      }
+    });
+    ubicacionesEnMemoria = [...mapa.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+    ERP.abrirPanel('Recibir línea', `${esc(s.folio || '')} · ${esc(l.sku || '')}`, `
+      <div class="form-erp">
+        <div class="det-grid">
+          <div class="det"><span class="l">Cantidad</span><span class="v mono">${esc(ERP.fmt0(l.cantidad))} ${esc(l.uom || '')}</span></div>
+          <div class="det"><span class="l">Costo unit.</span><span class="v mono">${l.costo_unitario != null ? esc(ERP.usd(l.costo_unitario)) + ' ' + esc(l.costo_moneda || 'USD') : 'Sin costear'}</span></div>
+        </div>
+        <div class="campos">
+          <div class="campo ancho">
+            <label>Ubicación <span class="req">*</span></label>
+            <div id="recLiUbicacion"></div>
+            <div class="ia-leer-wrap">
+              <button type="button" class="btn-mini gris" id="recLiNuevaUbicacion"><i class="ti ti-plus"></i> Nueva ubicación</button>
+              <span class="alias-ayuda">${ubicacionesEnMemoria.length ? '' : 'Todavía no hay ubicaciones — crea la primera.'}</span>
+            </div>
+            <div id="recLiUbicacionForm" style="display:none;margin-top:8px" class="campo-fijo">
+              <div class="campos">
+                <div class="campo"><label>Código</label><input id="recLiUbCodigo" type="text" maxlength="20" placeholder="Ej. NGL-01"></div>
+                <div class="campo"><label>Nombre</label><input id="recLiUbNombre" type="text" maxlength="80" placeholder="Ej. Bodega Nogales"></div>
+              </div>
+              <div class="acciones" style="margin-top:8px">
+                <button type="button" class="btn-mini gris" id="recLiUbCrear">Crear ubicación</button>
+                <button type="button" class="btn-mini gris" id="recLiUbCancelar">Cancelar</button>
+              </div>
+            </div>
+          </div>
+          <div class="campo"><label>Fecha</label><input id="recLiFecha" type="date" value="${hoyISO()}"></div>
+        </div>
+        <div class="acciones">
+          <button class="btn-mini" id="recLiGuardar">Recibir</button>
+          <button class="btn-mini gris" id="recLiCancelar">Cancelar</button>
+        </div>
+        <div class="aviso" id="recLiAviso"></div>
+      </div>`);
+
+    montarComboUbicacionRec();
+    document.getElementById('recLiNuevaUbicacion').addEventListener('click', () => { document.getElementById('recLiUbicacionForm').style.display = ''; });
+    document.getElementById('recLiUbCancelar').addEventListener('click', () => { document.getElementById('recLiUbicacionForm').style.display = 'none'; });
+    document.getElementById('recLiUbCrear').addEventListener('click', crearUbicacionInlineRec);
+    document.getElementById('recLiCancelar').addEventListener('click', () => verSPO(s.supplier_po_id));
+    document.getElementById('recLiGuardar').addEventListener('click', () => guardarRecibirLinea(s, l));
+  }
+
+  function montarComboUbicacionRec(preseleccionar) {
+    comboUbicacionRec = ERP.crearCombo({
+      contenedor: document.getElementById('recLiUbicacion'),
+      items: ubicacionesEnMemoria,
+      placeholder: 'Busca ubicación…', permitirNuevo: false
+    });
+    if (preseleccionar) comboUbicacionRec.seleccionar(preseleccionar);
+  }
+
+  async function crearUbicacionInlineRec() {
+    const codigo = (document.getElementById('recLiUbCodigo').value || '').trim();
+    const nombre = (document.getElementById('recLiUbNombre').value || '').trim();
+    if (!codigo || !nombre) { avisoRec('err', 'Código y nombre son obligatorios para la nueva ubicación.'); return; }
+    const btn = document.getElementById('recLiUbCrear');
+    btn.disabled = true;
+    avisoRec('warn', 'Creando ubicación…');
+    try {
+      const r = uno(await rpc('fn_op_location_alta', { p_codigo: codigo, p_nombre: nombre }));
+      const id = r.location_id ?? r.id;
+      if (id == null) throw new Error('El ERP no devolvió el id de la ubicación.');
+      const nueva = { id, nombre: `${codigo} — ${nombre}` };
+      ubicacionesEnMemoria = [...ubicacionesEnMemoria.filter(u => String(u.id) !== String(id)), nueva]
+        .sort((a, b) => a.nombre.localeCompare(b.nombre));
+      montarComboUbicacionRec(nueva);
+      document.getElementById('recLiUbicacionForm').style.display = 'none';
+      avisoRec('ok', `Ubicación <b>${esc(nueva.nombre)}</b> creada y seleccionada.`);
+    } catch (e) {
+      if (ERP.avisarSiPermiso && ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
+      avisoRec('err', `No se pudo crear la ubicación: ${esc(e.message)}`);
+    }
+    btn.disabled = false;
+  }
+
+  async function guardarRecibirLinea(s, l) {
+    const location_id = comboUbicacionRec && comboUbicacionRec.valorId();
+    if (!location_id) { avisoRec('err', 'Elige o crea una ubicación.'); return; }
+    const fechaVal = (document.getElementById('recLiFecha') || {}).value || null;
+
+    const btn = document.getElementById('recLiGuardar');
+    btn.disabled = true;
+    avisoRec('warn', 'Recibiendo…');
+    try {
+      const r = uno(await rpc('fn_op_spo_recibir_linea', { p_spo_linea_id: Number(l.linea_id), p_location_id: Number(location_id), p_fecha: fechaVal }));
+      ERP.toast('ok', `Línea recibida — lote <b>${esc(r.lot_folio || '')}</b>.`);
+      ERP.marcarDatosSucios();
+      await recargar();
+      verSPO(s.supplier_po_id);
+    } catch (e) {
+      if (ERP.avisarSiPermiso && ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
+      avisoRec('err', `El ERP rechazó la recepción: ${esc(e.message)}`);
+      btn.disabled = false;
+    }
+  }
+
+  ERP.registrar('o3-compras', {
+    titulo: 'Compras',
+    descripcion: 'Camino C · O3a — PO al proveedor; recibir sus líneas hace nacer el lote de Inventario',
+    render
+  });
+
+  ERP.o3AbrirSPO = verSPO;
+})();

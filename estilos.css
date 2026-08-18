@@ -1950,54 +1950,19 @@ tr.anulada td:nth-child(2) .enlace{text-decoration:line-through;text-decoration-
    clases compartidas (.form-erp, .det, .pill globales) como el resto del ERP. */
 
 /* Tira de KPIs (idéntica a Embarques) */
-.pantalla-o1-cpo .kpistrip,.pantalla-o1-so .kpistrip,.pantalla-o1-inventario .kpistrip{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
-.pantalla-o1-cpo .kpi,.pantalla-o1-so .kpi,.pantalla-o1-inventario .kpi{background:var(--pan);border:1px solid var(--bd);border-radius:10px;padding:11px 16px;flex:1;min-width:130px}
-.pantalla-o1-cpo .kpi .k,.pantalla-o1-so .kpi .k,.pantalla-o1-inventario .kpi .k{font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--i2)}
-.pantalla-o1-cpo .kpi .v,.pantalla-o1-so .kpi .v,.pantalla-o1-inventario .kpi .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:20px;color:var(--money);margin-top:4px}
-.pantalla-o1-cpo .kpi .v.ink,.pantalla-o1-so .kpi .v.ink,.pantalla-o1-inventario .kpi .v.ink{color:var(--ink)}
-
+.pantalla-o1-cpo .kpistrip,.pantalla-o1-so .kpistrip,.pantalla-o1-inventario .kpistrip,.pantalla-o3-compras .kpistrip{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}.pantalla-o1-cpo .kpi,.pantalla-o1-so .kpi,.pantalla-o1-inventario .kpi,.pantalla-o3-compras .kpi{background:var(--pan);border:1px solid var(--bd);border-radius:10px;padding:11px 16px;flex:1;min-width:130px}.pantalla-o1-cpo .kpi .k,.pantalla-o1-so .kpi .k,.pantalla-o1-inventario .kpi .k,.pantalla-o3-compras .kpi .k{font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--i2)}.pantalla-o1-cpo .kpi .v,.pantalla-o1-so .kpi .v,.pantalla-o1-inventario .kpi .v,.pantalla-o3-compras .kpi .v{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:20px;color:var(--money);margin-top:4px}.pantalla-o1-cpo .kpi .v.ink,.pantalla-o1-so .kpi .v.ink,.pantalla-o1-inventario .kpi .v.ink,.pantalla-o3-compras .kpi .v.ink{color:var(--ink)}
 /* Filtros */
-.pantalla-o1-cpo .filtros,.pantalla-o1-so .filtros,.pantalla-o1-inventario .filtros{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
-.pantalla-o1-cpo .filtros .busca,.pantalla-o1-so .filtros .busca,.pantalla-o1-inventario .filtros .busca{background:var(--pan);border:1px solid var(--bd);color:var(--ink);border-radius:8px;padding:8px 11px;font-size:12.5px}
-.pantalla-o1-cpo .filtros .busca:focus,.pantalla-o1-so .filtros .busca:focus,.pantalla-o1-inventario .filtros .busca:focus{outline:none;border-color:var(--brand)}
-.pantalla-o1-cpo .conteo,.pantalla-o1-so .conteo,.pantalla-o1-inventario .conteo{color:var(--i3);font-size:11.5px;margin-left:auto}
-.pantalla-o1-so .leyenda-o1,.pantalla-o1-inventario .leyenda-o1{font-size:11.5px;color:var(--i2);margin:2px 0 12px}
-.pantalla-o1-so .leyenda-o1 b,.pantalla-o1-inventario .leyenda-o1 b{color:var(--ink);font-weight:600}
-.pantalla-o1-cpo .i3,.pantalla-o1-so .i3,.pantalla-o1-inventario .i3{color:var(--i3)}
-
+.pantalla-o1-cpo .filtros,.pantalla-o1-so .filtros,.pantalla-o1-inventario .filtros,.pantalla-o3-compras .filtros{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}.pantalla-o1-cpo .filtros .busca,.pantalla-o1-so .filtros .busca,.pantalla-o1-inventario .filtros .busca,.pantalla-o3-compras .filtros .busca{background:var(--pan);border:1px solid var(--bd);color:var(--ink);border-radius:8px;padding:8px 11px;font-size:12.5px}.pantalla-o1-cpo .filtros .busca:focus,.pantalla-o1-so .filtros .busca:focus,.pantalla-o1-inventario .filtros .busca:focus,.pantalla-o3-compras .filtros .busca:focus{outline:none;border-color:var(--brand)}.pantalla-o1-cpo .conteo,.pantalla-o1-so .conteo,.pantalla-o1-inventario .conteo,.pantalla-o3-compras .conteo{color:var(--i3);font-size:11.5px;margin-left:auto}.pantalla-o1-so .leyenda-o1,.pantalla-o1-inventario .leyenda-o1,.pantalla-o3-compras .leyenda-o1{font-size:11.5px;color:var(--i2);margin:2px 0 12px}.pantalla-o1-so .leyenda-o1 b,.pantalla-o1-inventario .leyenda-o1 b,.pantalla-o3-compras .leyenda-o1 b{color:var(--ink);font-weight:600}.pantalla-o1-cpo .i3,.pantalla-o1-so .i3,.pantalla-o1-inventario .i3,.pantalla-o3-compras .i3{color:var(--i3)}
 /* Tabla densa (idéntica a Embarques) */
-.pantalla-o1-cpo table,.pantalla-o1-so table,.pantalla-o1-inventario table{width:100%;border-collapse:collapse;font-size:12px}
-.pantalla-o1-cpo thead th,.pantalla-o1-so thead th,.pantalla-o1-inventario thead th{text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
-.pantalla-o1-cpo thead th.num,.pantalla-o1-so thead th.num,.pantalla-o1-inventario thead th.num{text-align:right}
-.pantalla-o1-cpo tbody td,.pantalla-o1-so tbody td,.pantalla-o1-inventario tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}
-.pantalla-o1-cpo tbody td.num,.pantalla-o1-so tbody td.num,.pantalla-o1-inventario tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}
-.pantalla-o1-cpo tbody tr.clic,.pantalla-o1-so tbody tr.clic,.pantalla-o1-inventario tbody tr.clic{cursor:pointer}
-.pantalla-o1-cpo tbody tr:hover,.pantalla-o1-so tbody tr:hover,.pantalla-o1-inventario tbody tr:hover{background:var(--gtint)}
-.pantalla-o1-cpo td.ent,.pantalla-o1-so td.ent,.pantalla-o1-inventario td.ent{color:var(--ink);font-weight:500}
-.pantalla-o1-cpo .mono,.pantalla-o1-so .mono,.pantalla-o1-inventario .mono{font-family:'IBM Plex Mono',monospace}
-.pantalla-o1-cpo td.acc,.pantalla-o1-so td.acc,.pantalla-o1-inventario td.acc{text-align:right;white-space:nowrap}
-
+.pantalla-o1-cpo table,.pantalla-o1-so table,.pantalla-o1-inventario table,.pantalla-o3-compras table{width:100%;border-collapse:collapse;font-size:12px}.pantalla-o1-cpo thead th,.pantalla-o1-so thead th,.pantalla-o1-inventario thead th,.pantalla-o3-compras thead th{text-align:left;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--i3);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}.pantalla-o1-cpo thead th.num,.pantalla-o1-so thead th.num,.pantalla-o1-inventario thead th.num,.pantalla-o3-compras thead th.num{text-align:right}.pantalla-o1-cpo tbody td,.pantalla-o1-so tbody td,.pantalla-o1-inventario tbody td,.pantalla-o3-compras tbody td{padding:10px;border-top:1px solid var(--hair);vertical-align:middle}.pantalla-o1-cpo tbody td.num,.pantalla-o1-so tbody td.num,.pantalla-o1-inventario tbody td.num,.pantalla-o3-compras tbody td.num{text-align:right;font-family:'IBM Plex Mono',monospace}.pantalla-o1-cpo tbody tr.clic,.pantalla-o1-so tbody tr.clic,.pantalla-o1-inventario tbody tr.clic,.pantalla-o3-compras tbody tr.clic{cursor:pointer}.pantalla-o1-cpo tbody tr:hover,.pantalla-o1-so tbody tr:hover,.pantalla-o1-inventario tbody tr:hover,.pantalla-o3-compras tbody tr:hover{background:var(--gtint)}.pantalla-o1-cpo td.ent,.pantalla-o1-so td.ent,.pantalla-o1-inventario td.ent,.pantalla-o3-compras td.ent{color:var(--ink);font-weight:500}.pantalla-o1-cpo .mono,.pantalla-o1-so .mono,.pantalla-o1-inventario .mono,.pantalla-o3-compras .mono{font-family:'IBM Plex Mono',monospace}.pantalla-o1-cpo td.acc,.pantalla-o1-so td.acc,.pantalla-o1-inventario td.acc,.pantalla-o3-compras td.acc{text-align:right;white-space:nowrap}
 /* Enlace de folio → verde marca (legible claro/oscuro) */
-.pantalla-o1-cpo .enlace,.pantalla-o1-so .enlace,.pantalla-o1-inventario .enlace{color:var(--brand);font-weight:600}
-
+.pantalla-o1-cpo .enlace,.pantalla-o1-so .enlace,.pantalla-o1-inventario .enlace,.pantalla-o3-compras .enlace{color:var(--brand);font-weight:600}
 /* Pastillas — remapeadas a tokens (theme-aware) igual que en Embarques */
-.pantalla-o1-cpo .pill,.pantalla-o1-so .pill,.pantalla-o1-inventario .pill{font-size:10px;font-weight:600;border-radius:13px;padding:2px 8px}
-.pantalla-o1-cpo .pill.verde,.pantalla-o1-so .pill.verde,.pantalla-o1-inventario .pill.verde{background:color-mix(in srgb,var(--brand) 13%,transparent);color:var(--brand)}
-.pantalla-o1-cpo .pill.ambar,.pantalla-o1-so .pill.ambar,.pantalla-o1-inventario .pill.ambar{background:var(--amb-bg);color:var(--amb)}
-.pantalla-o1-cpo .pill.rojo,.pantalla-o1-so .pill.rojo,.pantalla-o1-inventario .pill.rojo{background:var(--red-bg);color:var(--red)}
-.pantalla-o1-cpo .pill.gris,.pantalla-o1-so .pill.gris,.pantalla-o1-inventario .pill.gris{background:var(--hair);color:var(--i2)}
-.pantalla-o1-cpo .pill.azul,.pantalla-o1-so .pill.azul,.pantalla-o1-inventario .pill.azul{background:var(--gtint);color:var(--brand)}
-
+.pantalla-o1-cpo .pill,.pantalla-o1-so .pill,.pantalla-o1-inventario .pill,.pantalla-o3-compras .pill{font-size:10px;font-weight:600;border-radius:13px;padding:2px 8px}.pantalla-o1-cpo .pill.verde,.pantalla-o1-so .pill.verde,.pantalla-o1-inventario .pill.verde,.pantalla-o3-compras .pill.verde{background:color-mix(in srgb,var(--brand) 13%,transparent);color:var(--brand)}.pantalla-o1-cpo .pill.ambar,.pantalla-o1-so .pill.ambar,.pantalla-o1-inventario .pill.ambar,.pantalla-o3-compras .pill.ambar{background:var(--amb-bg);color:var(--amb)}.pantalla-o1-cpo .pill.rojo,.pantalla-o1-so .pill.rojo,.pantalla-o1-inventario .pill.rojo,.pantalla-o3-compras .pill.rojo{background:var(--red-bg);color:var(--red)}.pantalla-o1-cpo .pill.gris,.pantalla-o1-so .pill.gris,.pantalla-o1-inventario .pill.gris,.pantalla-o3-compras .pill.gris{background:var(--hair);color:var(--i2)}.pantalla-o1-cpo .pill.azul,.pantalla-o1-so .pill.azul,.pantalla-o1-inventario .pill.azul,.pantalla-o3-compras .pill.azul{background:var(--gtint);color:var(--brand)}
 /* Botones (reusa .btn-mini: sin modificador = negro primario, .gris = fantasma) */
-.pantalla-o1-cpo .btn-mini,.pantalla-o1-so .btn-mini,.pantalla-o1-inventario .btn-mini{background:var(--btn);color:var(--btnT);border:0;border-radius:8px;font-size:12.5px;font-weight:600;padding:9px 14px;cursor:pointer}
-.pantalla-o1-cpo .btn-mini:hover,.pantalla-o1-so .btn-mini:hover,.pantalla-o1-inventario .btn-mini:hover{filter:brightness(1.3)}
-.pantalla-o1-cpo .btn-mini.gris,.pantalla-o1-so .btn-mini.gris,.pantalla-o1-inventario .btn-mini.gris{background:var(--pan);border:1px solid var(--bd);color:var(--i2);font-weight:500;font-size:12px;padding:8px 12px}
-.pantalla-o1-cpo .btn-mini.gris:hover,.pantalla-o1-so .btn-mini.gris:hover,.pantalla-o1-inventario .btn-mini.gris:hover{background:var(--hair)}
-
+.pantalla-o1-cpo .btn-mini,.pantalla-o1-so .btn-mini,.pantalla-o1-inventario .btn-mini,.pantalla-o3-compras .btn-mini{background:var(--btn);color:var(--btnT);border:0;border-radius:8px;font-size:12.5px;font-weight:600;padding:9px 14px;cursor:pointer}.pantalla-o1-cpo .btn-mini:hover,.pantalla-o1-so .btn-mini:hover,.pantalla-o1-inventario .btn-mini:hover,.pantalla-o3-compras .btn-mini:hover{filter:brightness(1.3)}.pantalla-o1-cpo .btn-mini.gris,.pantalla-o1-so .btn-mini.gris,.pantalla-o1-inventario .btn-mini.gris,.pantalla-o3-compras .btn-mini.gris{background:var(--pan);border:1px solid var(--bd);color:var(--i2);font-weight:500;font-size:12px;padding:8px 12px}.pantalla-o1-cpo .btn-mini.gris:hover,.pantalla-o1-so .btn-mini.gris:hover,.pantalla-o1-inventario .btn-mini.gris:hover,.pantalla-o3-compras .btn-mini.gris:hover{background:var(--hair)}
 /* Vacío / superficies */
-.pantalla-o1-cpo .vacio,.pantalla-o1-so .vacio,.pantalla-o1-inventario .vacio{padding:20px;text-align:center;color:var(--i2);font-style:italic}
-.pantalla-o1-cpo .errbox,.pantalla-o1-so .errbox,.pantalla-o1-inventario .errbox{background:var(--red-bg);border:1px solid var(--red);color:var(--red);border-radius:8px;padding:12px 14px;font-size:12.5px}
-
+.pantalla-o1-cpo .vacio,.pantalla-o1-so .vacio,.pantalla-o1-inventario .vacio,.pantalla-o3-compras .vacio{padding:20px;text-align:center;color:var(--i2);font-style:italic}.pantalla-o1-cpo .errbox,.pantalla-o1-so .errbox,.pantalla-o1-inventario .errbox,.pantalla-o3-compras .errbox{background:var(--red-bg);border:1px solid var(--red);color:var(--red);border-radius:8px;padding:12px 14px;font-size:12.5px}
 /* ===== Ficha/alta de O1 en #panelBody (FUERA del scope): helpers puntuales, tokens nuevos ===== */
 /* Tablero del SO: Allocated/Purchased llegan en O2/O3 → en gris; Open resaltado */
 .so-tablero td.futuro{color:var(--i3)}
