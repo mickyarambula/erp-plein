@@ -2467,3 +2467,28 @@ que solo cubrió los entry points de O1. Frontend (Claude Code) — sin acceso a
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/Cuadre/CxC/CxP/JPM. **Si Miguel lo sigue viendo
 tras desplegar y hard-refresh:** pedir captura de pantalla — sin eso, seguir adivinando el mecanismo
 visual exacto ya no es productivo.
+
+## Sesión (2026-08-18, continuación) — Catálogos: editar contacto, purgar papelera, cache-busting (D-185)
+_4 RPCs nuevos ya en backend (`fn_cat_contacto_editar`, `fn_cat_*_purgar` ×5). Frontend (Claude
+Code) — sin acceso a Supabase MCP._
+
+- **D-185 (frontend, RPCs YA existían en backend):** (a) ícono Editar en cada contacto de la ficha
+  de contraparte → `fn_cat_contacto_editar(p_id, p_nombre, p_rol, p_email, p_telefono_whatsapp)`,
+  firma verificada con payload en navegador; (b) botón "Eliminar definitivo" en Papelera junto a
+  Restaurar, por tipo (`fn_cat_producto/sku/variedad/contraparte/contacto_purgar`), con `confirm()`
+  explícito de irreversibilidad — si el backend bloquea por dependencias (EXCEPTION), el mensaje se
+  muestra tal cual en un toast de 9s (verificado con el caso real: "tiene 3 SKU(s) y 1 variedad(es)
+  asociados..."); (c) folio: sin hardcode del formato viejo en UI, solo se corrigió un comentario
+  interno de `CPO-2026-#####` a `CPO-26-001`.
+- **Hallazgo colateral importante (explica D-184):** mientras probaba (b), reproduje EN VIVO —
+  con la Performance API del navegador (`transferSize:0` en el `<script>` original vs. `87639` en un
+  `fetch(...,{cache:'no-store'})` manual al mismo archivo) — que el navegador sirve `modulo-*.js`
+  desde caché **incluso con una navegación `ignoreCache:true` sobre un contexto ya usado**. Esto
+  confirma empíricamente que la causa más probable de "el fix no se ve en prod" (D-184 y anteriores)
+  es caché del navegador, no el código. Fix aplicado: **cache-busting real** — `?v=20260818` en los
+  32 `<script src>` y 2 `<link rel=stylesheet>` **locales** de `index.html` (CDNs sin tocar). De aquí
+  en adelante, cada vez que se despliegue código con cambios notables, bump del `?v=` en `index.html`
+  para forzar que el navegador de Miguel traiga los archivos nuevos sin depender de que el hard
+  refresh funcione perfecto.
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
