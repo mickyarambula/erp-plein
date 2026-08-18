@@ -13,6 +13,10 @@
    RPC (capacidad 'capturar'):
      fn_op_cpo_alta(p_cliente_id bigint, p_numero_cliente, p_fecha_po, p_moneda, p_adjunto_ref, p_nota, p_actor)
        -> { customer_po_id, folio }
+     fn_op_cpo_editar(p_customer_po_id, p_numero_cliente, p_fecha_po, p_moneda, p_nota, p_actor)
+     fn_op_cpo_eliminar(p_customer_po_id, p_actor)
+       (nombres de parámetro inferidos por convención — sin acceso a Supabase MCP en esta sesión
+       para confirmarlos en vivo; si el RPC truena, el error de Postgres dice el nombre exacto)
    El adjunto es una REFERENCIA a Storage (ruta/URL), no un archivo subido (D-162).
    Expone ERP.o1AbrirCPO(cpoId) para saltar a un CPO desde otro módulo. */
 
@@ -195,6 +199,7 @@
 
   async function nuevoCPO() {
     if (!ERP.puede('capturar')) return;
+    ERP.cerrarPanel();
     adjuntoSubido = null;
     ERP.abrirPanel('Nuevo Customer PO', 'Captura el PO que envió el cliente', '<div class="skel">Cargando catálogos…</div>');
     try {
@@ -526,6 +531,9 @@
   }
 
   async function abrirRevisionIA(data) {
+    // Reemplaza el panel "Nuevo Customer PO" (todavía abierto) por el de revisión — mismo fix
+    // que crearSODesde(): sin esto el drawer no re-dispara su animación de entrada.
+    ERP.cerrarPanel();
     iaExtraccion = data.extraccion || {};
     iaAdjuntoRef = adjuntoSubido;
     iaCpoCreado = null;
@@ -683,6 +691,7 @@
   }
 
   async function verCPO(id) {
+    ERP.cerrarPanel();
     ERP.abrirPanel('Customer PO', 'Cargando…', '<div class="skel">Cargando customer PO…</div>');
     let c;
     try {
@@ -712,6 +721,8 @@
           ${abierto && puedeCap
             ? '<button class="btn-mini" id="cpoGenSO">Generar Sales Order</button>'
             : ''}
+          ${puedeCap ? '<button class="btn-mini gris" id="cpoEditar">Editar</button>' : ''}
+          ${abierto && puedeCap ? '<button class="btn-mini gris" id="cpoEliminar">Eliminar</button>' : ''}
           <button class="btn-mini gris" id="cpoCerrar">Cerrar</button>
         </div>
       </div>`);
@@ -723,6 +734,74 @@
       if (ERP.o1CrearSODesde) ERP.o1CrearSODesde(Number(c.id), c.folio, c.cliente_id != null ? Number(c.cliente_id) : null);
       else ERP.toast('err', 'El módulo de Sales Orders no está cargado.');
     });
+    const bEd = document.getElementById('cpoEditar');
+    if (bEd) bEd.addEventListener('click', () => editarCPO(c));
+    const bDel = document.getElementById('cpoEliminar');
+    if (bDel) bDel.addEventListener('click', () => eliminarCPO(c));
+  }
+
+  /* ================= Editar / eliminar ================= */
+
+  function editarCPO(c) {
+    ERP.cerrarPanel();
+    ERP.abrirPanel(`Editar Customer PO <span class="mono">${esc(c.folio || '')}</span>`, esc(c.cliente || ''), `
+      <div class="form-erp">
+        <div class="campos">
+          <div class="campo"><label>N° de PO del cliente</label>
+            <input id="cpoEdNumCliente" type="text" maxlength="60" value="${esc(c.numero_cliente || '')}"></div>
+          <div class="campo"><label>Fecha del PO</label>
+            <input id="cpoEdFecha" type="date" value="${esc(String(c.fecha_po || '').slice(0, 10))}"></div>
+          <div class="campo"><label>Moneda</label>
+            <select id="cpoEdMoneda">${ERP.MONEDAS.map(m => `<option value="${m}" ${m === c.moneda ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+          <div class="campo ancho"><label>Nota</label><textarea id="cpoEdNota" rows="2">${esc(c.nota || '')}</textarea></div>
+        </div>
+        <div class="acciones">
+          <button class="btn-mini" id="cpoEdGuardar">Guardar cambios</button>
+          <button class="btn-mini gris" id="cpoEdCancelar">Cancelar</button>
+        </div>
+        <div class="aviso" id="cpoEdAviso"></div>
+      </div>`);
+    document.getElementById('cpoEdCancelar').addEventListener('click', () => verCPO(c.id));
+    document.getElementById('cpoEdGuardar').addEventListener('click', () => guardarEdicionCPO(c));
+  }
+
+  async function guardarEdicionCPO(c) {
+    const v = id => (document.getElementById(id) || {}).value;
+    const btn = document.getElementById('cpoEdGuardar');
+    const aviso = document.getElementById('cpoEdAviso');
+    btn.disabled = true;
+    if (aviso) { aviso.className = 'aviso visible warn'; aviso.innerHTML = 'Guardando…'; }
+    try {
+      await rpc('fn_op_cpo_editar', {
+        p_customer_po_id: Number(c.id),
+        p_numero_cliente: (v('cpoEdNumCliente') || '').trim() || null,
+        p_fecha_po: v('cpoEdFecha') || null,
+        p_moneda: v('cpoEdMoneda') || 'USD',
+        p_nota: (v('cpoEdNota') || '').trim() || null,
+        p_actor: actor()
+      });
+      ERP.toast('ok', `Customer PO <b>${esc(c.folio || '')}</b> actualizado.`);
+      ERP.marcarDatosSucios();
+      await recargar();
+      verCPO(c.id);
+    } catch (e) {
+      if (ERP.avisarSiPermiso && ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
+      if (aviso) { aviso.className = 'aviso visible err'; aviso.innerHTML = `El ERP rechazó el cambio: ${esc(e.message)}`; }
+      btn.disabled = false;
+    }
+  }
+
+  async function eliminarCPO(c) {
+    if (!confirm(`¿Eliminar el Customer PO ${c.folio}? Esta acción no se puede deshacer.`)) return;
+    try {
+      await rpc('fn_op_cpo_eliminar', { p_customer_po_id: Number(c.id), p_actor: actor() });
+      ERP.toast('ok', `Customer PO <b>${esc(c.folio || '')}</b> eliminado.`);
+      ERP.marcarDatosSucios();
+      await recargar();
+      ERP.cerrarPanel();
+    } catch (e) {
+      if (!(ERP.avisarSiPermiso && ERP.avisarSiPermiso(e))) ERP.toast('err', `No se pudo eliminar: ${esc(e.message)}`);
+    }
   }
 
   ERP.registrar('o1-cpo', {

@@ -25,6 +25,8 @@
        (precio null = comisión pura, correcto; marca_privada solo si marca='Private Label')
      fn_op_so_confirmar(p_so_id, p_actor) -> { so_id, estado_anterior, estado }   (Draft->Confirmed)
      fn_op_so_set_estado(p_so_id, p_nuevo, p_actor)
+     fn_op_so_editar(p_so_id, p_fecha, p_moneda, p_nota, p_actor) — solo header, no líneas
+     fn_op_so_eliminar(p_so_id, p_actor)
    Expone ERP.o1CrearSODesde(cpoId, cpoFolio) y ERP.o1VerSO(soId). */
 
 (function () {
@@ -327,6 +329,7 @@
   /* ================= Ficha + tablero ================= */
 
   async function verSO(id) {
+    ERP.cerrarPanel();
     ERP.abrirPanel('Sales Order', 'Cargando…', '<div class="skel">Cargando sales order…</div>');
     let so, lin, tab;
     try {
@@ -399,6 +402,8 @@
 
         <div class="acciones">
           ${gestionEstado}
+          ${puedeCap ? '<button class="btn-mini gris" id="soEditar">Editar</button>' : ''}
+          ${puedeCap && esDraft ? '<button class="btn-mini gris" id="soEliminar">Eliminar</button>' : ''}
           <button class="btn-mini gris" id="soCerrar">Cerrar</button>
         </div>
         <div class="aviso" id="soFichaAviso"></div>
@@ -416,6 +421,11 @@
       setEstadoSO(Number(id), nuevo, bAplicar);
     });
 
+    const bEdSO = document.getElementById('soEditar');
+    if (bEdSO) bEdSO.addEventListener('click', () => editarSO(so));
+    const bDelSO = document.getElementById('soEliminar');
+    if (bDelSO) bDelSO.addEventListener('click', () => eliminarSO(so));
+
     document.querySelectorAll('.asignar-lote').forEach(b => b.addEventListener('click', () => {
       const t = tablero.find(x => String(x.linea_id) === b.dataset.lineaId);
       if (t) abrirAsignarLote(so, t);
@@ -430,6 +440,7 @@
 
   async function abrirAsignarLote(so, t) {
     if (!ERP.puede('capturar')) return;
+    ERP.cerrarPanel();
     ERP.abrirPanel('Asignar inventario', `${esc(so.folio || '')} · línea #${esc(t.linea_num ?? '')} · ${esc(t.sku || t.producto || '')}`, '<div class="skel">Buscando lotes disponibles…</div>');
     let inv;
     try {
@@ -511,6 +522,66 @@
   function fichaAviso(tipo, html) {
     const el = document.getElementById('soFichaAviso');
     if (el) { el.className = 'aviso visible ' + tipo; el.innerHTML = html; }
+  }
+
+  /* ================= Editar / eliminar (solo header — líneas no editables aún) ================= */
+
+  function editarSO(so) {
+    ERP.cerrarPanel();
+    ERP.abrirPanel(`Editar Sales Order <span class="mono">${esc(so.folio || '')}</span>`, esc(so.cliente || ''), `
+      <div class="form-erp">
+        <div class="campos">
+          <div class="campo"><label>Fecha</label>
+            <input id="soEdFecha" type="date" value="${esc(String(so.fecha || '').slice(0, 10))}"></div>
+          <div class="campo"><label>Moneda</label>
+            <select id="soEdMoneda">${ERP.MONEDAS.map(m => `<option value="${m}" ${m === so.moneda ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+          <div class="campo ancho"><label>Nota</label><textarea id="soEdNota" rows="2">${esc(so.nota || '')}</textarea></div>
+        </div>
+        <div class="alias-ayuda">Las líneas (SKU/cantidad/precio) todavía no se editan desde aquí — solo los datos generales.</div>
+        <div class="acciones">
+          <button class="btn-mini" id="soEdGuardar">Guardar cambios</button>
+          <button class="btn-mini gris" id="soEdCancelar">Cancelar</button>
+        </div>
+        <div class="aviso" id="soEdAviso"></div>
+      </div>`);
+    document.getElementById('soEdCancelar').addEventListener('click', () => verSO(so.id));
+    document.getElementById('soEdGuardar').addEventListener('click', () => guardarEdicionSO(so));
+  }
+
+  async function guardarEdicionSO(so) {
+    const v = id => (document.getElementById(id) || {}).value;
+    const btn = document.getElementById('soEdGuardar');
+    const aviso = document.getElementById('soEdAviso');
+    btn.disabled = true;
+    if (aviso) { aviso.className = 'aviso visible warn'; aviso.innerHTML = 'Guardando…'; }
+    try {
+      await rpc('fn_op_so_editar', {
+        p_so_id: Number(so.id),
+        p_fecha: v('soEdFecha') || null,
+        p_moneda: v('soEdMoneda') || 'USD',
+        p_nota: (v('soEdNota') || '').trim() || null,
+        p_actor: actor()
+      });
+      ERP.toast('ok', `Sales Order <b>${esc(so.folio || '')}</b> actualizada.`);
+      ERP.marcarDatosSucios();
+      verSO(so.id);
+    } catch (e) {
+      if (ERP.avisarSiPermiso && ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
+      if (aviso) { aviso.className = 'aviso visible err'; aviso.innerHTML = `El ERP rechazó el cambio: ${esc(e.message)}`; }
+      btn.disabled = false;
+    }
+  }
+
+  async function eliminarSO(so) {
+    if (!confirm(`¿Eliminar la Sales Order ${so.folio}? Esta acción no se puede deshacer.`)) return;
+    try {
+      await rpc('fn_op_so_eliminar', { p_so_id: Number(so.id), p_actor: actor() });
+      ERP.toast('ok', `Sales Order <b>${esc(so.folio || '')}</b> eliminada.`);
+      ERP.marcarDatosSucios();
+      ERP.cerrarPanel();
+    } catch (e) {
+      if (!(ERP.avisarSiPermiso && ERP.avisarSiPermiso(e))) ERP.toast('err', `No se pudo eliminar: ${esc(e.message)}`);
+    }
   }
 
   async function confirmarSO(id, btn) {
