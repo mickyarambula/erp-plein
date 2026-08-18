@@ -2552,3 +2552,34 @@ el `p_id` correcto, panel cierra. `node --check` limpio. `?v=` de `index.html` s
 (D-185).
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-18, continuación) — O2b: costo de inventario + margen por línea en el SO (D-188)
+_Backend cerró O2b completo (inventario con dinero): `fn_op_lot_recibir`/`fn_op_lot_set_costo` con
+costo, `v_op_inventario` con costo/valor, vista nueva `v_op_margen` por línea de SO. Frontend
+(Claude Code) — sin acceso a Supabase MCP._
+
+- **D-188 (frontend, RPCs/vista YA existían/actualizados en backend):**
+  - **Costo al recibir** (`modulo-o1-inventario.js`): campo opcional con toggle Por caja/Total del
+    lote (si es total, el frontend divide entre la cantidad — el backend siempre guarda costo
+    UNITARIO) + moneda USD/MXN. `fn_op_lot_recibir` con `p_costo_unitario`/`p_costo_moneda`; toast
+    muestra `valor_lote` cuando hay costo.
+  - **Costear/editar costo después** (típico en consignación, donde el costo se sabe tarde): botón
+    por lote en la lista ("Costear"/"Editar costo" según tenga o no), prellenado si ya existe →
+    `fn_op_lot_set_costo`.
+  - **Costo/valor en la tabla de inventario**: 3 columnas nuevas de `v_op_inventario` (costo
+    unitario, valor lote, valor disponible). Regla explícita respetada: NULL siempre es "—", nunca
+    "$0" — son datos distintos (sin costear vs. costo real de cero).
+  - **Margen por línea en el tablero del SO** (`modulo-o1-so.js`): 3 columnas nuevas de la vista
+    `v_op_margen` (venta, costo, margen), unida por `linea_id` con fallback a `linea_num`. 4 reglas
+    de display verificadas una por una: margen NULL + costo incompleto → "Falta costear
+    inventario"; margen NULL + costo completo → "Requiere conversión FX" + monedas involucradas;
+    margen con valor → monto + % sobre venta; si la modalidad reconoce el ingreso al liquidar
+    (consignación) → "Provisional (liquidación)" debajo del monto.
+
+**Verificado en navegador (contexto nuevo):** recibir con costo total del lote (600 MXN / 30 →
+20 MXN unitario correcto en el payload, folio + valor en el toast); costear un lote sin costo y
+reabrir para confirmar prellenado; tabla con "—" (no "$0") en el lote sin costear; tablero del SO
+con los 4 casos de margen, cada uno con el texto exacto pedido. `node --check` limpio. `?v=` de
+`index.html` subido a `20260818d` (D-185).
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
