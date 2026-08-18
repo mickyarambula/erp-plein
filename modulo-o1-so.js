@@ -407,7 +407,7 @@
         <div class="acciones">
           ${gestionEstado}
           ${puedeCap ? '<button class="btn-mini gris" id="soEditar">Editar</button>' : ''}
-          ${puedeCap && esDraft ? '<button class="btn-mini gris" id="soEliminar">Eliminar</button>' : ''}
+          ${puedeCap ? '<button class="btn-mini gris" id="soEliminar">Eliminar</button>' : ''}
           <button class="btn-mini gris" id="soCerrar">Cerrar</button>
         </div>
         <div class="aviso" id="soFichaAviso"></div>

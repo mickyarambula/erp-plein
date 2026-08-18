@@ -722,7 +722,7 @@
             ? '<button class="btn-mini" id="cpoGenSO">Generar Sales Order</button>'
             : ''}
           ${puedeCap ? '<button class="btn-mini gris" id="cpoEditar">Editar</button>' : ''}
-          ${abierto && puedeCap ? '<button class="btn-mini gris" id="cpoEliminar">Eliminar</button>' : ''}
+          ${puedeCap ? '<button class="btn-mini gris" id="cpoEliminar">Eliminar</button>' : ''}
           <button class="btn-mini gris" id="cpoCerrar">Cerrar</button>
         </div>
       </div>`);
