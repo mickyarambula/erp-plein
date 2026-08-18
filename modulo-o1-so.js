@@ -239,6 +239,10 @@
 
   async function crearSODesde(cpoId, cpoFolio, clienteId) {
     if (!ERP.puede('capturar')) return;
+    // Cierra el panel del CPO (si estaba abierto) antes de abrir el del SO: abrirPanel() solo
+    // reemplaza el contenido y, si el drawer ya estaba 'abierto', la transición de entrada no se
+    // vuelve a disparar — el contenido nuevo se ve montado sobre el anterior sin deslizar.
+    ERP.cerrarPanel();
     cpoActual = { id: Number(cpoId), folio: cpoFolio || '', clienteId: clienteId != null ? Number(clienteId) : null };
     ERP.abrirPanel('Generar Sales Order', `desde Customer PO ${esc(cpoFolio || '')}`, '<div class="skel">Cargando catálogos…</div>');
     try {

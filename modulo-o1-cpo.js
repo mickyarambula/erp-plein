@@ -659,6 +659,10 @@
       ERP.marcarDatosSucios();
       iaCpoCreado = null;
       await recargar();
+      // Cierra el panel de "Revisar PO leído por IA" antes de abrir el siguiente (ficha del SO o
+      // del CPO) — mismo fix que crearSODesde(): sin esto el drawer no re-dispara su animación de
+      // entrada y el contenido nuevo se ve montado sobre el anterior.
+      ERP.cerrarPanel();
       if (ERP.o1VerSO) ERP.o1VerSO(Number(r2.sales_order_id));
       else verCPO(r2.customer_po_id || cliente_id);
     } catch (e) {
