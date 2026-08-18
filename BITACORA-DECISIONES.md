@@ -2616,3 +2616,42 @@ recibida) → segunda compra sin recibir sí se elimina limpio. `node --check` l
 `index.html` subido a `20260818e` (D-185).
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-18, continuación) — Diagnóstico: "Compras" no aparece en producción (D-190)
+_Miguel reportó que el módulo no se ve ni en incógnito tras desplegar. Se pidió diagnosticar antes
+de arreglar — no asumir la causa. Frontend (Claude Code), con acceso confirmado al Vercel CLI
+autenticado localmente (`npx vercel project ls`) para inspeccionar el deploy real._
+
+- **D-190 (diagnóstico, NO fue caché ni un bug de código):** se descartó cada capa una por una:
+  1. **Estado local:** commit `e107261` presente, working tree limpio, `index.html` tiene AMBOS el
+     `<a data-modulo="o3-compras">` y el `<script src="modulo-o3-compras.js?v=...">`, el archivo
+     existe en disco.
+  2. **Lo que sirve producción de verdad** (`https://erp-plein-dashboard.vercel.app`, confirmado
+     vía Vercel CLI — no una URL adivinada): `index.html` servido SÍ trae el `<a>` y el `<script>`;
+     `modulo-o3-compras.js` responde `200` (no 404); `Cache-Control` de `index.html` ya era
+     `public, max-age=0, must-revalidate` (revalida siempre — no estaba cacheado stale).
+  3. **Consola/Network en producción real** (Chrome DevTools, contexto nuevo, sin login):
+     **0 errores de JS**, los 42 `<script>` cargan en `200` — `modulo-o3-compras.js` se ejecuta sin
+     tronar y se registra bien.
+  4. **Causa raíz real, confirmada por PRECEDENTE ya documentado en este mismo archivo (E121, línea
+     ~2181, y el hueco de `'operaciones'` D-105/E111):** `app.js → aplicarMenuDinamico()` oculta
+     cada `<a data-modulo>` del menú a menos que su clave esté en `ERP.perfil.modulos` — un array
+     que viene de las tablas `modulos_erp`+`rol_modulos`/`usuario_modulos` (D-105), **no del
+     código**. `'o3-compras'` es una clave nueva que el frontend nunca pudo dar de alta ahí (fuera
+     de su alcance — solo backend toca esas tablas). El router (`despachar()` en `comun.js`) NO
+     valida contra `ERP.perfil.modulos` — deja llegar por URL directa (`#/o3-compras`) sin
+     problema; solo el ÍTEM DE MENÚ queda oculto. Exactamente el mismo hueco que ya pasó con
+     `o1-cpo`/`o1-so` y con `'operaciones'` al nacer — está documentado como patrón recurrente, no
+     era nada nuevo que adivinar.
+  - **Acción pendiente (backend, anotada en `PENDIENTES-BACKEND.md`):** dar de alta `'o3-compras'`
+    en `modulos_erp` + concederlo en `rol_modulos` (o `usuario_modulos` para Miguel puntual mientras
+    tanto). Nada que reparar del lado frontend — el módulo ya funciona al 100%.
+- **`vercel.json` nuevo (defensivo, no era la causa de ESTE incidente pero se pidió explícito):**
+  `Cache-Control: no-cache, must-revalidate` en `/` y `/index.html`. El header que YA traía Vercel
+  por defecto (`max-age=0, must-revalidate`) tenía el mismo efecto práctico, así que esto no
+  cambia el comportamiento actual — es hacerlo explícito/a prueba de que Vercel cambie el default,
+  no una corrección de un bug real observado esta vez.
+- **`?v=` de `index.html` NO se subió esta vuelta:** ningún JS/CSS cambió — solo `vercel.json`
+  (config de infraestructura, no cacheado por navegador) y documentación.
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
