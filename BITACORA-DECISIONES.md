@@ -2583,3 +2583,36 @@ con los 4 casos de margen, cada uno con el texto exacto pedido. `node --check` l
 `index.html` subido a `20260818d` (D-185).
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-18, continuación) — O3a: nuevo módulo Compras / Supplier PO (D-189)
+_Backend cerró O3a completo (espejo invertido del Customer PO/O1): `v_op_supplier_po`,
+`v_op_spo_lineas`, `fn_op_spo_alta/recibir_linea/eliminar`, todo probado end-to-end. Frontend
+(Claude Code) — sin acceso a Supabase MCP._
+
+- **D-189 (frontend, nuevo módulo):** `modulo-o3-compras.js` (ruta `o3-compras`, nav Camino C →
+  Compras), calcado del patrón de `modulo-o1-cpo.js`/`modulo-o1-so.js`: lista con KPIs/filtro,
+  alta (proveedor + N° de PO libre + fecha + moneda + SO opcional para trazabilidad + líneas tipo
+  tarjeta con SKU/cantidad/costo opcional/moneda + adjunto real), ficha con tabla de líneas y
+  botón "Recibir" por línea pendiente (mismo picker de ubicación que "Recibir inventario" de O2a),
+  botón "Eliminar" con el bloqueo del backend mostrado tal cual si ya hay líneas recibidas.
+- **Desviación deliberada de la instrucción original:** el picker de proveedor NO usa
+  `fn_op_sugerir_contraparte` como pedía la tarea — esa RPC está documentada **CERRADA** desde
+  D-171 (sin GRANT a `authenticated`, solo invocable desde dentro de la Edge Function
+  `extraer-po`). Llamarla directo desde el frontend habría tronado por permisos en producción. Se
+  usó en su lugar el patrón real que O1-CPO ya usa para su picker de cliente (`ERP.crearCombo`
+  sobre `v_catc_contrapartes` filtrado, búsqueda client-side) — funcionalmente equivalente y
+  realmente expuesto al frontend. Si el backend quiere búsqueda server-side aquí, hace falta un
+  GRANT explícito o un wrapper nuevo estilo `fn_cat_sugerir_sku`.
+- **CSS:** `.pantalla-o3-compras` agregado como 4ta alternativa en las ~35 reglas del bloque
+  compartido O1 (mismo método de "scope por pantalla" ya establecido) — sin reglas nuevas, todo lo
+  demás (tarjetas de línea, picker de SKU, `form-erp`) ya era CSS global reusado tal cual.
+
+**Verificado en navegador (contexto nuevo), flujo completo:** crear compra con proveedor + SO
+ligada + adjunto subido + línea sin costo (consignación) → payload exacto en `fn_op_spo_alta` →
+ficha muestra "—" en costo (no "$0") → Recibir línea con ubicación ya existente (deducida de
+`v_op_inventario`) → `fn_op_spo_recibir_linea` correcto, folio de lote en el toast, estado de la
+compra pasa a "Recibido" → Eliminar **bloqueado** con el mensaje del backend tal cual (línea ya
+recibida) → segunda compra sin recibir sí se elimina limpio. `node --check` limpio. `?v=` de
+`index.html` subido a `20260818e` (D-185).
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
