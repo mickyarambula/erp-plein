@@ -2430,6 +2430,13 @@ con `p_contraparte_id`/`p_solo_vinculados`/`es_vinculado` antes de esta sesión 
   `fn_op_cpo_alta`). **Pide al backend que confirme estos 4 nombres de parámetro en vivo** — si algún
   nombre no coincide, el primer intento de editar/eliminar tira el error exacto de Postgres (falla
   ruidosa, no silenciosa) y se corrige en una línea.
+  **RESUELTO (mismo día, 2ª pasada, commit `337dee4`):** backend confirmó las 4 firmas reales — los
+  4 RPCs usan `p_id` (no `p_customer_po_id`/`p_so_id` como se había inferido; corregido). Además
+  llegaron 2 campos que no estaban contemplados: `fn_op_cpo_editar` también recibe `p_adjunto_ref` y
+  `p_cliente_id` (cliente editable solo si el CPO aún no tiene Sales Order); `fn_op_so_editar`
+  también recibe `p_revenue_model_id` (Sales Type editable solo en Draft). Payload de los 4 RPCs
+  verificado exacto en navegador (contexto sin caché). Eliminar SO ahora avisa explícito que reabre
+  el CPO a 'Abierto'; eliminar CPO avisa que borra su SO en cascada si ya tiene una.
 
 **ANCLAS:** sin cambio — sesión 100% frontend, `op.*` sigue vacío (0 CPO/SO/OP), no toca Cuadre/CxC/
 CxP/JPM. **Pendiente real para cerrar O1:** correr el checkpoint (D-181 §9 de

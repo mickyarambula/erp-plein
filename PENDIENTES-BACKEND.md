@@ -42,12 +42,19 @@ _Última actualización: 2026-08-12 — rediseño OP: backend COMPLETO y PROBADO
 - ✅ **4 pendientes de Claude Code cerrados (E129, D-181..183, 2026-08-17):** picker de SKU
   cliente-scoped + auto-match IA, fix de paneles montados, botones Editar/Eliminar en CPO y SO.
   Detalle en `BITACORA-DECISIONES.md` E129 y `REPORTE-FRONTEND.md` E129.
-- ⬜ **Pendiente (backend/Miguel, esto lo hace el chat con Supabase MCP):** confirmar en vivo los
-  nombres de parámetro de `fn_op_cpo_editar`/`fn_op_cpo_eliminar`/`fn_op_so_editar`/
-  `fn_op_so_eliminar` (Claude Code los infirió por convención — ver D-183 — sin acceso a MCP esta
-  sesión), y correr el **checkpoint de O1** (§9 de `DISENO-O1-REALINEAMIENTO.md`): registrar un
-  Customer PO real → generar y confirmar su Sales Order → ver tablero Required/Open. Con eso O1
-  cierra y se abre O2 (Inventario/Lots/Allocation).
+- ✅ **Firmas de editar/eliminar confirmadas por backend + corregidas en frontend (mismo día, 2ª
+  pasada, commit `337dee4`):** los 4 RPCs usan `p_id` (no lo que Claude Code había inferido por
+  convención); además `fn_op_cpo_editar` trae `p_adjunto_ref`/`p_cliente_id` (cliente editable solo
+  sin SO) y `fn_op_so_editar` trae `p_revenue_model_id` (Sales Type editable solo en Draft) — ya
+  cableados en el form con su gate. Overlap de paneles reverificado con contexto sin caché en los 3
+  flujos (lista, ficha CPO, IA completo) — código correcto. Ver `BITACORA-DECISIONES.md` D-183 y
+  `REPORTE-FRONTEND.md` E129 (addendum).
+- ⬜ **Pendiente (backend/Miguel, esto lo hace el chat con Supabase MCP):** correr el **checkpoint
+  de O1** (§9 de `DISENO-O1-REALINEAMIENTO.md`): registrar un Customer PO real → generar y confirmar
+  su Sales Order → ver tablero Required/Open. Con eso O1 cierra y se abre O2 (Inventario/Lots/
+  Allocation). Si "el fix de paneles no se ve en prod" persiste tras desplegar: sospechar caché del
+  navegador (`index.html` no versiona los `<script src="modulo-*.js">`) antes que el código — probar
+  con hard refresh / ventana privada.
 
 #### Backlog de ajustes del flujo OP (detectados en pruebas E113-E116, sin dueño asignado todavía)
 - ⬜ **A. Herencia compra→embarque:** que "Registrar embarque" (Slice 3) pre-llene proveedor + costos desde la(s) OC(s) ya agregadas a la OP (Slice 2), en vez de recapturar el proveedor y el monto a mano — hoy la compra y el embarque no se hablan entre sí, es doble captura del mismo dato.

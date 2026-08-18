@@ -4949,3 +4949,20 @@ E128/D-181, hoy solo D-182/D-183). `node --check` limpio. **NO DESPLEGADO** (Mig
 --prod`). **Pendiente de Miguel/backend:** confirmar en vivo los nombres de parámetro de
 `fn_op_cpo_editar/eliminar` y `fn_op_so_editar/eliminar`, y correr el checkpoint real de O1 (CPO real
 → SO → tablero Required/Open) que es la tarea que este chat NO puede hacer (no tiene Supabase MCP).
+
+**Addendum (mismo día, 2ª pasada) — firmas de D-183 RESUELTAS por el backend, dos correcciones
+sobre lo entregado arriba:** el backend confirmó las 4 firmas reales, distintas a lo inferido por
+convención (`p_id` en las 4, no `p_customer_po_id`/`p_so_id`) — el commit `37ea21e` de la primera
+pasada quedaba con nombres de parámetro **equivocados**, corregidos en `337dee4`. Además llegaron 2
+campos nuevos no contemplados antes: `fn_op_cpo_editar` también trae `p_adjunto_ref` y `p_cliente_id`
+(cliente editable solo si el CPO **aún no tiene** Sales Order); `fn_op_so_editar` también trae
+`p_revenue_model_id` (Sales Type editable solo en **Draft**) — ambos ya cableados en el form de
+edición con el gate correspondiente. Reverificado en navegador con **contexto aislado nuevo** (cero
+caché, equivalente a hard refresh) los 3 flujos de generar SO reportados con overlap (lista, ficha
+del CPO, flujo IA completo — subida de PDF simulada → Leer con IA → Confirmar, primera vez que este
+último se prueba end-to-end en navegador): los 3 abren con un solo `#panel` en el DOM. Payload exacto
+de los 4 RPCs capturado y coincide con la firma real. **Nota sobre "8209ff0 no se ve en prod":** el
+código está completo y verificado; si persiste tras desplegar, sospechar caché del navegador —
+`index.html` no versiona los `<script src="modulo-*.js">`, así que un deploy nuevo puede seguir
+sirviendo JS viejo cacheado. No se tocó `index.html` (cache-busting a los 32 scripts es un cambio más
+amplio que este ticket — avisar si se quiere).
