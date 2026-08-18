@@ -35,6 +35,20 @@ _Última actualización: 2026-08-12 — rediseño OP: backend COMPLETO y PROBADO
 - ⬜ **Fase 1b (saneamiento CxP):** 30 líneas de `carga_costos` sin contraparte = **$108,264.01**, en 4 buckets: **A** cartón interno Plein $32,262.24 · **B** comisión derivada $7,661.02 · **C** comisión venta PAMPAS $720.00 · **D** En Camino pendiente Samuel $67,620.75 (NGM248545, PX-72306, PX-72715). **Decisiones de Miguel pausadas:** tratamiento de cartón interno (A+B ≈$40K, ¿es CxP o no?) + proveedores reales del bucket D.
 - ⬜ **Hacer oficial el CxP atribuido** (bloqueado por Fase 1b): al cambiar, el ancla CxP baja ~$45,244.39 (brecha fantasma vs real) — es legítima (cartón interno + En Camino), pero no se cambia el ancla oficial hasta cerrar 1b.
 
+### 🧵 Camino C · O1 (Customer PO → Sales Order, ver `DISENO-O1-REALINEAMIENTO.md`)
+- ✅ **Realineamiento a `cat.*` a nivel SKU (backend+frontend, E128, commit `efaf7f3`):** `customer_po.
+  cliente_id`/`so_lineas.sku_id`+`marca`+`marca_privada` sobre el catálogo nuevo. `op.*` sigue vacío
+  (0 CPO/SO/OP) — bajo riesgo, sin migración de datos.
+- ✅ **4 pendientes de Claude Code cerrados (E129, D-181..183, 2026-08-17):** picker de SKU
+  cliente-scoped + auto-match IA, fix de paneles montados, botones Editar/Eliminar en CPO y SO.
+  Detalle en `BITACORA-DECISIONES.md` E129 y `REPORTE-FRONTEND.md` E129.
+- ⬜ **Pendiente (backend/Miguel, esto lo hace el chat con Supabase MCP):** confirmar en vivo los
+  nombres de parámetro de `fn_op_cpo_editar`/`fn_op_cpo_eliminar`/`fn_op_so_editar`/
+  `fn_op_so_eliminar` (Claude Code los infirió por convención — ver D-183 — sin acceso a MCP esta
+  sesión), y correr el **checkpoint de O1** (§9 de `DISENO-O1-REALINEAMIENTO.md`): registrar un
+  Customer PO real → generar y confirmar su Sales Order → ver tablero Required/Open. Con eso O1
+  cierra y se abre O2 (Inventario/Lots/Allocation).
+
 #### Backlog de ajustes del flujo OP (detectados en pruebas E113-E116, sin dueño asignado todavía)
 - ⬜ **A. Herencia compra→embarque:** que "Registrar embarque" (Slice 3) pre-llene proveedor + costos desde la(s) OC(s) ya agregadas a la OP (Slice 2), en vez de recapturar el proveedor y el monto a mano — hoy la compra y el embarque no se hablan entre sí, es doble captura del mismo dato.
 - ⬜ **B. Editar/corregir una operación** (venta, compra o embarque) ya capturada dentro del hilo OP — hoy no existe ningún flujo de edición para estos 3, solo alta. Hace falta.

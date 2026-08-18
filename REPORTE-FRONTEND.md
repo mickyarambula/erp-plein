@@ -4897,3 +4897,55 @@ harness: `#shell` necesita `.visible`, que el login real añade — no bug del m
 Camino C + `<script>`). Contrato para el backend: `SPEC-CATALOGOS-BACKEND.md` (ya en repo). `node --check`
 limpio. **NO DESPLEGADO** (Miguel corre `npx vercel --prod`) **y el módulo mostrará un aviso "pídele al
 backend que aplique cat.*" hasta que el chat de backend cree las vistas/RPCs.**
+
+## E129 (2026-08-17) — CAMINO C · O1: cierre del checkpoint frontend (picker cliente+IA, fix de
+paneles, editar/eliminar CPO+SO) (D-181..183)
+_Backend O1 realineado a `cat.*` a nivel SKU (E128/`efaf7f3`) ya cerrado. Esta sesión completó los
+4 pendientes de Claude Code que faltaban antes de la prueba end-to-end real (D-181..183)._
+
+**D-181 — Picker de SKU con alcance por cliente (`comun.js`, commits `f988913` + hoy).**
+`ERP.crearPickerSku` reescrito: nuevas opciones `contraparteId`/`soloVinculados`, enviadas a
+`fn_cat_sugerir_sku` como `p_contraparte_id`/`p_solo_vinculados` (el RPC ya las acepta y devuelve
+`es_vinculado`). Con `contraparteId` seteado arranca mostrando **solo los SKU que ese cliente ya
+compra**, con botón toggle "Ver todos los SKU / Solo del cliente". La causa raíz de que la etiqueta
+del SKU se viera cortada era doble: `<table>` angosta + `.combo-item .txt{text-overflow:ellipsis}`
+heredado de `crearCombo`; se resolvió con tarjeta por línea (`.so-linea-card`, layout de 2 filas) y
+CSS propio del picker que no trunca ni angosta el dropdown. Seleccionado se muestra como **chip con
+la etiqueta completa** (no un input diminuto), con tag "del cliente" cuando `es_vinculado`.
+`o1-so.js`/`o1-cpo.js` mandan `contraparteId` = cliente del CPO a cada picker de línea. `o1-cpo.js`:
+`autoMatchLinea()` en el flujo "Leer PO con IA" busca por el texto leído + cliente y preselecciona
+si `es_sugerencia && score>=0.7`. Verificado end-to-end en navegador (mock): CPO→SO con auto-match
+preseleccionando el SKU correcto, payload final de `fn_op_so_crear_desde_cpo` con el `sku_id`
+esperado.
+
+**D-182 — Paneles montados uno sobre otro (fix, commits `8209ff0` + hoy).** Causa raíz: el drawer
+compartido (`#panel`) usa una transición CSS de deslizado que solo se dispara al pasar de
+cerrado→abierto; si `ERP.abrirPanel()` se llama mientras el panel YA está `'abierto'` (típico al
+saltar de una ficha a otra sin cerrar antes), la transición no corre y el contenido nuevo se percibe
+montado sobre el anterior. Fix: `ERP.cerrarPanel()` explícito al inicio de **toda** función que abre
+un panel "nuevo" (cierra+abre en el mismo tick de JS → sin parpadeo visible, el navegador nunca pinta
+el estado cerrado intermedio). Cubre los 6 entry points de `o1-cpo.js`/`o1-so.js`: `nuevoCPO`,
+`abrirRevisionIA`, `verCPO`, `editarCPO` (nuevo), `crearSODesde` (ya en `8209ff0`), `confirmarIA` (ya
+en `8209ff0`), `verSO`, `editarSO` (nuevo), `abrirAsignarLote`. Verificado en navegador con fetch de
+catálogos artificialmente lento (expone la ventana de carga): un solo `#panel` en el DOM en todo
+momento.
+
+**D-183 — Editar/Eliminar en fichas de CPO y SO (`modulo-o1-cpo.js`, `modulo-o1-so.js`, hoy).**
+Botones nuevos en ambas fichas. CPO: `editarCPO()`/`eliminarCPO()` sobre `fn_op_cpo_editar` (número
+de PO del cliente, fecha, moneda, nota — no incluye cliente ni adjunto) y `fn_op_cpo_eliminar`
+(gateado a estado Abierto, con `confirm()` nativo). SO: `editarSO()`/`eliminarSO()` sobre
+`fn_op_so_editar` (fecha/moneda/nota — **solo header, no líneas**, limitación conocida del RPC) y
+`fn_op_so_eliminar` (gateado a estado Draft). **Nombres de parámetro sin verificar en vivo** (esta
+sesión no tuvo acceso a Supabase MCP): se siguió la convención ya confirmada en el propio archivo
+(`fn_op_so_confirmar`/`fn_op_so_set_estado` usan `p_so_id`, no `p_sales_order_id` — mismo patrón
+aplicado a editar/eliminar de SO; CPO usa `p_customer_po_id` por ser el único patrón visible en
+`fn_op_cpo_alta`/`fn_op_so_crear_desde_cpo`). Si el nombre real difiere, el error de Postgres lo dirá
+exacto al primer intento — no es una falla silenciosa. Verificado en navegador (mock): editar CPO y
+editar SO guardan y refrescan la ficha con los datos nuevos (payload capturado con los nombres de
+parámetro de arriba); eliminar SO llama el RPC y cierra el panel.
+
+**Archivos:** `modulo-o1-cpo.js`, `modulo-o1-so.js` (ambos ya extendidos en sesiones previas para
+E128/D-181, hoy solo D-182/D-183). `node --check` limpio. **NO DESPLEGADO** (Miguel corre `npx vercel
+--prod`). **Pendiente de Miguel/backend:** confirmar en vivo los nombres de parámetro de
+`fn_op_cpo_editar/eliminar` y `fn_op_so_editar/eliminar`, y correr el checkpoint real de O1 (CPO real
+→ SO → tablero Required/Open) que es la tarea que este chat NO puede hacer (no tiene Supabase MCP).

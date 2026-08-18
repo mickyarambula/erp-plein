@@ -2397,3 +2397,41 @@ hand-off._
 **ANCLAS:** sin cambio — frontend money-neutral; el schema `cat.*` es nuevo y vacío; no toca Cuadre/CxC/
 CxP/JPM ni el histórico. La verificación de seguridad (`v_seguridad_auth 0/0/0`) y el DDL los corre el
 chat de backend al aplicar `SPEC-CATALOGOS-BACKEND.md`.
+
+## Sesión E129 (2026-08-17) — CAMINO C · O1 frontend: picker cliente-scoped, fix de paneles,
+editar/eliminar CPO+SO (D-181..183)
+_Backend O1 ya realineado a `cat.*` a nivel SKU (E128, `efaf7f3`). `fn_cat_sugerir_sku` ya ampliado
+con `p_contraparte_id`/`p_solo_vinculados`/`es_vinculado` antes de esta sesión (backend). Esta sesión
+(frontend, Claude Code, sin acceso a Supabase MCP) cerró los 4 pendientes marcados [Claude Code] en
+`PENDIENTES-BACKEND.md` para poder correr el checkpoint real de O1._
+
+- **D-181 (frontend/UX):** `ERP.crearPickerSku` pasa a ser cliente-scoped por defecto — si se le da
+  `contraparteId`, arranca mostrando solo los SKU vinculados a ese cliente (`p_solo_vinculados=true`),
+  con toggle a "ver todos". Selección se muestra como chip de etiqueta completa (root cause del
+  truncamiento: `<table>` angosta + `.combo-item .txt` con ellipsis heredado de `crearCombo` — se
+  separó con CSS propio del picker). `o1-cpo.js`/`o1-so.js` mandan el `cliente_id` del CPO a cada
+  picker de línea; el flujo IA además auto-matchea por texto leído+cliente y preselecciona si
+  `score>=0.7`. Commits `f988913` + hoy. **Por qué importa:** sin esto, capturar una línea de SO
+  obligaba a buscar entre TODOS los SKU del catálogo (152) en vez de solo los ~5-10 que ese cliente
+  realmente compra — el auto-match además deja la línea pre-mapeada tras leer el PO con IA, el
+  usuario solo confirma.
+- **D-182 (frontend/bug):** fix de "paneles montados uno sobre otro" — `ERP.abrirPanel()` no
+  re-dispara la transición de entrada si el drawer ya estaba `'abierto'`, así que saltar de una
+  ficha a otra (ej. CPO→generar SO, o IA→SO) sin cerrar antes se veía como contenido superpuesto.
+  Fix: `ERP.cerrarPanel()` al inicio de toda función que abre un panel lógicamente nuevo (mismo tick
+  que el `abrirPanel()` siguiente → sin parpadeo). Aplicado a los 9 entry points de `o1-cpo.js` +
+  `o1-so.js` (lista completa en `REPORTE-FRONTEND.md` E129). Commits `8209ff0` + hoy.
+- **D-183 (frontend, RPCs YA existían en backend):** botones Editar/Eliminar en las fichas de CPO y
+  SO, sobre `fn_op_cpo_editar`/`fn_op_cpo_eliminar` (CPO, gateado a estado Abierto) y
+  `fn_op_so_editar`/`fn_op_so_eliminar` (SO, solo header — no líneas — gateado a estado Draft).
+  **Nota de riesgo:** esta sesión no tuvo Supabase MCP para confirmar los nombres exactos de
+  parámetro; se usó `p_so_id` para SO (mismo patrón que `fn_op_so_confirmar`/`fn_op_so_set_estado`,
+  ya en uso y confirmado en el propio archivo) y `p_customer_po_id` para CPO (único patrón visible en
+  `fn_op_cpo_alta`). **Pide al backend que confirme estos 4 nombres de parámetro en vivo** — si algún
+  nombre no coincide, el primer intento de editar/eliminar tira el error exacto de Postgres (falla
+  ruidosa, no silenciosa) y se corrige en una línea.
+
+**ANCLAS:** sin cambio — sesión 100% frontend, `op.*` sigue vacío (0 CPO/SO/OP), no toca Cuadre/CxC/
+CxP/JPM. **Pendiente real para cerrar O1:** correr el checkpoint (D-181 §9 de
+`DISENO-O1-REALINEAMIENTO.md`) — registrar un Customer PO real → generar y confirmar su Sales Order →
+ver tablero Required/Open. Esto lo hace el chat de backend/Miguel con Supabase MCP, no este chat.
