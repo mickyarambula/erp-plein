@@ -9,7 +9,8 @@
    Catálogo (realineado a cat.*, D-1xx ago 2026): el cliente ya no viene de v_catalogo_clientes —
    viene de v_catc_contrapartes filtrada por es_cliente=true (la misma fuente que usa Catálogos).
    fn_op_cpo_alta recibe p_cliente_id como bigint (valida es_cliente en cat.*) y genera el folio
-   interno solo (CPO-2026-#####); el N° de PO del cliente se guarda aparte (p_numero_cliente).
+   interno solo (formato CPO-26-001, año corto + consecutivo); el N° de PO del cliente se guarda
+   aparte (p_numero_cliente). El frontend solo muestra el folio que llega — no lo formatea.
    RPC (capacidad 'capturar'):
      fn_op_cpo_alta(p_cliente_id bigint, p_numero_cliente, p_fecha_po, p_moneda, p_adjunto_ref, p_nota, p_actor)
        -> { customer_po_id, folio }

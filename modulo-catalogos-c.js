@@ -489,7 +489,7 @@
         <div>
           <div class="catc-card"><h4>Contactos ${puedeCap() ? '<span class="catc-add" data-addcont><i class="ti ti-plus"></i>Agregar</span>' : ''}</h4>
             ${det.contactos.length ? det.contactos.map(k => `<div class="catc-contact"><div><div class="cn">${esc(k.nombre || '—')} ${k.es_principal ? '<span class="catc-pill ok"><i class="ti ti-star-filled"></i>Principal</span>' : ''}</div><div class="cr">${esc([k.rol, k.email].filter(Boolean).join(' · ') || '—')}</div></div>
-              <div>${(!k.es_principal && puedeCap()) ? `<span class="catc-add" data-mkprincipal="${esc(k.id)}" style="margin-right:8px">Hacer principal</span>` : ''}${k.email ? `<a href="mailto:${esc(k.email)}"><i class="ti ti-mail"></i></a>` : ''}${k.telefono_whatsapp ? `<a class="wa" href="https://wa.me/${esc(String(k.telefono_whatsapp).replace(/[^\d]/g, ''))}" target="_blank" rel="noopener"><i class="ti ti-brand-whatsapp"></i></a>` : ''}${puedeCap() ? `<i class="ti ti-x catc-go" data-delcont="${esc(k.id)}" title="Quitar"></i>` : ''}</div></div>`).join('')
+              <div>${(!k.es_principal && puedeCap()) ? `<span class="catc-add" data-mkprincipal="${esc(k.id)}" style="margin-right:8px">Hacer principal</span>` : ''}${k.email ? `<a href="mailto:${esc(k.email)}"><i class="ti ti-mail"></i></a>` : ''}${k.telefono_whatsapp ? `<a class="wa" href="https://wa.me/${esc(String(k.telefono_whatsapp).replace(/[^\d]/g, ''))}" target="_blank" rel="noopener"><i class="ti ti-brand-whatsapp"></i></a>` : ''}${puedeCap() ? `<i class="ti ti-pencil catc-go editar" data-editcont="${esc(k.id)}" title="Editar" style="margin-left:7px"></i>` : ''}${puedeCap() ? `<i class="ti ti-x catc-go" data-delcont="${esc(k.id)}" title="Quitar"></i>` : ''}</div></div>`).join('')
               : '<div class="catc-hint">Sin contactos.</div>'}
             <div id="cont_nuevo" style="display:none;margin-top:10px"></div>
           </div>
@@ -512,6 +512,10 @@
     $det().querySelectorAll('[data-delcont]').forEach(el => el.addEventListener('click', () => {
       const kk = det.contactos.find(x => String(x.id) === String(el.dataset.delcont));
       eliminar('contacto', el.dataset.delcont, 'el contacto "' + (kk ? kk.nombre : '') + '"', true);
+    }));
+    $det().querySelectorAll('[data-editcont]').forEach(el => el.addEventListener('click', () => {
+      const kk = det.contactos.find(x => String(x.id) === String(el.dataset.editcont));
+      if (kk) editarContacto(kk);
     }));
     $det().querySelectorAll('[data-mkprincipal]').forEach(el => el.addEventListener('click', () => hacerPrincipal(el.dataset.mkprincipal)));
     const bVsku = $det().querySelector('[data-vsku]'); if (bVsku) bVsku.addEventListener('click', () => vincularSkuAContraparte(c));
@@ -557,6 +561,33 @@
       const wa = (document.getElementById('cn_wa').value || '').trim() || null;
       const esPrincipal = document.getElementById('cn_principal').checked;
       await escribir('fn_cat_contacto_alta', { p_contraparte_id: Number(cid), p_nombre: nombre, p_rol: rol, p_email: email, p_telefono_whatsapp: wa, p_es_principal: esPrincipal }, 'Contacto agregado');
+    });
+  }
+
+  // Reusa el mismo hueco #cont_nuevo que agregarContacto() — prellenado, sin checkbox de
+  // principal (eso se maneja aparte con "Hacer principal"; fn_cat_contacto_editar no lo toca).
+  function editarContacto(k) {
+    const cont = document.getElementById('cont_nuevo');
+    if (!cont) return;
+    cont.style.display = 'block';
+    cont.innerHTML = `
+      <div class="catc-g2" style="margin-bottom:8px">
+        <div class="f"><label>Nombre *</label><input id="cn_nombre" autofocus value="${esc(k.nombre || '')}"></div>
+        <div class="f"><label>Rol</label><input id="cn_rol" placeholder="Compras / Pagos / Ventas…" value="${esc(k.rol || '')}"></div>
+      </div>
+      <div class="catc-g2" style="margin-bottom:8px">
+        <div class="f"><label>Correo</label><input id="cn_email" value="${esc(k.email || '')}"></div>
+        <div class="f"><label>WhatsApp</label><input id="cn_wa" placeholder="Solo dígitos, con país" value="${esc(k.telefono_whatsapp || '')}"></div>
+      </div>
+      <div style="display:flex;gap:7px"><button class="catc-act" id="cn_cancel">Cancelar</button><button class="btn-primary catc-act" id="cn_save"><i class="ti ti-check"></i>Guardar cambios</button></div>`;
+    document.getElementById('cn_cancel').addEventListener('click', () => { cont.style.display = 'none'; cont.innerHTML = ''; });
+    document.getElementById('cn_save').addEventListener('click', async () => {
+      const nombre = (document.getElementById('cn_nombre').value || '').trim();
+      if (!nombre) { ERP.toast('err', 'El nombre es obligatorio.'); return; }
+      const rol = (document.getElementById('cn_rol').value || '').trim() || null;
+      const email = (document.getElementById('cn_email').value || '').trim() || null;
+      const wa = (document.getElementById('cn_wa').value || '').trim() || null;
+      await escribir('fn_cat_contacto_editar', { p_id: Number(k.id), p_nombre: nombre, p_rol: rol, p_email: email, p_telefono_whatsapp: wa }, 'Contacto actualizado');
     });
   }
 
@@ -924,23 +955,39 @@
   }
 
   const RPC_RESTAURAR = { producto: 'fn_cat_producto_restaurar', variedad: 'fn_cat_variedad_restaurar', sku: 'fn_cat_sku_restaurar', contraparte: 'fn_cat_contraparte_restaurar' };
+  const RPC_PURGAR = { producto: 'fn_cat_producto_purgar', sku: 'fn_cat_sku_purgar', variedad: 'fn_cat_variedad_purgar', contraparte: 'fn_cat_contraparte_purgar', contacto: 'fn_cat_contacto_purgar' };
   async function vistaPapelera() {
     selId = null;
     const filas = await q('v_catc_papelera', '&order=deleted_at.desc').catch(() => []);
     document.getElementById('catcRows').innerHTML = '<div class="catc-hint" style="padding:16px">Papelera abierta en el detalle →</div>';
     $det().innerHTML = `<div class="catc-dwrap">
       <div style="font-size:17px;font-weight:600;margin-bottom:2px">Papelera</div>
-      <div class="catc-hint" style="margin-bottom:14px">Registros eliminados. Restaurar los devuelve al catálogo. (Los contactos no se restauran desde aquí.)</div>
+      <div class="catc-hint" style="margin-bottom:14px">Registros eliminados. Restaurar los devuelve al catálogo. (Los contactos no se restauran desde aquí.) "Eliminar definitivo" los borra de la base — no se puede deshacer, y si tienen otros registros dependiendo de ellos (ej. un producto con SKUs), el ERP lo rechaza y explica por qué.</div>
       ${(filas || []).length ? `<table class="catc-tbl"><thead><tr><th>Tipo</th><th>Registro</th><th>Eliminado</th><th></th></tr></thead>
         <tbody>${filas.map(f => `<tr><td class="catc-sec">${esc(f.entidad)}</td><td>${esc(f.etiqueta || '—')}</td>
           <td class="catc-sec">${esc(ERP.fecha(f.deleted_at))}</td>
-          <td style="text-align:right">${(puedeCap() && RPC_RESTAURAR[f.entidad]) ? `<button class="catc-act" data-restore="${esc(f.entidad)}:${esc(f.id)}"><i class="ti ti-arrow-back-up"></i>Restaurar</button>` : ''}</td></tr>`).join('')}</tbody></table>`
+          <td style="text-align:right;white-space:nowrap">${(puedeCap() && RPC_RESTAURAR[f.entidad]) ? `<button class="catc-act" data-restore="${esc(f.entidad)}:${esc(f.id)}"><i class="ti ti-arrow-back-up"></i>Restaurar</button>` : ''}${(puedeCap() && RPC_PURGAR[f.entidad]) ? ` <button class="catc-act del" data-purgar="${esc(f.entidad)}:${esc(f.id)}" title="Borra de la base, sin vuelta atrás"><i class="ti ti-trash"></i>Eliminar definitivo</button>` : ''}</td></tr>`).join('')}</tbody></table>`
         : '<div class="catc-hint">Papelera vacía.</div>'}
     </div>`;
     $det().querySelectorAll('[data-restore]').forEach(b => b.addEventListener('click', async () => {
       const [ent, id] = b.dataset.restore.split(':');
       try { await rpc(RPC_RESTAURAR[ent], { p_id: Number(id) }); ERP.limpiarCache(); ERP.toast('ok', 'Restaurado'); vistaPapelera(); recargarLista(); }
       catch (e) { ERP.toast('err', 'No se pudo restaurar: ' + esc(e.message)); }
+    }));
+    $det().querySelectorAll('[data-purgar]').forEach(b => b.addEventListener('click', async () => {
+      const [ent, id] = b.dataset.purgar.split(':');
+      const fila = filas.find(x => x.entidad === ent && String(x.id) === id);
+      if (!confirm(`¿Eliminar DEFINITIVAMENTE "${(fila && fila.etiqueta) || ent}"?\n\nEsto no se puede deshacer — no queda en la papelera ni se puede recuperar.`)) return;
+      try {
+        await rpc(RPC_PURGAR[ent], { p_id: Number(id) });
+        ERP.limpiarCache();
+        ERP.toast('ok', 'Eliminado definitivamente.');
+        vistaPapelera(); recargarLista();
+      } catch (e) {
+        // El backend puede bloquear con un mensaje legible (ej. "tiene 3 SKU(s) y 1 variedad(es)...") —
+        // se muestra tal cual: es información útil para Miguel, no un error genérico que ocultar.
+        ERP.toast('err', esc(e.message), 9000);
+      }
     }));
   }
 
