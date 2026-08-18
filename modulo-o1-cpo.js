@@ -13,10 +13,9 @@
    RPC (capacidad 'capturar'):
      fn_op_cpo_alta(p_cliente_id bigint, p_numero_cliente, p_fecha_po, p_moneda, p_adjunto_ref, p_nota, p_actor)
        -> { customer_po_id, folio }
-     fn_op_cpo_editar(p_customer_po_id, p_numero_cliente, p_fecha_po, p_moneda, p_nota, p_actor)
-     fn_op_cpo_eliminar(p_customer_po_id, p_actor)
-       (nombres de parámetro inferidos por convención — sin acceso a Supabase MCP en esta sesión
-       para confirmarlos en vivo; si el RPC truena, el error de Postgres dice el nombre exacto)
+     fn_op_cpo_editar(p_id, p_numero_cliente, p_fecha_po, p_moneda, p_adjunto_ref, p_nota,
+       p_cliente_id, p_actor) — p_cliente_id solo cambiable si el CPO aún NO tiene Sales Order
+     fn_op_cpo_eliminar(p_id, p_actor) — borra CPO + su SO/líneas/OP en cascada
    El adjunto es una REFERENCIA a Storage (ruta/URL), no un archivo subido (D-162).
    Expone ERP.o1AbrirCPO(cpoId) para saltar a un CPO desde otro módulo. */
 
@@ -742,17 +741,39 @@
 
   /* ================= Editar / eliminar ================= */
 
-  function editarCPO(c) {
+  async function editarCPO(c) {
     ERP.cerrarPanel();
+    // cliente_id solo es editable si el CPO todavía NO generó su Sales Order (fn_op_cpo_editar
+    // lo rechaza si ya tiene una — aquí solo evitamos mostrar un campo que el backend va a tronar).
+    const puedeCambiarCliente = String(c.estado || '').toLowerCase() === 'abierto';
+    ERP.abrirPanel(`Editar Customer PO <span class="mono">${esc(c.folio || '')}</span>`, esc(c.cliente || ''), '<div class="skel">Cargando…</div>');
+
+    let clientesEd = [];
+    if (puedeCambiarCliente) {
+      try {
+        clientesEd = await q('v_catc_contrapartes', '&es_cliente=eq.true&order=nombre.asc');
+      } catch (e) {
+        ERP.abrirPanel(`Editar Customer PO <span class="mono">${esc(c.folio || '')}</span>`, '', `<div class="errbox">No se pudieron leer los clientes: ${esc(e.message)}</div>`);
+        return;
+      }
+    }
+
     ERP.abrirPanel(`Editar Customer PO <span class="mono">${esc(c.folio || '')}</span>`, esc(c.cliente || ''), `
       <div class="form-erp">
         <div class="campos">
+          <div class="campo ancho"><label>Cliente</label>
+            ${puedeCambiarCliente ? '<div id="cpoEdCliente"></div>' : `<input type="text" value="${esc(c.cliente || '')}" disabled>`}
+            <div class="alias-ayuda">${puedeCambiarCliente
+              ? 'Se puede cambiar porque este Customer PO todavía no tiene Sales Order.'
+              : 'Ya no se puede cambiar: este Customer PO ya generó su Sales Order.'}</div></div>
           <div class="campo"><label>N° de PO del cliente</label>
             <input id="cpoEdNumCliente" type="text" maxlength="60" value="${esc(c.numero_cliente || '')}"></div>
           <div class="campo"><label>Fecha del PO</label>
             <input id="cpoEdFecha" type="date" value="${esc(String(c.fecha_po || '').slice(0, 10))}"></div>
           <div class="campo"><label>Moneda</label>
             <select id="cpoEdMoneda">${ERP.MONEDAS.map(m => `<option value="${m}" ${m === c.moneda ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+          <div class="campo ancho"><label>Adjunto del PO</label>
+            <input id="cpoEdAdjunto" class="mono" type="text" placeholder="URL/ruta del PDF…" value="${esc(c.adjunto_ref || '')}"></div>
           <div class="campo ancho"><label>Nota</label><textarea id="cpoEdNota" rows="2">${esc(c.nota || '')}</textarea></div>
         </div>
         <div class="acciones">
@@ -761,23 +782,36 @@
         </div>
         <div class="aviso" id="cpoEdAviso"></div>
       </div>`);
+
+    let comboClienteEd = null;
+    if (puedeCambiarCliente) {
+      comboClienteEd = ERP.crearCombo({
+        contenedor: document.getElementById('cpoEdCliente'),
+        items: clientesEd.map(x => ({ id: x.id, nombre: x.nombre, alias: x.alias || [] })),
+        placeholder: 'Busca cliente por nombre o alias…', permitirNuevo: false,
+        valorInicial: c.cliente || null
+      });
+    }
     document.getElementById('cpoEdCancelar').addEventListener('click', () => verCPO(c.id));
-    document.getElementById('cpoEdGuardar').addEventListener('click', () => guardarEdicionCPO(c));
+    document.getElementById('cpoEdGuardar').addEventListener('click', () => guardarEdicionCPO(c, comboClienteEd, puedeCambiarCliente));
   }
 
-  async function guardarEdicionCPO(c) {
+  async function guardarEdicionCPO(c, comboClienteEd, puedeCambiarCliente) {
     const v = id => (document.getElementById(id) || {}).value;
     const btn = document.getElementById('cpoEdGuardar');
     const aviso = document.getElementById('cpoEdAviso');
+    if (puedeCambiarCliente && !comboClienteEd.valorId()) { aviso.className = 'aviso visible err'; aviso.innerHTML = 'Elige el cliente.'; return; }
     btn.disabled = true;
     if (aviso) { aviso.className = 'aviso visible warn'; aviso.innerHTML = 'Guardando…'; }
     try {
       await rpc('fn_op_cpo_editar', {
-        p_customer_po_id: Number(c.id),
+        p_id: Number(c.id),
         p_numero_cliente: (v('cpoEdNumCliente') || '').trim() || null,
         p_fecha_po: v('cpoEdFecha') || null,
         p_moneda: v('cpoEdMoneda') || 'USD',
+        p_adjunto_ref: (v('cpoEdAdjunto') || '').trim() || null,
         p_nota: (v('cpoEdNota') || '').trim() || null,
+        p_cliente_id: puedeCambiarCliente ? Number(comboClienteEd.valorId()) : Number(c.cliente_id),
         p_actor: actor()
       });
       ERP.toast('ok', `Customer PO <b>${esc(c.folio || '')}</b> actualizado.`);
@@ -792,9 +826,9 @@
   }
 
   async function eliminarCPO(c) {
-    if (!confirm(`¿Eliminar el Customer PO ${c.folio}? Esta acción no se puede deshacer.`)) return;
+    if (!confirm(`¿Eliminar el Customer PO ${c.folio}? Se borra junto con su Sales Order (si ya tiene una), sus líneas y su OP. Esta acción no se puede deshacer.`)) return;
     try {
-      await rpc('fn_op_cpo_eliminar', { p_customer_po_id: Number(c.id), p_actor: actor() });
+      await rpc('fn_op_cpo_eliminar', { p_id: Number(c.id), p_actor: actor() });
       ERP.toast('ok', `Customer PO <b>${esc(c.folio || '')}</b> eliminado.`);
       ERP.marcarDatosSucios();
       await recargar();

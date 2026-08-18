@@ -25,8 +25,9 @@
        (precio null = comisión pura, correcto; marca_privada solo si marca='Private Label')
      fn_op_so_confirmar(p_so_id, p_actor) -> { so_id, estado_anterior, estado }   (Draft->Confirmed)
      fn_op_so_set_estado(p_so_id, p_nuevo, p_actor)
-     fn_op_so_editar(p_so_id, p_fecha, p_moneda, p_nota, p_actor) — solo header, no líneas
-     fn_op_so_eliminar(p_so_id, p_actor)
+     fn_op_so_editar(p_id, p_revenue_model_id, p_fecha, p_moneda, p_nota, p_actor) — solo header,
+       no líneas; p_revenue_model_id (Sales Type) solo cambiable en estado Draft
+     fn_op_so_eliminar(p_id, p_actor) — borra SO/líneas/OP y regresa el CPO a 'Abierto'
    Expone ERP.o1CrearSODesde(cpoId, cpoFolio) y ERP.o1VerSO(soId). */
 
 (function () {
@@ -526,11 +527,30 @@
 
   /* ================= Editar / eliminar (solo header — líneas no editables aún) ================= */
 
-  function editarSO(so) {
+  async function editarSO(so) {
     ERP.cerrarPanel();
+    // Sales Type (revenue_model_id) solo es editable en Draft — fn_op_so_editar lo rechaza después.
+    const esDraft = String(so.estado || 'Draft').toLowerCase() === 'draft';
+    ERP.abrirPanel(`Editar Sales Order <span class="mono">${esc(so.folio || '')}</span>`, esc(so.cliente || ''), '<div class="skel">Cargando…</div>');
+
+    if (esDraft && !revenueModels.length) {
+      try {
+        revenueModels = (await q('v_revenue_models', '&order=orden.asc')).filter(x => x.activo !== false);
+      } catch (e) {
+        ERP.abrirPanel(`Editar Sales Order <span class="mono">${esc(so.folio || '')}</span>`, '', `<div class="errbox">No se pudieron leer los modelos de venta: ${esc(e.message)}</div>`);
+        return;
+      }
+    }
+
     ERP.abrirPanel(`Editar Sales Order <span class="mono">${esc(so.folio || '')}</span>`, esc(so.cliente || ''), `
       <div class="form-erp">
         <div class="campos">
+          <div class="campo ancho"><label>Sales Type</label>
+            ${esDraft
+              ? `<select id="soEdRM"><option value="">— Elige el modelo de venta —</option>${revenueModels.map(r =>
+                  `<option value="${esc(r.id)}" ${String(r.id) === String(so.revenue_model_id) ? 'selected' : ''}>${esc([r.codigo, r.nombre].filter(Boolean).join(' — '))}</option>`).join('')}</select>`
+              : `<input type="text" value="${esc(so.sales_type || '—')}" disabled>
+                 <div class="alias-ayuda">Ya no se puede cambiar: solo es editable en estado Draft.</div>`}</div>
           <div class="campo"><label>Fecha</label>
             <input id="soEdFecha" type="date" value="${esc(String(so.fecha || '').slice(0, 10))}"></div>
           <div class="campo"><label>Moneda</label>
@@ -545,18 +565,21 @@
         <div class="aviso" id="soEdAviso"></div>
       </div>`);
     document.getElementById('soEdCancelar').addEventListener('click', () => verSO(so.id));
-    document.getElementById('soEdGuardar').addEventListener('click', () => guardarEdicionSO(so));
+    document.getElementById('soEdGuardar').addEventListener('click', () => guardarEdicionSO(so, esDraft));
   }
 
-  async function guardarEdicionSO(so) {
+  async function guardarEdicionSO(so, esDraft) {
     const v = id => (document.getElementById(id) || {}).value;
     const btn = document.getElementById('soEdGuardar');
     const aviso = document.getElementById('soEdAviso');
+    const rmId = esDraft ? v('soEdRM') : String(so.revenue_model_id || '');
+    if (esDraft && !rmId) { aviso.className = 'aviso visible err'; aviso.innerHTML = 'Elige el Sales Type.'; return; }
     btn.disabled = true;
     if (aviso) { aviso.className = 'aviso visible warn'; aviso.innerHTML = 'Guardando…'; }
     try {
       await rpc('fn_op_so_editar', {
-        p_so_id: Number(so.id),
+        p_id: Number(so.id),
+        p_revenue_model_id: Number(rmId),
         p_fecha: v('soEdFecha') || null,
         p_moneda: v('soEdMoneda') || 'USD',
         p_nota: (v('soEdNota') || '').trim() || null,
@@ -573,10 +596,10 @@
   }
 
   async function eliminarSO(so) {
-    if (!confirm(`¿Eliminar la Sales Order ${so.folio}? Esta acción no se puede deshacer.`)) return;
+    if (!confirm(`¿Eliminar la Sales Order ${so.folio}? Se borra junto con sus líneas y su OP, y el Customer PO ${so.cpo_folio || ''} vuelve a quedar en estado Abierto. Esta acción no se puede deshacer.`)) return;
     try {
-      await rpc('fn_op_so_eliminar', { p_so_id: Number(so.id), p_actor: actor() });
-      ERP.toast('ok', `Sales Order <b>${esc(so.folio || '')}</b> eliminada.`);
+      await rpc('fn_op_so_eliminar', { p_id: Number(so.id), p_actor: actor() });
+      ERP.toast('ok', `Sales Order <b>${esc(so.folio || '')}</b> eliminada — el Customer PO vuelve a estar Abierto.`);
       ERP.marcarDatosSucios();
       ERP.cerrarPanel();
     } catch (e) {
