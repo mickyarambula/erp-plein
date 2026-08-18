@@ -2526,3 +2526,29 @@ Allocated 60/Open 40 tras Required 100); editar CPO reemplazando adjunto y quit�
 `p_adjunto_ref` exacto en ambos casos). `node --check` limpio en los 3 archivos.
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-18, continuación) — Botón Eliminar de CPO/SO no aparecía (D-187)
+_Backend confirmó `fn_op_cpo_eliminar`/`fn_op_so_eliminar` intactos y con permiso EXECUTE — pidió
+diagnosticar si era regresión de código o algo lo ocultaba en UI. Frontend (Claude Code)._
+
+- **D-187 (diagnóstico + fix, frontend):** NO fue una regresión — `eliminarCPO()`/`eliminarSO()`
+  nunca se borraron del código (siguen desde 37ea21e, confirmados con `git log`/`grep`). El botón
+  se OCULTABA condicionalmente por decisión propia de la primera pasada (37ea21e): "Eliminar" en
+  el CPO solo se mostraba con `estado='Abierto'`, y en el SO solo con `estado='Draft'` — un gating
+  que asumí sin conocer el comportamiento real de los RPCs. Backend confirmó que ambos RPCs hacen
+  cascada **sin restricción de estado** (`fn_op_so_eliminar` reabre el CPO a 'Abierto' sin importar
+  el estado del SO; `fn_op_cpo_eliminar` borra CPO+SO+líneas+OP en cascada sin importar si el CPO ya
+  está 'Convertido') — el gating de UI era más estricto de lo que el backend permite, así que en el
+  caso normal de uso real (CPO ya convertido, SO ya confirmada) el botón simplemente no aparecía.
+  **Fix:** ambos botones ahora dependen solo de `puedeCap` (permiso), igual que "Editar". El resto
+  de gating por estado (`esDraft` para Confirmar/Sales Type, `abierto` para Generar Sales Order) se
+  dejó intacto — esos SÍ están genuinamente restringidos por estado en el backend.
+
+**Verificado en navegador (contexto nuevo), flujo completo pedido:** crear CPO → generar SO (queda
+en 'Confirmed', no 'Draft' — el caso donde antes el botón desaparecía) → Eliminar visible en el SO
+→ eliminar → toast "el Customer PO vuelve a estar Abierto" → CPO efectivamente 'Abierto' con
+"Generar Sales Order" de vuelta → Eliminar visible en el CPO → eliminar → `fn_op_cpo_eliminar` con
+el `p_id` correcto, panel cierra. `node --check` limpio. `?v=` de `index.html` subido a `20260818c`
+(D-185).
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
