@@ -123,6 +123,7 @@
       const lot = lotes.find(x => String(x.lot_id) === b.dataset.eliminar);
       if (lot) eliminarLote(lot);
     }));
+    ERP.marcarTabla(cont);   // patrón tabla→tarjeta en móvil (D-193/Fase 2) — 14 columnas, otro caso ancho
   }
 
   async function render(cont) {
