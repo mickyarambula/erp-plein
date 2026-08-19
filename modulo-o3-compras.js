@@ -53,6 +53,27 @@
        bloquea si se excede la tolerancia (mensaje legible, se muestra tal cual).
      fn_op_spo_eliminar(p_id) -> ok (el backend bloquea si ya hay líneas recibidas — mensaje
        legible, se muestra tal cual).
+   O3c (D-196, "documentos y envíos reales" — reusa ERP.opDocumentos, ver modulo-op-documentos.js):
+     v_op_spo_documento (supplier_po_id, folio, fecha, estado, moneda, nota, numero_proveedor,
+       enviada_en, confirmada_en, so_folio, proveedor_id, proveedor, proveedor_razon_social,
+       proveedor_direccion, proveedor_ciudad, proveedor_pais, proveedor_rfc, proveedor_email,
+       proveedor_email_facturacion, proveedor_whatsapp, total, lineas jsonb
+       [{linea, sku, qty, unidad, precio, moneda, total, nota}]) — todo lo necesario para armar el
+       PDF de la orden de compra SIN pedir datos del proveedor a mano (ya están registrados).
+     "Generar orden de compra": arma el PDF con ERP.opDocumentos.construirPdfOficial (mismo
+       membrete/verde de marca que el PO oficial legacy — v_documento_po/exportar.js — que Miguel
+       pidió reusar; aquí dibujado con jsPDF para producir un Blob real, no solo imprimirlo) y lo
+       guarda con ERP.opDocumentos.subir(..., storagePath: 'oc/{folio}.pdf', categoria='Orden de
+       compra') -> fn_op_doc_registrar(p_entidad='supplier_po', p_entidad_id=folio, ...).
+     "Enviar al proveedor": correo (ERP.enviarPorCorreoDoc, mailto interino — el envío real por
+       servicio queda para una 2ª vuelta, necesita dominio verificado) o WhatsApp (wa.me con URL
+       firmada de 90 días — wa.me no adjunta archivos, solo texto). Ambos registran con
+       ERP.opDocumentos.registrarEnvio -> fn_op_envio_registrar(p_canal='correo'|'whatsapp',
+       p_estado='enviado') y AL TERMINAR marcan fn_op_spo_set_estado(p_id,'Enviada') — "Marcar
+       enviada" ya no es un botón suelto, es consecuencia de haber enviado de verdad.
+     Documentos (v_op_documentos) y Envíos (v_op_envios) en la ficha: componente genérico
+       ERP.opDocumentos.montar()/montarEnvios() — el mismo que usará factura al cliente/liquidación
+       más adelante, aquí solo con entidad='supplier_po', entidad_id=folio.
    NOTA proveedor picker: se usa ERP.crearCombo sobre v_catc_contrapartes&es_proveedor=eq.true —
    el MISMO patrón real que usa O1-CPO para el cliente (búsqueda cliente-side sobre la lista
    completa). fn_op_sugerir_contraparte NO se usa aquí a propósito: está documentada como RPC
@@ -613,11 +634,12 @@
   async function verSPO(id) {
     ERP.cerrarPanel();
     ERP.abrirPanel('Compra', 'Cargando…', '<div class="skel">Cargando compra…</div>');
-    let s, lin;
+    let s, lin, docSpo;
     try {
-      [s, lin] = await Promise.all([
+      [s, lin, docSpo] = await Promise.all([
         q('v_op_supplier_po', `&supplier_po_id=eq.${Number(id)}`).then(r => r && r[0]),
-        q('v_op_spo_lineas', `&supplier_po_id=eq.${Number(id)}&order=linea_num.asc`).catch(() => [])
+        q('v_op_spo_lineas', `&supplier_po_id=eq.${Number(id)}&order=linea_num.asc`).catch(() => []),
+        q('v_op_spo_documento', `&supplier_po_id=eq.${Number(id)}`).then(r => r && r[0]).catch(() => null)
       ]);
     } catch (e) {
       ERP.abrirPanel('Compra', '', `<div class="errbox">No se pudo cargar la compra: ${esc(e.message)}</div>`);
@@ -656,8 +678,12 @@
 
     // Transiciones de gestión (O3b, D-194). Los estados de recepción los calcula el backend, no se
     // ofrecen aquí. Abierto → Enviada → Confirmada; Cancelar disponible mientras no haya recepción.
+    // O3c (D-196): "Enviada" ya NO se marca a mano — es consecuencia de "Enviar al proveedor" de
+    // verdad (ver abrirEnviarProveedor). puedeGenerarDoc: se puede (re)generar el PDF de la OC en
+    // cualquier estado activo, por si hace falta reimprimir/reenviar.
     const estL = String(s.estado || '').toLowerCase();
-    const puedeEnviar = puedeCap && estL === 'abierto';
+    const puedeGenerarDoc = puedeCap && estL !== 'cancelado';
+    const puedeEnviarProveedor = puedeCap && estL === 'abierto';
     const puedeConfirmar = puedeCap && estL === 'enviada';
     const puedeCancelar = puedeCap && ['abierto', 'enviada', 'confirmada'].includes(estL);
 
@@ -686,11 +712,18 @@
         </table></div>
         <div class="alias-ayuda">"Recibir" crea/agrega el lote de Inventario (O2) desde esta línea — puede recibirse en varias parcialidades. La <b>diferencia</b> vs. lo pedido es lo que se coteja contra la factura del proveedor.</div>
 
-        ${(puedeEnviar || puedeConfirmar || puedeCancelar) ? `<div class="so-estados">
-          ${puedeEnviar ? '<button class="btn-mini" id="spoEnviar">Marcar enviada al proveedor</button>' : ''}
+        <div class="so-estados">
+          ${puedeGenerarDoc ? `<button class="btn-mini" id="spoGenerarDoc">Generar orden de compra</button>` : ''}
+          ${puedeEnviarProveedor ? '<button class="btn-mini" id="spoEnviarProveedor">Enviar al proveedor</button>' : ''}
           ${puedeConfirmar ? '<button class="btn-mini" id="spoConfirmar">Marcar confirmada por el proveedor</button>' : ''}
           ${puedeCancelar ? '<button class="btn-mini gris" id="spoCancelarCompra">Cancelar compra</button>' : ''}
-        </div>` : ''}
+        </div>
+
+        <div class="seccion-head"><h4>Documentos</h4></div>
+        <div id="spoDocumentos"><div class="skel">Cargando…</div></div>
+
+        <div class="seccion-head"><h4>Envíos</h4></div>
+        <div id="spoEnvios"><div class="skel">Cargando…</div></div>
 
         <div class="acciones">
           ${puedeCap ? '<button class="btn-mini gris" id="spoEliminar">Eliminar</button>' : ''}
@@ -703,8 +736,10 @@
     document.getElementById('spoCerrar').addEventListener('click', ERP.cerrarPanel);
     const bDel = document.getElementById('spoEliminar');
     if (bDel) bDel.addEventListener('click', () => eliminarSPO(s));
-    const bEnviar = document.getElementById('spoEnviar');
-    if (bEnviar) bEnviar.addEventListener('click', () => cambiarEstadoSPO(s, 'Enviada'));
+    const bGenDoc = document.getElementById('spoGenerarDoc');
+    if (bGenDoc) bGenDoc.addEventListener('click', () => generarOrdenCompra(s, bGenDoc));
+    const bEnviarProv = document.getElementById('spoEnviarProveedor');
+    if (bEnviarProv) bEnviarProv.addEventListener('click', () => abrirEnviarProveedor(s));
     const bConfirmar = document.getElementById('spoConfirmar');
     if (bConfirmar) bConfirmar.addEventListener('click', () => cambiarEstadoSPO(s, 'Confirmada'));
     const bCancelar = document.getElementById('spoCancelarCompra');
@@ -718,6 +753,10 @@
     }));
     // Líneas de la compra (Pedido/Recibido/Pendiente/Costo/Recepción, D-194) — otro caso ancho.
     ERP.marcarTabla(document.getElementById('panelBody'));
+
+    // Documentos/Envíos (O3c, D-196) — componente genérico, entidad_id = FOLIO (no el id numérico).
+    ERP.opDocumentos.montar(document.getElementById('spoDocumentos'), { entidad: 'supplier_po', entidadId: s.folio });
+    ERP.opDocumentos.montarEnvios(document.getElementById('spoEnvios'), { entidad: 'supplier_po', entidadId: s.folio });
   }
 
   // Transición de estado de la compra (O3b, D-194). El backend valida (ej. bloquea Cancelar si ya
@@ -731,6 +770,204 @@
       verSPO(s.supplier_po_id);
     } catch (e) {
       if (!(ERP.avisarSiPermiso && ERP.avisarSiPermiso(e))) ERP.toast('err', esc(e.message), 9000);
+    }
+  }
+
+  /* ================= O3c: Generar orden de compra (PDF real) + Enviar al proveedor =================
+     Reusa ERP.opDocumentos (modulo-op-documentos.js): construirPdfOficial (mismo membrete/verde de
+     marca que el PO oficial legacy) + subir/urlFirmada/registrarEnvio, sobre v_op_spo_documento
+     (trae los datos del proveedor YA registrados — nunca se piden a mano aquí). */
+
+  function lineasOcParaPdf(po) {
+    const lin = Array.isArray(po.lineas) ? po.lineas : [];
+    return lin.map(l => ({
+      item: l.linea,
+      descripcion: [l.sku, l.unidad ? `(${l.unidad})` : '', l.nota ? `— ${l.nota}` : ''].filter(Boolean).join(' '),
+      qty: l.qty, precio: l.precio, total: l.total
+    }));
+  }
+
+  function bloqueProveedorOc(po) {
+    return [
+      po.proveedor_razon_social || po.proveedor,
+      po.proveedor_direccion,
+      [po.proveedor_ciudad, po.proveedor_pais].filter(Boolean).join(', ') || null,
+      po.proveedor_rfc ? `RFC: ${po.proveedor_rfc}` : null
+    ].filter(v => v && String(v).trim());
+  }
+
+  async function construirOcPdfBlob(po) {
+    const doc = await ERP.opDocumentos.construirPdfOficial({
+      titulo: 'PURCHASE ORDER',
+      meta: [
+        ['DATE', fecha(po.fecha)],
+        ['PO #', po.numero_proveedor || po.folio],
+        ['REF. INTERNA', po.folio],
+        ['ESTADO', po.estado],
+        ['MONEDA', po.moneda || 'USD']
+      ],
+      cajaIzq: { titulo: 'VENDOR', lineas: bloqueProveedorOc(po) },
+      cajaDer: { titulo: 'BILL TO', lineas: ERP.opDocumentos.bloqueEmpresaPleinPdf() },
+      lineas: lineasOcParaPdf(po),
+      total: po.total,
+      notaLabel: 'Notes',
+      nota: po.nota
+    });
+    return doc.output('blob');
+  }
+
+  const RUTA_OC = folio => `oc/${folio}.pdf`;   // ruta FIJA (task): regenerar reemplaza el mismo archivo
+
+  /** Documento 'Orden de compra' ya registrado para esta compra, si existe (evita regenerar/resubir
+      en cada envío — Enviar reusa el PDF que ya se generó). */
+  async function documentoOcExistente(s) {
+    try {
+      const docs = await ERP.opDocumentos.listarDocumentos('supplier_po', s.folio);
+      return docs.find(d => d.categoria === 'Orden de compra' && d.storage_path === RUTA_OC(s.folio)) || null;
+    } catch (_) { return null; }
+  }
+
+  async function generarOrdenCompra(s, boton) {
+    const txt = boton && boton.textContent;
+    if (boton) { boton.disabled = true; boton.textContent = 'Generando…'; }
+    limpiarAvisoFicha();
+    try {
+      const docSpo = await q('v_op_spo_documento', `&supplier_po_id=eq.${Number(s.supplier_po_id)}`).then(r => r && r[0]);
+      if (!docSpo) throw new Error('No se pudo leer el documento de la compra.');
+      const blob = await construirOcPdfBlob(docSpo);
+      await ERP.opDocumentos.subir({
+        entidad: 'supplier_po', entidadId: s.folio, archivo: blob,
+        nombreArchivo: `${s.folio}.pdf`, mime: 'application/pdf',
+        categoria: 'Orden de compra', storagePath: RUTA_OC(s.folio),
+        nota: 'Generada desde la ficha de la compra.'
+      });
+      ERP.marcarDatosSucios();
+      ERP.toast('ok', `Orden de compra <b>${esc(s.folio)}.pdf</b> generada y guardada.`);
+      const url = await ERP.opDocumentos.urlFirmada(RUTA_OC(s.folio), 300);
+      window.open(url, '_blank', 'noopener');
+      ERP.opDocumentos.montar(document.getElementById('spoDocumentos'), { entidad: 'supplier_po', entidadId: s.folio });
+    } catch (e) {
+      fichaAviso('err', `No se pudo generar la orden de compra: ${esc(e.message)}`);
+    }
+    if (boton) { boton.disabled = false; boton.textContent = txt; }
+  }
+
+  function limpiarAvisoFicha() { const el = document.getElementById('spoFichaAviso'); if (el) { el.className = 'aviso'; el.innerHTML = ''; } }
+
+  /** Asegura que el PDF de la OC ya esté en el bucket (lo genera si aún no existe) y regresa su
+      storage_path — tanto Correo (para "adjúntalo") como WhatsApp (para la URL firmada) lo usan. */
+  async function asegurarDocumentoOC(s) {
+    const existente = await documentoOcExistente(s);
+    if (existente) return existente.storage_path;
+    const docSpo = await q('v_op_spo_documento', `&supplier_po_id=eq.${Number(s.supplier_po_id)}`).then(r => r && r[0]);
+    if (!docSpo) throw new Error('No se pudo leer el documento de la compra.');
+    const blob = await construirOcPdfBlob(docSpo);
+    await ERP.opDocumentos.subir({
+      entidad: 'supplier_po', entidadId: s.folio, archivo: blob,
+      nombreArchivo: `${s.folio}.pdf`, mime: 'application/pdf',
+      categoria: 'Orden de compra', storagePath: RUTA_OC(s.folio)
+    });
+    return RUTA_OC(s.folio);
+  }
+
+  async function abrirEnviarProveedor(s) {
+    if (!ERP.puede('capturar')) return;
+    ERP.cerrarPanel();
+    ERP.abrirPanel('Enviar al proveedor', `${esc(s.folio || '')} · ${esc(s.proveedor || '')}`, '<div class="skel">Cargando datos del proveedor…</div>');
+    let docSpo;
+    try {
+      docSpo = await q('v_op_spo_documento', `&supplier_po_id=eq.${Number(s.supplier_po_id)}`).then(r => r && r[0]);
+      if (!docSpo) throw new Error('No se pudo leer el documento de la compra.');
+    } catch (e) {
+      ERP.abrirPanel('Enviar al proveedor', '', `<div class="errbox">${esc(e.message)}</div>`);
+      return;
+    }
+
+    ERP.abrirPanel('Enviar al proveedor', `${esc(s.folio || '')} · ${esc(s.proveedor || '')}`, `
+      <div class="form-erp">
+        <div class="det-grid">
+          <div class="det"><span class="l">Correo</span><span class="v mono">${docSpo.proveedor_email ? esc(docSpo.proveedor_email) : '<span class="i3">sin correo registrado</span>'}</span></div>
+          <div class="det"><span class="l">WhatsApp</span><span class="v mono">${docSpo.proveedor_whatsapp ? esc(docSpo.proveedor_whatsapp) : '<span class="i3">sin WhatsApp registrado</span>'}</span></div>
+        </div>
+        <div class="alias-ayuda">Estos datos vienen del Directorio (proveedor). Si faltan, captúralos ahí antes de enviar. Si el PDF todavía no existe, se genera automáticamente al enviar.</div>
+        <div class="acciones">
+          <button class="btn-mini" id="envCorreo"${docSpo.proveedor_email ? '' : ' disabled'}>Enviar por correo</button>
+          <button class="btn-mini" id="envWhatsapp"${docSpo.proveedor_whatsapp ? '' : ' disabled'}>Enviar por WhatsApp</button>
+          <button class="btn-mini gris" id="envCancelar">Cancelar</button>
+        </div>
+        <div class="aviso" id="envAviso"></div>
+      </div>`);
+
+    document.getElementById('envCancelar').addEventListener('click', () => verSPO(s.supplier_po_id));
+    const bCorreo = document.getElementById('envCorreo');
+    if (bCorreo) bCorreo.addEventListener('click', () => enviarOCPorCorreo(s, docSpo, bCorreo));
+    const bWa = document.getElementById('envWhatsapp');
+    if (bWa) bWa.addEventListener('click', () => enviarOCPorWhatsapp(s, docSpo, bWa));
+  }
+
+  function avisoEnv(tipo, html) {
+    const el = document.getElementById('envAviso');
+    if (el) { el.className = 'aviso visible ' + tipo; el.innerHTML = html; }
+  }
+
+  async function enviarOCPorCorreo(s, docSpo, boton) {
+    boton.disabled = true;
+    avisoEnv('warn', 'Preparando…');
+    try {
+      const path = await asegurarDocumentoOC(s);
+      // mailto interino (ERP.enviarPorCorreoDoc, comun.js): NO puede adjuntar el PDF — abre el
+      // borrador con destinatario/asunto/cuerpo y, en paralelo, reabre el PDF para adjuntarlo a
+      // mano. El envío real por servicio (Resend + dominio verificado) queda para una 2ª vuelta.
+      ERP.enviarPorCorreoDoc({
+        email: docSpo.proveedor_email,
+        asunto: `Orden de compra ${s.folio} — Plein Produce`,
+        cuerpo: `Hola,\n\nTe compartimos la orden de compra ${s.folio} de Plein Produce.\n` +
+          `Proveedor: ${docSpo.proveedor || ''}\nTotal: ${ERP.usd(docSpo.total)}\n\nSaludos.`,
+        sinEmailAviso: 'El proveedor no tiene correo registrado — captúralo en Directorio Comercial.',
+        descargar: () => { ERP.opDocumentos.urlFirmada(path, 300).then(url => window.open(url, '_blank', 'noopener')); }
+      });
+      await ERP.opDocumentos.registrarEnvio({
+        entidad: 'supplier_po', entidadId: s.folio, canal: 'correo', destinatario: docSpo.proveedor_email,
+        asunto: `Orden de compra ${s.folio} — Plein Produce`, pdfPath: path, estado: 'enviado',
+        contraparteId: docSpo.proveedor_id, proveedorEnvio: 'mailto'
+      });
+      await rpc('fn_op_spo_set_estado', { p_id: Number(s.supplier_po_id), p_estado: 'Enviada' });
+      ERP.marcarDatosSucios();
+      await recargar();
+      ERP.toast('ok', `Compra <b>${esc(s.folio)}</b> enviada y marcada como <b>Enviada</b>.`);
+      verSPO(s.supplier_po_id);
+    } catch (e) {
+      avisoEnv('err', `No se pudo enviar: ${esc(e.message)}`);
+      boton.disabled = false;
+    }
+  }
+
+  async function enviarOCPorWhatsapp(s, docSpo, boton) {
+    boton.disabled = true;
+    avisoEnv('warn', 'Preparando…');
+    try {
+      const digitos = String(docSpo.proveedor_whatsapp || '').replace(/\D/g, '');
+      if (!digitos) throw new Error('El proveedor no tiene WhatsApp registrado.');
+      const path = await asegurarDocumentoOC(s);
+      // wa.me NO adjunta archivos, solo texto — la liga (URL firmada 90 días) va en el mensaje.
+      const url90 = await ERP.opDocumentos.urlFirmada(path, 60 * 60 * 24 * 90);
+      const mensaje = `Hola, te compartimos la orden de compra ${s.folio} de Plein Produce.\n` +
+        `Proveedor: ${docSpo.proveedor || ''}\nTotal: ${ERP.usd(docSpo.total)}\n` +
+        `Documento (liga válida 90 días): ${url90}`;
+      await ERP.opDocumentos.registrarEnvio({
+        entidad: 'supplier_po', entidadId: s.folio, canal: 'whatsapp', destinatario: digitos,
+        mensaje, pdfPath: path, pdfUrl: url90, estado: 'enviado',
+        contraparteId: docSpo.proveedor_id, proveedorEnvio: 'wa.me'
+      });
+      await rpc('fn_op_spo_set_estado', { p_id: Number(s.supplier_po_id), p_estado: 'Enviada' });
+      ERP.marcarDatosSucios();
+      await recargar();
+      const win = window.open(`https://wa.me/${digitos}?text=${encodeURIComponent(mensaje)}`, '_blank', 'noopener');
+      ERP.toast('ok', `Compra <b>${esc(s.folio)}</b> marcada como <b>Enviada</b>.` + (win ? '' : ' No se pudo abrir WhatsApp automáticamente — revisa el bloqueo de ventanas emergentes.'));
+      verSPO(s.supplier_po_id);
+    } catch (e) {
+      avisoEnv('err', `No se pudo enviar: ${esc(e.message)}`);
+      boton.disabled = false;
     }
   }
 
