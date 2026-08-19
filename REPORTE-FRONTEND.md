@@ -4966,3 +4966,44 @@ código está completo y verificado; si persiste tras desplegar, sospechar cach�
 `index.html` no versiona los `<script src="modulo-*.js">`, así que un deploy nuevo puede seguir
 sirviendo JS viejo cacheado. No se tocó `index.html` (cache-busting a los 32 scripts es un cambio más
 amplio que este ticket — avisar si se quiere).
+
+## E130 (2026-08-18) — "Comprar" desde el SO + auto-asignación al recibir + Eliminar lote (backend D-192)
+
+Backend agregó 3 cosas para cerrar el hueco de re-captura redundante (Miguel vendió Maradol y
+terminó comprando Formosa por tener que re-elegir el SKU al capturar la compra por separado). Las 3
+ya venían probadas end-to-end por backend; esta sesión conectó el frontend.
+
+**"Generar compra" desde la ficha del Sales Order** (la pieza importante): botón nuevo en
+`modulo-o1-so.js` → `verSO()`, delega en `modulo-o3-compras.js` vía
+`ERP.o3AbrirSPODesdeSO(so.id, so.folio)` (misma convención de exponer funciones entre módulos ya
+usada para `o1AbrirRecibirInventario`/`o3AbrirSPO` — la lógica del panel vive en o3-compras.js, no
+se duplicó). El panel trae las líneas de `v_op_so_lineas` filtradas por `sales_order_id` y las
+muestra SOLO LECTURA (SKU + cantidad) — el usuario únicamente elige proveedor, N° de PO del
+proveedor, fecha, moneda, adjunto, nota, y costo unitario por línea (opcional, null válido en
+consignación). Guarda con `fn_op_spo_desde_so(p_sales_order_id, p_proveedor_id, p_costos jsonb,
+p_numero_proveedor, p_fecha, p_moneda, p_adjunto_ref, p_nota)`.
+
+**Auto-asignación al recibir, comunicada en pantalla:** `v_op_spo_lineas` trae ahora
+`so_linea_id`/`so_folio`/`auto_asigna` — la ficha de la compra muestra "se asignará solo a
+SO-26-001" bajo el SKU cuando aplica. `fn_op_spo_recibir_linea` devuelve `auto_asignado` y el toast
+distingue el caso ("Lote LOT-26-001 recibido y asignado a la venta (quedan N pendientes)") del
+normal.
+
+**Botón "Eliminar lote" en Inventario** (pedido por Miguel para limpiar pruebas/errores): botón por
+fila en `modulo-o1-inventario.js`, `confirm()` explícito, llama `fn_op_lot_eliminar(p_lot_id)`. Si
+el backend bloquea (inventario apartado), el mensaje se muestra tal cual; si el lote venía de una
+compra, esa línea vuelve sola a pendiente de recibir.
+
+**Verificado en navegador** (servidor local + mocks de los 3 RPCs nuevos, contexto aislado nuevo,
+flujo completo desde la ficha del SO hasta Inventario): "Generar compra" crea la compra ligada con
+el indicador de auto-asignación visible; "Recibir" dispara el toast exacto de auto-asignación y el
+tablero del SO sube Allocated/baja Open; en Inventario, "Eliminar" sobre un lote con reserva queda
+bloqueado con el mensaje del backend tal cual, y sobre un lote sin reserva se elimina y desaparece
+de la tabla. 0 errores de consola en todo el flujo. `node --check` limpio en los 3 archivos
+(`modulo-o1-so.js`, `modulo-o3-compras.js`, `modulo-o1-inventario.js`). `?v=` de `index.html` subido
+a `20260818g` (D-185). NO desplegado — `npx vercel --prod` lo corre Miguel.
+
+**D-190 confirmado cerrado por backend** (ya no pendiente): `'o3-compras'` dado de alta en
+`modulos_erp`/`rol_modulos`; el menú de Camino C trae Customer PO/Sales Orders/Inventario/Compras
+sin depender de URL directa. Backend también ocultó 24 módulos legacy — solo quedan visibles
+Inicio, Camino C (5) y Usuarios. `PENDIENTES-BACKEND.md` actualizado.

@@ -2700,3 +2700,53 @@ costear" vs. "$200.00 / $100.00 (33.33%)", exacto. `node --check` limpio en los 
 de `index.html` subido a `20260818f` (D-185).
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-18, continuación) — "Comprar" desde el SO + auto-asignación al recibir + Eliminar lote (D-192)
+_Backend agregó 3 cosas para eliminar la re-captura redundante que causaba errores reales (Miguel
+vendió Maradol y terminó comprando Formosa por tener que re-elegir el SKU al capturar la compra
+por separado). Las 3 ya probadas end-to-end por backend; esta sesión conecta el frontend. Frontend
+(Claude Code)._
+
+- **D-192a — "Generar compra" desde la ficha del Sales Order (la importante):** botón nuevo en
+  `modulo-o1-so.js` → `verSO()` que delega en `modulo-o3-compras.js` vía
+  `ERP.o3AbrirSPODesdeSO(so.id, so.folio)` (misma convención de exponer funciones entre módulos ya
+  usada para `o1AbrirRecibirInventario`/`o3AbrirSPO`). El panel nuevo (`abrirSPODesdeSO` en
+  o3-compras.js) trae las líneas de `v_op_so_lineas` filtradas por `sales_order_id` y las muestra
+  **SOLO LECTURA** (SKU + cantidad, sin picker ni input de cantidad) — el usuario únicamente elige
+  proveedor, N° de PO del proveedor, fecha, moneda, adjunto, nota, y el costo unitario por línea
+  (opcional — null válido en consignación). Guarda con `fn_op_spo_desde_so(p_sales_order_id,
+  p_proveedor_id, p_costos jsonb, p_numero_proveedor, p_fecha, p_moneda, p_adjunto_ref, p_nota)`,
+  `p_costos = [{so_linea_id, costo_unitario, costo_moneda}]`. Es intencionalmente la causa raíz que
+  se cierra aquí: SKU/cantidad ya no se vuelven a teclear, así que ya no hay superficie para
+  equivocar el producto entre la venta y la compra.
+- **D-192b — Auto-asignación al recibir, comunicada en el frontend:** `v_op_spo_lineas` ahora trae
+  `so_linea_id`/`so_folio`/`auto_asigna` — cuando `auto_asigna=true` (línea nacida de una SO vía
+  D-192a), la ficha de la compra muestra "se asignará solo a `SO-26-001`" bajo el SKU. Al recibir
+  esa línea, `fn_op_spo_recibir_linea` ahora devuelve `auto_asignado` (`{allocation_id,
+  pendiente_linea, disponible_lote_restante}` o `null`) — el toast distingue ambos casos: con
+  `auto_asignado`, "Lote LOT-26-001 recibido y asignado a la venta (quedan N pendientes)"; sin él,
+  el toast de siempre ("Línea recibida — lote LOT-26-001").
+- **D-192c — Botón "Eliminar lote" en Inventario (pedido por Miguel para limpiar pruebas/errores):**
+  botón nuevo por fila en `modulo-o1-inventario.js` → `pintarTabla()`, con `confirm()` explícito
+  (destructivo). Llama `fn_op_lot_eliminar(p_lot_id) -> {ok, lote_eliminado,
+  lineas_compra_reabiertas}`. Si el backend bloquea (lote con inventario apartado para una venta),
+  el mensaje llega legible y se muestra tal cual, sin reinterpretarlo. Si el lote nació de una línea
+  de compra, esa línea vuelve sola a quedar pendiente de recibir — el frontend solo recarga, no
+  reescribe nada de esa lógica.
+- **D-190 cerrado por backend (confirmado, ya no es pendiente):** `'o3-compras'` dado de alta en
+  `modulos_erp`/`rol_modulos` — el menú de Camino C ahora trae Customer PO/Sales Orders/Inventario/
+  Compras sin depender de URL directa. Backend también ocultó 24 módulos legacy del menú (solo
+  quedan Inicio, Camino C y Usuarios). `PENDIENTES-BACKEND.md` actualizado.
+
+**Verificado en navegador** (servidor local + mocks de `fn_op_spo_desde_so`/`fn_op_spo_recibir_linea`/
+`fn_op_lot_eliminar`, contexto nuevo, flujo completo): desde la ficha de una SO confirmada con una
+línea (Aguacate Hass, 100 CAJA) → "Generar compra" → proveedor "Rancho El Sol" + costo $12.50 →
+"Generar compra" crea `SPO-2026-09501` ligada a la SO, con "se asignará solo a SO-2026-09001" bajo
+el SKU → "Recibir" → toast exacto "Lote LOT-26-003 recibido y asignado a la venta (quedan 0
+pendientes)." → tablero del SO refleja Allocated 100/Open 0. En Inventario: "Eliminar" sobre ese
+lote (reservado=100) → bloqueado tal cual: "El lote LOT-26-003 tiene 100 caja(s) apartada(s) para
+una venta — libera la asignación primero."; "Eliminar" sobre un lote sin reserva → toast "Lote
+LOT-26-004 eliminado." y desaparece de la tabla. 0 errores de consola en todo el flujo. `node
+--check` limpio en los 3 archivos. `?v=` de `index.html` subido a `20260818g` (D-185).
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.

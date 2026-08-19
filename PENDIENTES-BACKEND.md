@@ -49,15 +49,11 @@ _Última actualización: 2026-08-12 — rediseño OP: backend COMPLETO y PROBADO
   cableados en el form con su gate. Overlap de paneles reverificado con contexto sin caché en los 3
   flujos (lista, ficha CPO, IA completo) — código correcto. Ver `BITACORA-DECISIONES.md` D-183 y
   `REPORTE-FRONTEND.md` E129 (addendum).
-- ⬜ **NUEVO (D-190, 2026-08-18) — dar de alta el módulo `'o3-compras'` en `modulos_erp` + concederlo
-  en `rol_modulos` (mismo hueco ya documentado para `o1-cpo`/`o1-so`/`operaciones` arriba):**
-  `modulo-o3-compras.js` está desplegado y funciona 100% (verificado en producción: 0 errores JS,
-  script 200, HTML correcto) — el ítem de menú "Compras" simplemente está OCULTO porque
-  `ERP.perfil.modulos` (que viene de `modulos_erp`+`rol_modulos`/`usuario_modulos`, D-105) todavía
-  no incluye la clave `'o3-compras'`. El router SÍ deja llegar por URL directa (`#/o3-compras`)
-  mientras tanto. Sin esto, cualquier usuario reportará "no veo Compras" aunque el código esté
-  perfecto — es exactamente el mismo patrón de D-105/E121 con `o1-cpo`/`o1-so` y con `'operaciones'`
-  (ver arriba). Detalle completo del diagnóstico en `BITACORA-DECISIONES.md` D-190.
+- ✅ **RESUELTO (D-190, cerrado 2026-08-18 por backend) — módulo `'o3-compras'` dado de alta en
+  `modulos_erp` + `rol_modulos`:** confirmado en la sesión D-192 — el menú ya trae "Compras" junto
+  con el resto de Camino C (Customer PO, Sales Orders, Inventario) sin depender de URL directa. El
+  mismo backend también limpió el menú: 24 módulos legacy quedaron ocultos, solo quedan visibles
+  Inicio, Camino C (5 módulos) y Usuarios.
 - ⬜ **Pendiente (backend/Miguel, esto lo hace el chat con Supabase MCP):** correr el **checkpoint
   de O1** (§9 de `DISENO-O1-REALINEAMIENTO.md`): registrar un Customer PO real → generar y confirmar
   su Sales Order → ver tablero Required/Open. Con eso O1 cierra y se abre O2 (Inventario/Lots/
