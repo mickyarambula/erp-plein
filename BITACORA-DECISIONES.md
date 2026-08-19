@@ -2988,3 +2988,63 @@ sin scroll horizontal (hereda D-193/Fase 2).
 `index.html` a `20260818k` (D-185). NO desplegado — `npx vercel --prod` lo corre Miguel.
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-19, continuación) — 2 correcciones a O3c: membrete real en el PDF + gating de envío (D-197)
+_Miguel probó O3c (D-196) en producción y reportó 2 problemas con evidencia. Causa raíz del
+PROBLEMA 1, según `REGLAS-DE-TRABAJO.md` §11.1: se instruyó "reusa el formato legacy" sin haber
+visto antes la hoja membretada real ni las plantillas oficiales — quedó feo. PROBLEMA 2 es el
+mismo error de patrón que §11.4 ya tenía registrado (gating de estado demasiado estricto).
+Backend intacto — 100% frontend. Frontend (Claude Code)._
+
+- **D-197a — PROBLEMA 1, PDF encimado, corregido con la hoja membretada real:** Miguel subió
+  `assets/hoja-membretada.jpg` (1275×1650 @150dpi, movida a `assets/` — llegó al repo en la raíz)
+  y las plantillas `Purchase Order/Quote/Invoice/Hoja Membretada Template.docx` (leídas como texto
+  plano + su imagen de referencia embebida). `construirPdfOficial()` (`modulo-op-documentos.js`)
+  ahora usa esa hoja como **fondo de página completo** (612×792pt, `cargarMembreteDataURL()`
+  cacheada — mismo patrón que `ERP.logoPdfDataURL`) pintado ANTES de cualquier contenido, con
+  márgenes seguros medidos contra el membrete real (arriba 130pt, abajo 110pt, laterales 50pt).
+  **Ya NO se redibuja logo ni dirección de Plein a mano** (eso vive en el membrete — duplicarlo
+  era parte del problema). Estructura tomada de las plantillas: título a la derecha + meta (DATE/
+  PO#/VENDOR/MONEDA, sin repetir REF. INTERNA cuando es igual al PO#) + cajas BILL TO/SHIP TO
+  (ambas con los datos de Plein — no hay campo de "ubicación de entrega" propio por compra en
+  `v_op_spo_documento` todavía, así que SHIP TO usa la misma dirección que BILL TO: dato real
+  conocido, no inventado) + tabla de líneas + totales SUBTOTAL/SALES TAX/OTHER/TOTAL (antes solo
+  TOTAL) + "Other Comments or Special Instructions". `didDrawPage` repinta el membrete si el PDF
+  se pagina. **Segundo bug encontrado y corregido en la misma verificación** (abriendo el PDF real,
+  no solo leyendo el código): el meta original tenía label y valor ambos `align:'right'` contra
+  pivotes fijos — un valor largo (la razón social del proveedor en VENDOR) se encimaba con su
+  propio label ("VENDORRancho El Sol S.A. de C.V." pegado). Se cambió a label right-aligned en
+  columna angosta fija + valor LEFT-aligned con `splitTextToSize` (envuelve a varias líneas si
+  hace falta) — no se puede encimar sin importar cuánto mida el valor.
+- **D-197b — PROBLEMA 2, "Enviar al proveedor" desaparecía al avanzar de estado:** gating
+  corregido de `estL === 'abierto'` a `estL !== 'cancelado'` — disponible en cualquier estado
+  activo (Abierto/Enviada/Confirmada/Recibido parcial/Recibido), reenviar es un caso real (no
+  llegó, se manda a otro contacto, el proveedor lo vuelve a pedir). El cambio de estado a
+  'Enviada' SÍ se dejó condicionado: `marcarEnviadaSiAbierto(s)` (nueva) solo llama
+  `fn_op_spo_set_estado` si la compra sigue en Abierto — si ya avanzó, el envío se registra igual
+  (rastro completo en Envíos) pero NO se toca el estado, evitando la excepción del backend por una
+  transición inválida (Confirmada→Enviada). El toast distingue ambos casos ("enviada" vs. "enviada
+  y marcada como Enviada").
+- **D-197c — nuevo en el repo, aplica hacia adelante:** `REGLAS-DE-TRABAJO.md` (protocolo
+  canónico, incluye el registro honesto de estos mismos 2 errores en su §11) y
+  `MODELO-INGRESOS-Y-CAPAS.md` actualizado — ambos llegaron ya escritos/editados (no por esta
+  sesión); se leyeron y quedan como referencia viva. **No se tocaron/commitearon en esta sesión**
+  — quedan como cambios locales sin commitear, fuera del alcance de este fix, para que quien los
+  esté editando (Miguel/backend) decida cuándo cerrarlos.
+
+**Verificado en navegador (Chrome DevTools, PDF real abierto y leído visualmente, no solo generado
+en memoria):** caso VENDOR corto (Rancho El Sol S.A. de C.V.) y caso VENDOR largo forzado
+("Empacadora y Distribuidora Agropecuaria Rancho El Sol S.A. de C.V.", 3 líneas de wrap) — ambos
+sin overlap con DATE/PO#/REF. INTERNA/MONEDA debajo, sin overlap con las cajas BILL TO/SHIP TO, sin
+overlap con la banda del membrete arriba ni el pie verde abajo. Tabla de 3 líneas + totales +
+notas largas, todo dentro del margen. **Gating de envío:** compra en **Confirmada** → "Enviar al
+proveedor" visible (antes no aparecía) → Correo enviado → aparece en Envíos (`canal:'correo'`,
+`estado:'enviado'`) y **ESTADO sigue en Confirmada** (`fn_op_spo_set_estado` nunca se llamó,
+confirmado por log de llamadas vacío). Compra en **Abierto** → WhatsApp enviado → envío registrado
+y **ESTADO cambia a Enviada** con timestamp (`fn_op_spo_set_estado` se llamó exactamente una vez).
+0 errores de consola en todo el flujo.
+
+`node --check` limpio en `modulo-o3-compras.js`/`modulo-op-documentos.js`. `?v=` de `index.html` a
+`20260818l` (D-185). NO desplegado — `npx vercel --prod` lo corre Miguel.
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.

@@ -5171,3 +5171,40 @@ timestamp, botones cambian según gating. Adjuntar documento con categoría + An
 
 `node --check` limpio en `modulo-o3-compras.js` y `modulo-op-documentos.js` (nuevo). `?v=` a
 `20260818k` (D-185). NO desplegado (Miguel corre `npx vercel --prod`).
+
+## E135 (2026-08-19) — O3c: 2 correcciones post-producción — membrete real + gating de envío (D-197)
+
+Miguel probó O3c en producción y reportó 2 problemas con evidencia.
+
+**PROBLEMA 1 — PDF encimado.** Causa raíz: se instruyó "reusa el formato legacy" sin haber visto
+antes la hoja membretada real ni las plantillas oficiales (`REGLAS-DE-TRABAJO.md` §11.1). Miguel
+subió `assets/hoja-membretada.jpg` (real, 1275×1650) y `Purchase Order/Quote/Invoice Template.docx`.
+`construirPdfOficial()` ahora usa la hoja como fondo de página completo (612×792pt, cacheado igual
+que `ERP.logoPdfDataURL`), pintado antes de cualquier contenido, con márgenes reales (arriba 130,
+abajo 110, laterales 50) — **ya no redibuja logo/dirección a mano**. Estructura tomada de las
+plantillas: título + meta (DATE/PO#/VENDOR/MONEDA, sin duplicar REF. INTERNA) + BILL TO/SHIP TO +
+tabla + totales SUBTOTAL/SALES TAX/OTHER/TOTAL + comentarios. **Segundo bug encontrado abriendo el
+PDF real** (no solo leyendo código): el meta usaba dos columnas `align:'right'` independientes —
+un VENDOR largo se encimaba con su label. Fix: label right-aligned en columna fija + valor
+LEFT-aligned con `splitTextToSize` (envuelve a varias líneas), nunca se puede encimar.
+
+**PROBLEMA 2 — "Enviar al proveedor" desaparecía al avanzar de estado** (mismo patrón de error ya
+registrado en `REGLAS-DE-TRABAJO.md` §11.4). Gating corregido de `estado==='abierto'` a
+`estado!=='cancelado'` — reenviar es válido en cualquier estado activo. El cambio a 'Enviada' SÍ
+queda condicionado (`marcarEnviadaSiAbierto()`, nueva): solo si la compra sigue en Abierto: si ya
+avanzó, el envío se registra igual pero no se toca el estado (evita que el backend rechace la
+transición inválida).
+
+**Verificado en navegador** (PDF real abierto y leído visualmente): caso VENDOR corto y caso
+VENDOR largo forzado (3 líneas de wrap) — sin overlap en ningún bloque. Gating: compra Confirmada
+→ "Enviar al proveedor" visible, Correo enviado → aparece en Envíos, ESTADO sigue Confirmada
+(`fn_op_spo_set_estado` nunca llamado). Compra Abierto → WhatsApp enviado → ESTADO cambia a
+Enviada. 0 errores de consola.
+
+**Nuevo en el repo (no tocado por esta sesión, solo leído):** `REGLAS-DE-TRABAJO.md` (protocolo
+canónico, incluye estos mismos 2 errores en su §11 de errores ya cometidos) y
+`MODELO-INGRESOS-Y-CAPAS.md` actualizado — ambos quedan como cambios locales sin commitear, fuera
+del alcance de este fix.
+
+`node --check` limpio en los 2 archivos. `?v=` a `20260818l` (D-185). NO desplegado (Miguel corre
+`npx vercel --prod`).
