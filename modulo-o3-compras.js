@@ -7,12 +7,19 @@
    SOLO FRONTEND. Lee por vistas en public, escribe por RPCs SECURITY DEFINER (op cerrado fuera del API).
    Vistas:
      v_op_supplier_po (supplier_po_id, folio, proveedor, numero_proveedor, fecha, moneda, estado,
-       so_folio, adjunto_ref, nota, num_lineas, total_costo)
+       so_folio, adjunto_ref, nota, num_lineas, total_costo, enviada_en, confirmada_en)
+       — estado (O3b, D-194): Abierto → Enviada → Confirmada → Recibido parcial → Recibido (+ Cancelado).
+       Los estados de RECEPCIÓN (parcial/recibido) los calcula el backend solo; los de gestión
+       (Enviada/Confirmada/Cancelado) se fijan con fn_op_spo_set_estado. enviada_en/confirmada_en
+       son timestamps que se muestran si existen.
      v_op_spo_lineas (linea_id, supplier_po_id, spo_folio, linea_num, sku_id, sku, cantidad, uom,
-       costo_unitario, costo_moneda, costo_linea, recibido, lot_id, lot_folio, recibida,
-       so_linea_id, so_folio, auto_asigna) — so_linea_id/so_folio/auto_asigna nuevos (D-192,
-       "Comprar desde el SO"): cuando la línea de compra nació de una Sales Order, auto_asigna=true
-       y recibirla asigna sola el lote a esa línea de venta (ver fn_op_spo_recibir_linea abajo).
+       costo_unitario, costo_moneda, costo_linea, recibido, pendiente, diferencia, tolerancia_pct,
+       estado_recepcion, lot_id, lot_folio, recibida, so_linea_id, so_folio, auto_asigna).
+       O3b (D-194): recibido/pendiente/diferencia/tolerancia_pct/estado_recepcion — una línea se
+       recibe VARIAS veces (parcial y luego el resto). estado_recepcion = 'Pendiente'|'Parcial'|
+       'Completo'|'Recibido de mas'. diferencia = recibido − pedido (≠0 = vigilar vs. la factura).
+       so_linea_id/so_folio/auto_asigna (D-192): si la línea nació de una Sales Order, auto_asigna=
+       true y recibirla asigna sola el lote a esa línea de venta (ver fn_op_spo_recibir_linea abajo).
    Catálogos (vistas ya vivas, reusadas del resto de O1/O2):
      v_catc_contrapartes (id, nombre, alias, es_proveedor, ...) — picker de proveedor.
      v_op_sales_orders — dropdown opcional para ligar la compra a una venta (trazabilidad).
@@ -32,11 +39,18 @@
        que era justo la causa de errores de recaptura (ej. vender Maradol y terminar comprando
        Formosa). p_costos = [{so_linea_id, costo_unitario|null, costo_moneda}] (costo puede ir
        null en consignación, igual que fn_op_spo_alta).
-     fn_op_spo_recibir_linea(p_spo_linea_id, p_location_id, p_fecha) -> { ok, lot_id, lot_folio,
-       auto_asignado } — nace el lote de Inventario (O2) DESDE esta línea. `auto_asignado` (D-192)
-       viene {allocation_id, pendiente_linea, disponible_lote_restante} cuando la línea venía ligada
-       a una línea de venta (auto_asigna=true) — el backend ya asignó el lote solo; viene null si
-       no. El toast debe distinguir ambos casos (ver guardarRecibirLinea).
+     fn_op_spo_set_estado(p_id, p_estado) — p_estado ∈ 'Abierto'|'Enviada'|'Confirmada'|'Cancelado'
+       (O3b, D-194). Los estados de recepción NO se fijan por aquí (los calcula el sistema). Si la
+       compra ya tiene mercancía recibida, el backend bloquea con mensaje legible (se muestra tal cual).
+     fn_op_spo_recibir_linea(p_spo_linea_id, p_location_id, p_fecha, p_cantidad) -> { ok, lot_id,
+       lot_folio, recibido_ahora, recibido_total, pedido, diferencia, estado_linea, auto_asignado }
+       — nace/agrega el lote de Inventario (O2) DESDE esta línea. p_cantidad (O3b, D-194) = cuánto
+       llegó REALMENTE; NULL = recibe todo lo pendiente (comportamiento previo). estado_linea =
+       'Parcial'|'Completo'|'Recibido de mas' (caso real: pediste 226 y llegaron 200). El toast lo
+       usa: si Parcial dice cuánto falta; si "Recibido de mas" lo marca claro. `auto_asignado`
+       (D-192) = {allocation_id, pendiente_linea, disponible_lote_restante} si la línea venía ligada
+       a una venta (auto_asigna=true) — el backend ya asignó el lote solo; null si no. El backend
+       bloquea si se excede la tolerancia (mensaje legible, se muestra tal cual).
      fn_op_spo_eliminar(p_id) -> ok (el backend bloquea si ya hay líneas recibidas — mensaje
        legible, se muestra tal cual).
    NOTA proveedor picker: se usa ERP.crearCombo sobre v_catc_contrapartes&es_proveedor=eq.true —
@@ -64,11 +78,29 @@
   };
   const mesActual = () => hoyISO().slice(0, 7);
 
-  // Pastilla de estado de la compra.
+  // Pastilla de estado de la compra (cabecera). O3b (D-194): Abierto → Enviada → Confirmada →
+  // Recibido parcial → Recibido (+ Cancelado). Enviada/Confirmada = en curso (azul); recibido
+  // completo = verde; parcial/abierto = ámbar (aún requiere acción); cancelado = rojo.
   function chipEstado(est) {
     const e = String(est || '').toLowerCase();
-    const cls = e === 'recibido' ? 'verde' : e.includes('parcial') ? 'azul' : e === 'abierto' ? 'ambar' : e.includes('cancel') ? 'rojo' : 'gris';
+    const cls = e.includes('cancel') ? 'rojo'
+      : e === 'recibido' ? 'verde'
+      : e.includes('parcial') ? 'ambar'
+      : (e === 'enviada' || e === 'confirmada') ? 'azul'
+      : e === 'abierto' ? 'ambar'
+      : 'gris';
     return `<span class="pill ${cls}">${esc(est || '—')}</span>`;
+  }
+
+  // Pastilla del estado de RECEPCIÓN de una línea (lo calcula el backend). Completo = verde;
+  // Parcial = ámbar (falta mercancía); Recibido de más = rojo (vigilar vs. factura); Pendiente = gris.
+  function chipRecepcion(est) {
+    const e = String(est || '').toLowerCase();
+    const cls = e === 'completo' ? 'verde'
+      : e === 'parcial' ? 'ambar'
+      : (e.includes('mas') || e.includes('más')) ? 'rojo'
+      : 'gris';
+    return `<span class="pill ${cls}">${esc(est || 'Pendiente')}</span>`;
   }
 
   /* ---- Adjunto (idéntico a O1-CPO, mismo bucket) ---- */
@@ -594,18 +626,39 @@
 
     const puedeCap = ERP.puede('capturar');
     const lineasF = lin || [];
-    const hayRecibidas = lineasF.some(l => l.recibida);
 
-    const filasLineas = lineasF.map(l => `<tr>
-      <td class="mono">${esc(l.linea_num ?? '—')}</td>
-      <td class="ent">${esc(l.sku || '—')}${l.auto_asigna ? `<div class="i3" style="font-size:11px">se asignará solo a <span class="mono">${esc(l.so_folio || '')}</span></div>` : ''}</td>
-      <td class="mono">${esc(l.uom || '—')}</td>
-      <td class="num">${esc(ERP.fmt0(l.cantidad))}</td>
-      <td class="num">${l.costo_unitario != null ? esc(ERP.usd(l.costo_unitario)) + ' ' + esc(l.costo_moneda || 'USD') : '<span class="i3">—</span>'}</td>
-      <td class="num">${l.costo_linea != null ? esc(ERP.usd(l.costo_linea)) : '<span class="i3">—</span>'}</td>
-      <td>${l.recibida ? `<span class="pill verde">Recibida</span><div class="i3" style="font-size:11px">${esc(l.lot_folio || '')}</div>` : '<span class="pill ambar">Pendiente</span>'}</td>
-      <td>${(!l.recibida && puedeCap) ? `<button type="button" class="btn-cap recibir-linea" data-linea-id="${esc(l.linea_id)}">Recibir</button>` : ''}</td>
-    </tr>`).join('');
+    const filasLineas = lineasF.map(l => {
+      const pedido = Number(l.cantidad) || 0;
+      const recibido = Number(l.recibido) || 0;
+      const pendiente = l.pendiente != null ? Number(l.pendiente) : Math.max(pedido - recibido, 0);
+      const tol = Number(l.tolerancia_pct) || 0;
+      const maxConTol = pedido * (1 + tol / 100);
+      // Se puede recibir mientras no se llegue al máximo con tolerancia (permite recibir en varias
+      // parcialidades y también un excedente dentro de tolerancia). Solo se oculta cuando ya no cabe más.
+      const puedeRecibir = puedeCap && recibido < maxConTol - 1e-6;
+      // diferencia ≠ 0 = lo que hay que vigilar contra la factura del proveedor: se resalta.
+      const dif = l.diferencia;
+      const difTxt = (dif != null && Number(dif) !== 0)
+        ? `<div class="i3" style="font-size:11px;color:var(--rojo);font-weight:600">${Number(dif) > 0 ? '+' : ''}${esc(ERP.fmt0(dif))} vs pedido</div>` : '';
+      return `<tr>
+        <td class="mono">${esc(l.linea_num ?? '—')}</td>
+        <td class="ent">${esc(l.sku || '—')}${l.auto_asigna ? `<div class="i3" style="font-size:11px">se asignará solo a <span class="mono">${esc(l.so_folio || '')}</span></div>` : ''}</td>
+        <td class="mono">${esc(l.uom || '—')}</td>
+        <td class="num">${esc(ERP.fmt0(pedido))}</td>
+        <td class="num">${esc(ERP.fmt0(recibido))}${difTxt}</td>
+        <td class="num">${esc(ERP.fmt0(pendiente))}</td>
+        <td class="num">${l.costo_unitario != null ? esc(ERP.usd(l.costo_unitario)) + ' ' + esc(l.costo_moneda || 'USD') : '<span class="i3">—</span>'}</td>
+        <td>${chipRecepcion(l.estado_recepcion)}${l.lot_folio ? `<div class="i3" style="font-size:11px">${esc(l.lot_folio)}</div>` : ''}</td>
+        <td>${puedeRecibir ? `<button type="button" class="btn-cap recibir-linea" data-linea-id="${esc(l.linea_id)}">Recibir</button>` : ''}</td>
+      </tr>`;
+    }).join('');
+
+    // Transiciones de gestión (O3b, D-194). Los estados de recepción los calcula el backend, no se
+    // ofrecen aquí. Abierto → Enviada → Confirmada; Cancelar disponible mientras no haya recepción.
+    const estL = String(s.estado || '').toLowerCase();
+    const puedeEnviar = puedeCap && estL === 'abierto';
+    const puedeConfirmar = puedeCap && estL === 'enviada';
+    const puedeCancelar = puedeCap && ['abierto', 'enviada', 'confirmada'].includes(estL);
 
     ERP.abrirPanel(`Compra <span class="mono">${esc(s.folio || '')}</span>`, esc(s.proveedor || ''), `
       <div class="so-ficha">
@@ -615,6 +668,8 @@
           <div class="det"><span class="l">Fecha</span><span class="v">${esc(fecha(s.fecha))}</span></div>
           <div class="det"><span class="l">Moneda</span><span class="v mono">${esc(s.moneda || '—')}</span></div>
           <div class="det"><span class="l">Estado</span><span class="v">${chipEstado(s.estado)}</span></div>
+          ${s.enviada_en ? `<div class="det"><span class="l">Enviada</span><span class="v">${esc(fecha(s.enviada_en))}</span></div>` : ''}
+          ${s.confirmada_en ? `<div class="det"><span class="l">Confirmada</span><span class="v">${esc(fecha(s.confirmada_en))}</span></div>` : ''}
           <div class="det"><span class="l">Sales Order</span><span class="v mono">${esc(s.so_folio || '—')}</span></div>
           <div class="det"><span class="l">Total costo</span><span class="v mono">${esc(ERP.usd(s.total_costo))}</span></div>
           <div class="det"><span class="l">Adjunto</span><span class="v">${adjuntoHTML(s.adjunto_ref)}</span></div>
@@ -623,11 +678,18 @@
 
         <div class="seccion-head"><h4>Líneas</h4></div>
         <div class="tabla-wrap"><table class="so-tablero">
-          <thead><tr><th>#</th><th>SKU</th><th>UOM</th><th class="num">Cantidad</th>
-            <th class="num">Costo unit.</th><th class="num">Costo línea</th><th>Recepción</th><th></th></tr></thead>
-          <tbody>${filasLineas || '<tr><td colspan="8" class="vacio">Sin líneas.</td></tr>'}</tbody>
+          <thead><tr><th>#</th><th>SKU</th><th>UOM</th>
+            <th class="num">Pedido</th><th class="num">Recibido</th><th class="num">Pendiente</th>
+            <th class="num">Costo unit.</th><th>Recepción</th><th></th></tr></thead>
+          <tbody>${filasLineas || '<tr><td colspan="9" class="vacio">Sin líneas.</td></tr>'}</tbody>
         </table></div>
-        <div class="alias-ayuda">"Recibir" crea el lote de Inventario (O2) desde esta línea — ya no se captura suelto.</div>
+        <div class="alias-ayuda">"Recibir" crea/agrega el lote de Inventario (O2) desde esta línea — puede recibirse en varias parcialidades. La <b>diferencia</b> vs. lo pedido es lo que se coteja contra la factura del proveedor.</div>
+
+        ${(puedeEnviar || puedeConfirmar || puedeCancelar) ? `<div class="so-estados">
+          ${puedeEnviar ? '<button class="btn-mini" id="spoEnviar">Marcar enviada al proveedor</button>' : ''}
+          ${puedeConfirmar ? '<button class="btn-mini" id="spoConfirmar">Marcar confirmada por el proveedor</button>' : ''}
+          ${puedeCancelar ? '<button class="btn-mini gris" id="spoCancelarCompra">Cancelar compra</button>' : ''}
+        </div>` : ''}
 
         <div class="acciones">
           ${puedeCap ? '<button class="btn-mini gris" id="spoEliminar">Eliminar</button>' : ''}
@@ -640,10 +702,33 @@
     document.getElementById('spoCerrar').addEventListener('click', ERP.cerrarPanel);
     const bDel = document.getElementById('spoEliminar');
     if (bDel) bDel.addEventListener('click', () => eliminarSPO(s));
+    const bEnviar = document.getElementById('spoEnviar');
+    if (bEnviar) bEnviar.addEventListener('click', () => cambiarEstadoSPO(s, 'Enviada'));
+    const bConfirmar = document.getElementById('spoConfirmar');
+    if (bConfirmar) bConfirmar.addEventListener('click', () => cambiarEstadoSPO(s, 'Confirmada'));
+    const bCancelar = document.getElementById('spoCancelarCompra');
+    if (bCancelar) bCancelar.addEventListener('click', () => {
+      if (!confirm(`¿Cancelar la compra ${s.folio}? Se marca como Cancelada (no se borra el registro).`)) return;
+      cambiarEstadoSPO(s, 'Cancelado');
+    });
     document.querySelectorAll('.recibir-linea').forEach(b => b.addEventListener('click', () => {
       const l = lineasF.find(x => String(x.linea_id) === b.dataset.lineaId);
       if (l) abrirRecibirLinea(s, l);
     }));
+  }
+
+  // Transición de estado de la compra (O3b, D-194). El backend valida (ej. bloquea Cancelar si ya
+  // hay mercancía recibida) y devuelve el mensaje legible, que se muestra tal cual.
+  async function cambiarEstadoSPO(s, nuevo) {
+    try {
+      await rpc('fn_op_spo_set_estado', { p_id: Number(s.supplier_po_id), p_estado: nuevo });
+      ERP.toast('ok', `Compra <b>${esc(s.folio || '')}</b> → <b>${esc(nuevo)}</b>.`);
+      ERP.marcarDatosSucios();
+      await recargar();
+      verSPO(s.supplier_po_id);
+    } catch (e) {
+      if (!(ERP.avisarSiPermiso && ERP.avisarSiPermiso(e))) ERP.toast('err', esc(e.message), 9000);
+    }
   }
 
   async function eliminarSPO(s) {
@@ -690,13 +775,24 @@
     });
     ubicacionesEnMemoria = [...mapa.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
 
+    const pedido = Number(l.cantidad) || 0;
+    const yaRecibido = Number(l.recibido) || 0;
+    const pendiente = l.pendiente != null ? Number(l.pendiente) : Math.max(pedido - yaRecibido, 0);
+
     ERP.abrirPanel('Recibir línea', `${esc(s.folio || '')} · ${esc(l.sku || '')}`, `
       <div class="form-erp">
         <div class="det-grid">
-          <div class="det"><span class="l">Cantidad</span><span class="v mono">${esc(ERP.fmt0(l.cantidad))} ${esc(l.uom || '')}</span></div>
+          <div class="det"><span class="l">Pedido</span><span class="v mono">${esc(ERP.fmt0(pedido))} ${esc(l.uom || '')}</span></div>
+          <div class="det"><span class="l">Ya recibido</span><span class="v mono">${esc(ERP.fmt0(yaRecibido))}</span></div>
+          <div class="det"><span class="l">Pendiente</span><span class="v mono">${esc(ERP.fmt0(pendiente))}</span></div>
           <div class="det"><span class="l">Costo unit.</span><span class="v mono">${l.costo_unitario != null ? esc(ERP.usd(l.costo_unitario)) + ' ' + esc(l.costo_moneda || 'USD') : 'Sin costear'}</span></div>
         </div>
         <div class="campos">
+          <div class="campo">
+            <label>Cantidad recibida <span class="req">*</span></label>
+            <input id="recLiCantidad" class="mono" type="number" step="0.01" min="0" value="${esc(pendiente)}">
+            <div class="alias-ayuda">Lo que llegó realmente. Prellenado con lo pendiente; edítalo si llegó distinto (ej. pediste 226 y llegaron 200). Se puede recibir en varias parcialidades.</div>
+          </div>
           <div class="campo ancho">
             <label>Ubicación <span class="req">*</span></label>
             <div id="recLiUbicacion"></div>
@@ -769,25 +865,45 @@
     const location_id = comboUbicacionRec && comboUbicacionRec.valorId();
     if (!location_id) { avisoRec('err', 'Elige o crea una ubicación.'); return; }
     const fechaVal = (document.getElementById('recLiFecha') || {}).value || null;
+    // p_cantidad = lo que llegó realmente; null (input vacío) = recibe todo lo pendiente.
+    const cantVal = numOrNull((document.getElementById('recLiCantidad') || {}).value);
+    if (cantVal != null && !(cantVal > 0)) { avisoRec('err', 'La cantidad recibida debe ser mayor a cero.'); return; }
 
     const btn = document.getElementById('recLiGuardar');
     btn.disabled = true;
     avisoRec('warn', 'Recibiendo…');
     try {
-      const r = uno(await rpc('fn_op_spo_recibir_linea', { p_spo_linea_id: Number(l.linea_id), p_location_id: Number(location_id), p_fecha: fechaVal }));
-      // auto_asignado (D-192): la línea venía ligada a una línea de venta (auto_asigna=true) y el
-      // backend ya asignó el lote solo — el toast lo distingue del caso normal, no un texto genérico.
+      const r = uno(await rpc('fn_op_spo_recibir_linea', {
+        p_spo_linea_id: Number(l.linea_id), p_location_id: Number(location_id),
+        p_fecha: fechaVal, p_cantidad: cantVal
+      }));
+      // estado_linea (O3b, D-194): Parcial → di cuánto falta; Recibido de más → márcalo claro;
+      // Completo → recepción normal. auto_asignado (D-192) → nota extra de asignación a la venta.
+      const lot = esc(r.lot_folio || '');
+      const est = String(r.estado_linea || '').toLowerCase();
+      let tipo = 'ok', msg;
+      if (est === 'parcial') {
+        tipo = 'warn';
+        const falta = (r.pedido != null && r.recibido_total != null) ? Number(r.pedido) - Number(r.recibido_total) : null;
+        msg = `Recibido parcial — lote <b>${lot}</b> (${esc(ERP.fmt0(r.recibido_ahora))} ahora · ${esc(ERP.fmt0(r.recibido_total))} de ${esc(ERP.fmt0(r.pedido))})`
+          + (falta != null ? `, faltan <b>${esc(ERP.fmt0(falta))}</b>.` : '.');
+      } else if (est.includes('mas') || est.includes('más')) {
+        tipo = 'warn';
+        const dif = r.diferencia != null ? `${Number(r.diferencia) > 0 ? '+' : ''}${ERP.fmt0(r.diferencia)}` : '';
+        msg = `Recibido de MÁS — lote <b>${lot}</b>: llegaron ${esc(ERP.fmt0(r.recibido_total))} vs ${esc(ERP.fmt0(r.pedido))} pedidos (<b>${esc(dif)}</b>). Revísalo contra la factura.`;
+      } else {
+        msg = `Recibido completo — lote <b>${lot}</b>.`;
+      }
       if (r.auto_asignado) {
         const pend = r.auto_asignado.pendiente_linea;
-        const pendTxt = pend != null ? ` (quedan ${esc(ERP.fmt0(pend))} pendientes)` : '';
-        ERP.toast('ok', `Lote <b>${esc(r.lot_folio || '')}</b> recibido y asignado a la venta${pendTxt}.`);
-      } else {
-        ERP.toast('ok', `Línea recibida — lote <b>${esc(r.lot_folio || '')}</b>.`);
+        msg += pend != null ? ` Asignado a la venta (quedan ${esc(ERP.fmt0(pend))} pendientes).` : ' Asignado a la venta.';
       }
+      ERP.toast(tipo, msg, 8000);
       ERP.marcarDatosSucios();
       await recargar();
       verSPO(s.supplier_po_id);
     } catch (e) {
+      // El backend bloquea si se excede la tolerancia (mensaje legible) — se muestra tal cual.
       if (ERP.avisarSiPermiso && ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
       avisoRec('err', `El ERP rechazó la recepción: ${esc(e.message)}`);
       btn.disabled = false;
