@@ -382,9 +382,10 @@ tr.vencido-alto .enlace{color:var(--rojo);font-weight:600}
 .panel-body h4:first-child{margin-top:0}
 
 .det-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:4px 0 6px}
-.det{background:var(--papel);border:1px solid var(--linea);border-radius:7px;padding:9px 11px}
-.det .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--gris);font-weight:700}
-.det .v{font-size:13px;margin-top:3px;word-break:break-word;color:var(--ink)}
+.det{background:var(--papel);border:1px solid var(--linea);border-radius:7px;padding:9px 11px;
+  display:flex;flex-direction:column;gap:4px}
+.det .l{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--gris);font-weight:700}
+.det .v{display:block;font-size:13px;word-break:break-word;color:var(--ink)}
 .det .v.mono{font-family:'IBM Plex Mono',monospace}
 
 .flagbox{background:var(--ambar-bg);border:1px solid var(--ambar);border-radius:8px;padding:13px 15px;margin-top:18px}

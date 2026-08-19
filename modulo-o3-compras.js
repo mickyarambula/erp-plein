@@ -265,7 +265,9 @@
 
   /* ================= Alta ================= */
 
-  let proveedoresCat = [], sosCat = [], comboProveedor = null;
+  let proveedoresCat = [], sosCat = [], destinosCat = [], comboProveedor = null;
+  const optsDestino = (destinos, sel) => `<option value="">— sin destino —</option>` +
+    destinos.map(d => `<option value="${esc(d.location_id)}" ${String(sel || '') === String(d.location_id) ? 'selected' : ''}>${esc(d.nombre)}${d.tipo_etiqueta ? ` (${esc(d.tipo_etiqueta)})` : ''}</option>`).join('');
   let lineas = [];
   let adjuntoSubido = null;   // 'storage:cpo-adjuntos/<ruta>' si se subió un archivo en esta alta
 
@@ -282,9 +284,10 @@
     adjuntoSubido = null;
     ERP.abrirPanel('Nueva compra', 'Registra el PO que le mandamos al proveedor', '<div class="skel">Cargando catálogos…</div>');
     try {
-      [proveedoresCat, sosCat] = await Promise.all([
+      [proveedoresCat, sosCat, destinosCat] = await Promise.all([
         q('v_catc_contrapartes', '&es_proveedor=eq.true&order=nombre.asc'),
-        q('v_op_sales_orders', '&order=created_at.desc').catch(() => [])
+        q('v_op_sales_orders', '&order=created_at.desc').catch(() => []),
+        q('v_op_destinos', '&activo=eq.true&order=nombre.asc').catch(() => [])
       ]);
     } catch (e) {
       ERP.abrirPanel('Nueva compra', '', `<div class="errbox">No se pudieron leer los catálogos: ${esc(e.message)}</div>`);
@@ -306,6 +309,9 @@
           <div class="campo ancho"><label>Ligar a una Sales Order (opcional)</label>
             <select id="spoSO"><option value="">— sin ligar —</option>${sosCat.map(s => `<option value="${esc(s.id)}">${esc(s.folio)} — ${esc(s.cliente || '')}</option>`).join('')}</select>
             <div class="alias-ayuda">Solo trazabilidad — puede quedar vacío.</div></div>
+          <div class="campo ancho"><label>Destino (SHIP TO)</label>
+            <select id="spoDestino">${optsDestino(destinosCat)}</select>
+            <div class="alias-ayuda">A dónde va la mercancía: bodega propia, del cliente (entrega directa) o cross-dock. Se usa en el PDF de la orden de compra. Se puede dejar sin elegir y fijarlo después en la ficha.</div></div>
           <div class="campo ancho"><label>Adjunto (Estimate/Invoice del proveedor)</label>
             <input id="spoAdjunto" class="mono" type="text" placeholder="Pega una URL… o sube un archivo abajo">
             <div class="adjunto-sube">
@@ -451,6 +457,7 @@
     const v = id => (document.getElementById(id) || {}).value;
     const adjRef = adjuntoSubido || (v('spoAdjunto') || '').trim() || null;
     const soVal = v('spoSO');
+    const destinoVal = v('spoDestino');
     const args = {
       p_proveedor_id: Number(proveedor_id),
       p_lineas: payload,
@@ -468,6 +475,10 @@
     try {
       const r = uno(await rpc('fn_op_spo_alta', args));
       if (!r.supplier_po_id) throw new Error('El ERP no devolvió la compra.');
+      if (destinoVal) {
+        try { await rpc('fn_op_spo_set_destino', { p_id: Number(r.supplier_po_id), p_destino_location_id: Number(destinoVal) }); }
+        catch (eDest) { ERP.toast('err', `Compra creada, pero no se pudo fijar el destino: ${esc(eDest.message)}`, 9000); }
+      }
       ERP.toast('ok', `Compra <b>${esc(r.folio || '')}</b> creada.`);
       ERP.marcarDatosSucios();
       await recargar();
@@ -499,9 +510,10 @@
     ERP.abrirPanel('Generar compra', `desde Sales Order ${esc(soFolio || '')}`, '<div class="skel">Cargando líneas de la venta…</div>');
     let sol;
     try {
-      [proveedoresCat, sol] = await Promise.all([
+      [proveedoresCat, sol, destinosCat] = await Promise.all([
         q('v_catc_contrapartes', '&es_proveedor=eq.true&order=nombre.asc'),
-        q('v_op_so_lineas', `&sales_order_id=eq.${Number(soId)}&order=linea_num.asc`)
+        q('v_op_so_lineas', `&sales_order_id=eq.${Number(soId)}&order=linea_num.asc`),
+        q('v_op_destinos', '&activo=eq.true&order=nombre.asc').catch(() => [])
       ]);
     } catch (e) {
       ERP.abrirPanel('Generar compra', '', `<div class="errbox">No se pudieron leer las líneas de la venta: ${esc(e.message)}</div>`);
@@ -524,6 +536,9 @@
             <input id="spoFecha" type="date" value="${hoyISO()}"></div>
           <div class="campo"><label>Moneda</label>
             <select id="spoMoneda">${ERP.MONEDAS.map(m => `<option value="${m}">${m}</option>`).join('')}</select></div>
+          <div class="campo ancho"><label>Destino (SHIP TO)</label>
+            <select id="spoDestino">${optsDestino(destinosCat)}</select>
+            <div class="alias-ayuda">A dónde va la mercancía. Se puede dejar sin elegir y fijarlo después en la ficha.</div></div>
           <div class="campo ancho"><label>Adjunto (Estimate/Invoice del proveedor)</label>
             <input id="spoAdjunto" class="mono" type="text" placeholder="Pega una URL… o sube un archivo abajo">
             <div class="adjunto-sube">
@@ -596,6 +611,7 @@
 
     const v = id => (document.getElementById(id) || {}).value;
     const adjRef = adjuntoSubido || (v('spoAdjunto') || '').trim() || null;
+    const destinoVal = v('spoDestino');
     const args = {
       p_sales_order_id: soOrigenDs.id,
       p_proveedor_id: Number(proveedor_id),
@@ -613,6 +629,10 @@
     try {
       const r = uno(await rpc('fn_op_spo_desde_so', args));
       if (!r.supplier_po_id) throw new Error('El ERP no devolvió la compra.');
+      if (destinoVal) {
+        try { await rpc('fn_op_spo_set_destino', { p_id: Number(r.supplier_po_id), p_destino_location_id: Number(destinoVal) }); }
+        catch (eDest) { ERP.toast('err', `Compra creada, pero no se pudo fijar el destino: ${esc(eDest.message)}`, 9000); }
+      }
       ERP.toast('ok', `Compra <b>${esc(r.folio || '')}</b> generada desde ${esc(soOrigenDs.folio || '')}.`);
       ERP.marcarDatosSucios();
       await recargar();
@@ -636,10 +656,11 @@
     ERP.abrirPanel('Compra', 'Cargando…', '<div class="skel">Cargando compra…</div>');
     let s, lin, docSpo;
     try {
-      [s, lin, docSpo] = await Promise.all([
+      [s, lin, docSpo, destinosCat] = await Promise.all([
         q('v_op_supplier_po', `&supplier_po_id=eq.${Number(id)}`).then(r => r && r[0]),
         q('v_op_spo_lineas', `&supplier_po_id=eq.${Number(id)}&order=linea_num.asc`).catch(() => []),
-        q('v_op_spo_documento', `&supplier_po_id=eq.${Number(id)}`).then(r => r && r[0]).catch(() => null)
+        q('v_op_spo_documento', `&supplier_po_id=eq.${Number(id)}`).then(r => r && r[0]).catch(() => null),
+        q('v_op_destinos', '&activo=eq.true&order=nombre.asc').catch(() => [])
       ]);
     } catch (e) {
       ERP.abrirPanel('Compra', '', `<div class="errbox">No se pudo cargar la compra: ${esc(e.message)}</div>`);
@@ -702,9 +723,16 @@
           ${s.enviada_en ? `<div class="det"><span class="l">Enviada</span><span class="v">${esc(fecha(s.enviada_en))}</span></div>` : ''}
           ${s.confirmada_en ? `<div class="det"><span class="l">Confirmada</span><span class="v">${esc(fecha(s.confirmada_en))}</span></div>` : ''}
           <div class="det"><span class="l">Sales Order</span><span class="v mono">${esc(s.so_folio || '—')}</span></div>
+          <div class="det"><span class="l">Destino (SHIP TO)</span><span class="v">${docSpo && docSpo.destino_nombre ? esc(docSpo.destino_nombre) : '<span class="i3">Sin asignar</span>'}</span></div>
           <div class="det"><span class="l">Total costo</span><span class="v mono">${esc(ERP.usd(s.total_costo))}</span></div>
           <div class="det"><span class="l">Adjunto</span><span class="v">${adjuntoHTML(s.adjunto_ref)}</span></div>
         </div>
+        ${puedeCap ? `<div class="alias-ayuda" style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span>Cambiar destino:</span>
+          <select id="spoDestinoSel" style="height:30px">${optsDestino(destinosCat, s.destino_location_id)}</select>
+          <button type="button" class="btn-mini gris" id="spoDestinoGuardar" style="height:30px">Guardar destino</button>
+        </div>` : ''}
+        ${(!docSpo || !docSpo.destino_nombre) ? '<div class="alias-ayuda" style="color:var(--ambar)">Esta compra no tiene destino asignado — el PDF usará la dirección de Plein como SHIP TO por respaldo.</div>' : ''}
         ${s.nota ? `<div class="so-nota"><span class="l">Nota</span> ${esc(s.nota)}</div>` : ''}
 
         <div class="seccion-head"><h4>Líneas</h4></div>
@@ -751,6 +779,22 @@
       if (!confirm(`¿Cancelar la compra ${s.folio}? Se marca como Cancelada (no se borra el registro).`)) return;
       cambiarEstadoSPO(s, 'Cancelado');
     });
+    const bDestGuardar = document.getElementById('spoDestinoGuardar');
+    if (bDestGuardar) bDestGuardar.addEventListener('click', async () => {
+      const sel = document.getElementById('spoDestinoSel');
+      const val = sel ? sel.value : '';
+      bDestGuardar.disabled = true;
+      try {
+        await rpc('fn_op_spo_set_destino', { p_id: Number(s.supplier_po_id), p_destino_location_id: val ? Number(val) : null });
+        ERP.toast('ok', val ? 'Destino actualizado.' : 'Destino quitado.');
+        ERP.marcarDatosSucios();
+        await recargar();
+        verSPO(s.supplier_po_id);
+      } catch (e) {
+        if (!(ERP.avisarSiPermiso && ERP.avisarSiPermiso(e))) ERP.toast('err', 'No se pudo cambiar el destino: ' + esc(e.message), 9000);
+        bDestGuardar.disabled = false;
+      }
+    });
     document.querySelectorAll('.recibir-linea').forEach(b => b.addEventListener('click', () => {
       const l = lineasF.find(x => String(x.linea_id) === b.dataset.lineaId);
       if (l) abrirRecibirLinea(s, l);
@@ -791,14 +835,26 @@
     }));
   }
 
+  /** SHIP TO real (D-198): v_op_spo_documento trae destino_nombre/tipo/direccion/ciudad/estado/
+      pais/contacto/telefono cuando la compra tiene un destino asignado (fn_op_spo_set_destino).
+      Sin destino asignado, cae a la dirección de Plein (dato real conocido, no inventado) — el
+      aviso suave para elegir destino vive en la ficha, no aquí. */
+  function cajaShipTo(po) {
+    if (!po.destino_nombre) return ERP.opDocumentos.bloqueEmpresaPleinPdf();
+    return [
+      po.destino_nombre,
+      po.destino_direccion || '',
+      [po.destino_ciudad, po.destino_estado, po.destino_pais].filter(Boolean).join(', '),
+      [po.destino_contacto, po.destino_telefono].filter(Boolean).join(' · ')
+    ].filter(Boolean);
+  }
+
   async function construirOcPdfBlob(po) {
     // Estructura tomada de Purchase Order Template.docx (D-197): BILL TO (Plein, quien paga) y
-    // SHIP TO (destino de la mercancía) — NO "VENDOR" como caja propia, ese formato es de las
-    // plantillas oficiales de Invoice/Quote/PO reusadas tal cual. El proveedor se identifica en el
-    // meta (fila VENDOR) — no hace falta repetirle su propia dirección/RFC de vuelta en el
-    // documento que le mandamos. SHIP TO: no hay un campo de "ubicación de entrega" propio por
-    // compra en v_op_spo_documento todavía — se usa la misma dirección de Plein que BILL TO
-    // (dato real conocido, no inventado) hasta que exista ese campo.
+    // SHIP TO (destino real de la mercancía, D-198 — ver cajaShipTo) — NO "VENDOR" como caja
+    // propia, ese formato es de las plantillas oficiales de Invoice/Quote/PO reusadas tal cual.
+    // El proveedor se identifica en el meta (fila VENDOR) — no hace falta repetirle su propia
+    // dirección/RFC de vuelta en el documento que le mandamos.
     const poNum = po.numero_proveedor || po.folio;
     const meta = [
       ['VENDOR', po.proveedor_razon_social || po.proveedor || '—'],
@@ -812,7 +868,7 @@
       titulo: 'PURCHASE ORDER',
       meta,
       cajaIzq: { titulo: 'BILL TO', lineas: ERP.opDocumentos.bloqueEmpresaPleinPdf() },
-      cajaDer: { titulo: 'SHIP TO', lineas: ERP.opDocumentos.bloqueEmpresaPleinPdf() },
+      cajaDer: { titulo: 'SHIP TO', lineas: cajaShipTo(po) },
       lineas: lineasOcParaPdf(po),
       total: po.total,
       notaLabel: 'Other Comments or Special Instructions',

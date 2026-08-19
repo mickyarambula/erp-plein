@@ -164,6 +164,7 @@
         <button data-tab="prov" class="${tab === 'prov' ? 'on' : ''}"><i class="ti ti-tractor"></i>Proveedores</button>
         <button data-tab="cli" class="${tab === 'cli' ? 'on' : ''}"><i class="ti ti-building-store"></i>Clientes</button>
         <span class="grow"></span>
+        <button class="catc-ic" id="catcDestinos" title="Destinos: bodegas propias, de cliente, de proveedor, cross-dock"><i class="ti ti-map-pin"></i><span>Destinos</span></button>
         <button class="catc-ic" id="catcListas" title="Listas de valores (empaque, calibre, grado…)"><i class="ti ti-list-details"></i><span>Listas</span></button>
         <button class="catc-ic" id="catcPapelera" title="Ver eliminados y restaurar"><i class="ti ti-trash"></i><span>Papelera</span></button>
       </div>
@@ -192,6 +193,7 @@
     </div>`;
 
     cont.querySelectorAll('.catc-tabs button[data-tab]').forEach(b => b.addEventListener('click', () => cambiarTab(b.dataset.tab)));
+    document.getElementById('catcDestinos').addEventListener('click', () => { vistaDestinos(); mostrarDetalleMovil(); });
     document.getElementById('catcListas').addEventListener('click', () => { vistaListas(); mostrarDetalleMovil(); });
     document.getElementById('catcPapelera').addEventListener('click', () => { vistaPapelera(); mostrarDetalleMovil(); });
     document.getElementById('catcVolver').addEventListener('click', ocultarDetalleMovil);
@@ -1045,6 +1047,168 @@
       try { const r = uno(await rpc('fn_cat_lista_valor_eliminar', { p_id: Number(b.dataset.dellv) })); ERP.limpiarCache(); ERP.toast('ok', r.accion === 'archivado' ? 'En uso: se desactivó.' : 'Quitado'); vistaListas(); }
       catch (e) { ERP.toast('err', 'No se pudo: ' + esc(e.message)); }
     }));
+  }
+
+  /* ================= Destinos (bodegas propias/cliente/proveedor/cross-dock) =================
+     Catálogo nuevo (v_op_destinos + fn_op_location_alta/editar) que alimenta el SHIP TO real de
+     las órdenes de compra (O3c). Vista propia (mismo patrón que Listas/Papelera arriba: se pinta
+     directo en $det(), catcRows queda como aviso) — más simple que Productos/Contrapartes (sin
+     sub-entidades), no necesita meterse en el master-detail esProd()/tab. Sin RPC de eliminar:
+     "borrar" es desactivar (p_activo=false) vía editar. */
+  const TIPO_DESTINO_LABEL = { propia: 'Bodega propia', cliente: 'Bodega de cliente', proveedor: 'Bodega de proveedor', cross_dock: 'Cross-dock', tercero: 'Tercero' };
+  let contrapartesCatDest = null;
+  async function cargarContrapartesDest() {
+    if (contrapartesCatDest) return contrapartesCatDest;
+    contrapartesCatDest = await q('v_catc_contrapartes', '&order=nombre.asc').catch(() => []);
+    return contrapartesCatDest;
+  }
+
+  async function vistaDestinos() {
+    selId = null;
+    const filas = await q('v_op_destinos', '&order=nombre.asc').catch(() => []);
+    document.getElementById('catcRows').innerHTML = '<div class="catc-hint" style="padding:16px">Destinos abiertos en el detalle →</div>';
+    $det().innerHTML = `<div class="catc-dwrap">
+      <div class="catc-dhead">
+        <div style="font-size:17px;font-weight:600">Destinos</div>
+        ${puedeCap() ? '<button class="btn-primary catc-act" id="destNuevo"><i class="ti ti-plus"></i>Nuevo destino</button>' : ''}
+      </div>
+      <div class="catc-hint" style="margin-bottom:14px">Bodegas propias, de cliente (entrega directa), de proveedor o cross-dock. Se usan como SHIP TO real en las órdenes de compra — antes siempre caía a la dirección de Plein.</div>
+      ${(filas || []).length ? `<div class="tabla-wrap"><table class="catc-tbl"><thead><tr>
+          <th>Nombre</th><th>Código</th><th>Tipo</th><th>Contraparte</th><th>Ciudad</th><th style="text-align:right">Lotes</th><th></th><th></th></tr></thead>
+        <tbody>${filas.map(f => `<tr${f.activo === false ? ' style="opacity:.55"' : ''}>
+          <td>${esc(f.nombre || '—')}</td>
+          <td class="mono catc-sec">${esc(f.codigo || '—')}</td>
+          <td class="catc-sec">${esc(f.tipo_etiqueta || TIPO_DESTINO_LABEL[f.tipo] || f.tipo || '—')}</td>
+          <td class="catc-sec">${esc(f.contraparte || '—')}</td>
+          <td class="catc-sec">${esc(f.ciudad || '—')}</td>
+          <td style="text-align:right" class="catc-sec">${esc(f.lotes ?? 0)}</td>
+          <td>${f.activo === false ? '<span class="catc-pill off"><span class="catc-dot"></span>Inactivo</span>' : '<span class="catc-pill ok"><span class="catc-dot"></span>Activo</span>'}</td>
+          <td style="text-align:right">${puedeCap() ? `<i class="ti ti-pencil catc-go editar" data-editdest="${esc(f.location_id)}" title="Editar destino"></i>` : ''}</td>
+        </tr>`).join('')}</tbody></table></div>`
+        : '<div class="catc-hint">Sin destinos aún.</div>'}
+    </div>`;
+    const bNuevo = document.getElementById('destNuevo');
+    if (bNuevo) bNuevo.addEventListener('click', () => formDestino(null));
+    $det().querySelectorAll('[data-editdest]').forEach(b => b.addEventListener('click', () => {
+      const f = filas.find(x => String(x.location_id) === b.dataset.editdest);
+      if (f) formDestino(f);
+    }));
+  }
+
+  function formDestino(existing) {
+    const esNuevo = !existing;
+    const d = existing || {};
+    const ro = puedeCap() ? '' : ' disabled';
+    const tipoActual = String(d.tipo || '');
+    const tipoOpts = Object.entries(TIPO_DESTINO_LABEL).map(([k, lbl]) => `<option value="${k}" ${tipoActual === k ? 'selected' : ''}>${esc(lbl)}</option>`).join('');
+
+    $det().innerHTML = `<div class="catc-dwrap">
+      <button type="button" class="catc-act" data-back style="margin-bottom:14px"><i class="ti ti-arrow-left"></i>Volver a Destinos</button>
+      <div class="catc-dhead">
+        <div style="flex:1;display:grid;grid-template-columns:1fr 130px;gap:10px;min-width:240px">
+          <div class="f"><label>Nombre</label><input id="d_nombre" value="${esc(d.nombre || '')}" style="font-size:15px;font-weight:600;height:36px"${ro}></div>
+          <div class="f"><label>Código</label><input id="d_codigo" class="mono" value="${esc(d.codigo || '')}" style="height:36px"${ro}></div>
+        </div>
+        ${!esNuevo ? `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:7px">
+          ${d.activo === false ? '<span class="catc-pill off"><span class="catc-dot"></span>Inactivo</span>' : '<span class="catc-pill ok"><span class="catc-dot"></span>Activo</span>'}
+        </div>` : ''}
+      </div>
+
+      <div class="catc-card"><h4>Datos generales</h4>
+        <div class="catc-g3">
+          <div class="f"><label>Tipo</label><select id="d_tipo"${ro}>${tipoOpts}</select></div>
+          <div class="f"><label>Ciudad</label><input id="d_ciudad" value="${esc(d.ciudad || '')}"${ro}></div>
+          <div class="f"><label>Estado/Región</label><input id="d_estado" value="${esc(d.estado_region || '')}"${ro}></div>
+        </div>
+        <div class="catc-g3" style="margin-top:10px">
+          <div class="f"><label>País</label><input id="d_pais" value="${esc(d.pais || '')}"${ro}></div>
+          <div class="f"><label>Contacto</label><input id="d_contacto" value="${esc(d.contacto || '')}"${ro}></div>
+          <div class="f"><label>Teléfono</label><input id="d_telefono" value="${esc(d.telefono || '')}"${ro}></div>
+        </div>
+        <div class="f" style="margin-top:10px"><label>Dirección</label><input id="d_direccion" value="${esc(d.direccion || '')}"${ro}></div>
+        <div class="f" style="margin-top:10px"><label>Nota</label><input id="d_nota" value="${esc(d.nota || '')}"${ro}></div>
+        ${!esNuevo ? `<div class="f" style="margin-top:10px"><label style="display:flex;align-items:center;gap:6px;text-transform:none;font-size:12.5px"><input type="checkbox" id="d_activo" ${d.activo === false ? '' : 'checked'}${ro} style="width:auto">Activo</label></div>` : ''}
+      </div>
+
+      <div class="catc-card" id="d_contraparte_wrap" style="${['cliente', 'proveedor'].includes(tipoActual) ? '' : 'display:none'}">
+        <h4>Contraparte vinculada</h4>
+        <div class="catc-hint" style="margin-bottom:8px">Solo aplica cuando el tipo es «Bodega de cliente» o «Bodega de proveedor» — liga el destino a la contraparte del Directorio.</div>
+        <div id="d_contraparte_pick"></div>
+      </div>
+
+      ${puedeCap() ? `<div class="acciones" style="margin-top:14px"><button class="btn-primary catc-act" id="d_guardar">Guardar</button></div>` : ''}
+      <div class="aviso" id="d_aviso"></div>
+    </div>`;
+
+    document.getElementById('catcRows').innerHTML = '<div class="catc-hint" style="padding:16px">Destinos abiertos en el detalle →</div>';
+    $det().querySelector('[data-back]').addEventListener('click', vistaDestinos);
+
+    let comboContraparteDest = null;
+    async function montarComboContraparte() {
+      const cont = document.getElementById('d_contraparte_pick');
+      if (!cont) return;
+      const todas = await cargarContrapartesDest();
+      const tipoAhora = document.getElementById('d_tipo').value;
+      const items = todas.filter(c => tipoAhora === 'cliente' ? c.es_cliente : tipoAhora === 'proveedor' ? c.es_proveedor : false)
+        .map(c => ({ id: c.id, nombre: c.nombre, alias: c.alias || [] }));
+      comboContraparteDest = ERP.crearCombo({
+        contenedor: cont, items, placeholder: 'Busca la contraparte…', permitirNuevo: false,
+        valorInicial: d.contraparte || null
+      });
+    }
+    if (['cliente', 'proveedor'].includes(tipoActual)) montarComboContraparte();
+
+    const selTipo = document.getElementById('d_tipo');
+    selTipo.addEventListener('change', () => {
+      const t = selTipo.value;
+      const wrap = document.getElementById('d_contraparte_wrap');
+      if (['cliente', 'proveedor'].includes(t)) { wrap.style.display = ''; montarComboContraparte(); }
+      else { wrap.style.display = 'none'; comboContraparteDest = null; }
+    });
+
+    function avisoDest(tipo, html) {
+      const el = document.getElementById('d_aviso');
+      if (el) { el.className = 'aviso visible ' + tipo; el.innerHTML = html; }
+    }
+
+    const bGuardar = document.getElementById('d_guardar');
+    if (bGuardar) bGuardar.addEventListener('click', async () => {
+      const v = id => (document.getElementById(id) || {}).value;
+      const nombre = v('d_nombre').trim();
+      if (!nombre) { avisoDest('err', 'El nombre es obligatorio.'); return; }
+      const tipo = v('d_tipo');
+      const contraparte_id = (['cliente', 'proveedor'].includes(tipo) && comboContraparteDest) ? comboContraparteDest.valorId() : null;
+      bGuardar.disabled = true;
+      const args = {
+        p_codigo: v('d_codigo').trim() || null,
+        p_nombre: nombre,
+        p_tipo: tipo,
+        p_direccion: v('d_direccion').trim() || null,
+        p_ciudad: v('d_ciudad').trim() || null,
+        p_estado_region: v('d_estado').trim() || null,
+        p_pais: v('d_pais').trim() || null,
+        p_contraparte_id: contraparte_id,
+        p_contacto: v('d_contacto').trim() || null,
+        p_telefono: v('d_telefono').trim() || null,
+        p_nota: v('d_nota').trim() || null
+      };
+      try {
+        if (esNuevo) {
+          const r = uno(await rpc('fn_op_location_alta', args));
+          ERP.limpiarCache();
+          ERP.toast('ok', `Destino «${esc(r.codigo || nombre)}» creado.`);
+        } else {
+          const activo = document.getElementById('d_activo');
+          await rpc('fn_op_location_editar', { p_id: Number(d.location_id), ...args, p_activo: activo ? activo.checked : null });
+          ERP.limpiarCache();
+          ERP.toast('ok', 'Destino guardado.');
+        }
+        vistaDestinos();
+      } catch (e) {
+        if (!(ERP.avisarSiPermiso && ERP.avisarSiPermiso(e))) avisoDest('err', 'El ERP rechazó el cambio: ' + esc(e.message));
+        bGuardar.disabled = false;
+      }
+    });
   }
 
   /* ================= Importar Excel ================= */
