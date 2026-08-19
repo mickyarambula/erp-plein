@@ -196,6 +196,7 @@
     cont.querySelectorAll('tr.clic[data-id]').forEach(tr =>
       tr.addEventListener('click', () => verSPO(Number(tr.dataset.id))));
     cablearVerAdjunto(cont, true);
+    ERP.marcarTabla(cont);   // patrón tabla→tarjeta en móvil (D-193/Fase 2)
   }
 
   async function render(cont) {
@@ -715,6 +716,8 @@
       const l = lineasF.find(x => String(x.linea_id) === b.dataset.lineaId);
       if (l) abrirRecibirLinea(s, l);
     }));
+    // Líneas de la compra (Pedido/Recibido/Pendiente/Costo/Recepción, D-194) — otro caso ancho.
+    ERP.marcarTabla(document.getElementById('panelBody'));
   }
 
   // Transición de estado de la compra (O3b, D-194). El backend valida (ej. bloquea Cancelar si ya
