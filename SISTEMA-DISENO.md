@@ -191,3 +191,58 @@ Las 25 pantallas viven dentro del MARCO; las 7 vestidas conservan su scope, las 
 
 ### Pendiente menor anotado (barrer en algún pulido)
 - **`.pos` / `.neg`** en Embarques/CxC/CxP (E90–E92) todavía usan color viejo (legibles, pero **no** cambian con el tema). En Tesorería/Inicio/Antigüedad ya se remapearon. Barrer los 3 primeros cuando convenga.
+
+## 13. Responsive · UNA sola base de código (Fase 1 · E131 / D-193)
+El ERP debe usarse desde el teléfono (Miguel opera en bodegas y en la calle), no solo en laptop.
+**Regla mayor: una sola base de código responsive — NO una app/diseño móvil aparte** (mantener dos
+se desincroniza). El backend no cambia: mismas vistas y RPCs. **Todo módulo NUEVO nace responsive.**
+
+### Breakpoints (convención — usar SIEMPRE estos dos valores en trabajo nuevo)
+CSS no admite `var()` dentro de la condición `@media`, así que los breakpoints son una **convención
+escrita**, no una variable. No inventar valores sueltos (600/620/860/1000…); usar:
+- **MÓVIL** `@media(max-width:640px)` — teléfono.
+- **TABLET** `@media(max-width:1024px)` — tablet / ventana chica.
+- **DESKTOP** `> 1024px` — default, sin media query.
+
+Definido y comentado en `estilos.css`, bloque **"CIMIENTO RESPONSIVE (Fase 1)"** (después de la
+sección Invoices). Ahí viven todas las reglas base; no dispersar reglas responsive por el archivo.
+
+### Comportamiento del MARCO por escalón
+- **Desktop (>1024):** riel de íconos (66px) + menú agrupado fijo (250px), ambos visibles.
+- **Tablet (≤1024):** el riel (66px) SE QUEDA; el menú agrupado colapsa a **cajón** (hamburguesa
+  `#btnMenu` + overlay `#menuFondo`), deslizando desde `left:66px`.
+- **Móvil (≤640):** además se **oculta el riel**; el shell pasa a una sola columna; el cajón desliza
+  desde `left:0`. El toggle de tema (que en desktop vive en el riel, `#btnTema`) se reemplaza por
+  `#btnTemaTop` en la modbar (los íconos de ambos se sincronizan en `app.js → pintarIconoTema`).
+
+### Patrón TABLA → TARJETA (reusable — el más importante)
+Las tablas del ERP tienen 8–12 columnas y desbordan en móvil (a veces incluso en desktop). En móvil
+cada `<tr>` se vuelve una **tarjeta apilada** con la etiqueta de cada campo visible. Definido UNA vez:
+- **CSS:** clase `.tabla-cards` sobre el `.tabla-wrap` (las reglas viven bajo `@media(max-width:640px)`,
+  así que en desktop/tablet son inertes — no tocan la tabla normal).
+- **JS:** `ERP.marcarTabla(ref)` (en `comun.js`) — `ref` = id (string), contenedor, o `<table>`.
+  Agrega `.tabla-cards` al wrapper y copia el texto de cada `<th>` al `data-label` del `<td>` de esa
+  columna (el CSS lo pinta con `::before`). Idempotente; las columnas de acciones (sin `<th>` con
+  texto) no reciben etiqueta y quedan como fila de botones. **Uso (Fase 2): una línea por módulo
+  tras pintar la tabla — `ERP.marcarTabla(cont);`**
+
+### Formularios en móvil
+- Campos a **una columna** (`.form-erp .campos{grid-template-columns:1fr}` ya desde tablet).
+- Inputs/selects/textarea a **16px** (evita el zoom automático de iOS al enfocar) y **min-height
+  44px** (área táctil). Botones ~40–44px.
+- Panel/drawer a **pantalla completa**; `.panel-body` con padding inferior + `env(safe-area-inset-
+  bottom)` para que el botón de guardar no quede tapado por el teclado.
+
+### Tipografía en móvil
+- Nada por debajo de ~12px (labels/hints suben a 12px; valores de detalle y celdas a 14px).
+
+### Plan de rollout responsive
+- **Fase 1 (E131 · HECHO):** cimiento — breakpoints, marco colapsable, patrón tabla→tarjeta,
+  formularios táctiles, tipografía. Verificado en iPhone (390px), tablet (800px) y desktop (1440px):
+  cero scroll horizontal en los tres; desktop pixel-idéntico a antes.
+- **Fase 2 (pendiente):** aplicar a los 5 módulos Camino C uno por uno, verificando cada uno
+  (orden por uso: o1-cpo → o1-so → o1-inventario → o3-compras → catalogos-c). Commit por módulo.
+  Sobre todo: llamar `ERP.marcarTabla(cont)` tras pintar cada tabla, y revisar layouts a medida
+  (master-detail de Catálogos, tableros anchos del SO).
+- **Fase 3 (pendiente):** PWA — `manifest.json` + iconos + service worker mínimo (instalable en
+  iPhone "Agregar a pantalla de inicio", sin barra de navegador). No requiere offline.

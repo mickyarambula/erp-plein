@@ -2750,3 +2750,47 @@ LOT-26-004 eliminado." y desaparece de la tabla. 0 errores de consola en todo el
 --check` limpio en los 3 archivos. `?v=` de `index.html` subido a `20260818g` (D-185).
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-18, continuación) — Responsive Fase 1: CIMIENTO (una sola base de código) (D-193)
+_Nueva línea: usar el ERP desde el celular (Miguel opera en bodegas y calle). Enfoque: UNA sola
+base responsive, NO app/diseño móvil aparte (mantener dos se desincroniza). Backend intacto —
+mismas vistas y RPCs, 100% frontend. Fase 1 = cimiento (define patrones que rigen todo el frontend,
+por eso Opus 4.8); Fases 2 (5 módulos) y 3 (PWA) quedan pendientes para Sonnet 5. Frontend (Claude Code)._
+
+- **D-193a — Breakpoints como convención documentada:** CSS no admite `var()` en la condición
+  `@media`, así que los breakpoints son una **convención escrita** (no una variable): móvil
+  `≤640px`, tablet `≤1024px`, desktop `>1024px`. Todo módulo nuevo usa esos dos valores. Se
+  consolidó el bloque Responsive disperso de `estilos.css` (860/620/480 sueltos) en un solo bloque
+  "CIMIENTO RESPONSIVE" y se subió el breakpoint del marco de 860 → 1024. Documentado en
+  `SISTEMA-DISENO.md` §13 y como regla dura permanente en `CLAUDE.md` ("todo módulo nuevo nace responsive").
+- **D-193b — Marco colapsable de verdad en móvil:** hoy el menú agrupado ya colapsaba a cajón,
+  pero el riel de 66px se quedaba fijo comiéndose el ancho del teléfono. Ahora: tablet (≤1024) el
+  riel se queda y el menú es cajón (hamburguesa `#btnMenu` + overlay `#menuFondo`, desde `left:66`);
+  móvil (≤640) además **se oculta el riel**, el shell pasa a una columna (`#shell.visible{grid-
+  template-columns:1fr}`) y el cajón desliza desde `left:0`. Como el toggle de tema vivía en el riel
+  (`#btnTema`), se agregó `#btnTemaTop` en la modbar (`index.html`), wired en `app.js`, con los
+  íconos de ambos toggles sincronizados en `pintarIconoTema`.
+- **D-193c — Patrón TABLA → TARJETA (reusable, la pieza clave):** las tablas del ERP tienen 8–12
+  columnas y desbordan en móvil. Definido UNA vez, no ad-hoc por módulo: clase CSS `.tabla-cards`
+  (reglas bajo `@media 640`, inertes en desktop) + utilidad nueva `ERP.marcarTabla(ref)` en
+  `comun.js` que copia el texto de cada `<th>` al `data-label` del `<td>` de su columna; el CSS lo
+  pinta con `::before` y apila cada `<tr>` como tarjeta etiqueta:valor. Idempotente; columnas de
+  acción (sin `<th>` con texto) quedan como fila de botones. En Fase 2 cada módulo lo llama en una línea.
+- **D-193d — Formularios táctiles + tipografía móvil:** inputs/select/textarea a **16px** (fin del
+  zoom automático de iOS al enfocar) + **min-height 44px** (área táctil); campos a una columna;
+  botones ~40–44px a lo ancho; panel a pantalla completa con `env(safe-area-inset-bottom)` para que
+  el botón de guardar no quede tapado por el teclado. Nada de texto < ~12px en móvil.
+
+**Verificado en navegador (Chrome DevTools, viewport de dispositivo, mock de v_mi_perfil + listado):**
+- **iPhone (390×844):** riel oculto, shell 1 columna, hamburguesa + toggle de tema en la modbar,
+  cajón desde `left:0` (300px) con overlay. Tabla del listado SO: antes desbordaba (541>366 en su
+  wrap); tras `ERP.marcarTabla` cada fila es tarjeta con etiquetas (Folio SO/Cliente/Sales Type…) y
+  pills alineadas. Editar SO: panel full-width (390px), inputs 16px/44px. **Cero scroll horizontal.**
+- **Tablet (800px):** riel se queda (66px), menú es cajón (`fixed`, `left:66px`), hamburguesa visible.
+- **Desktop (1440px): pixel-idéntico a antes** — shell `66px 1fr`, riel `flex`, menú `static`,
+  `#btnTemaTop`/hamburguesa `display:none`. Cero scroll horizontal.
+
+`node --check` limpio en `comun.js`/`app.js`; llaves de `estilos.css` balanceadas (1575/1575). `?v=`
+de `index.html` a `20260818h` (D-185). NO desplegado (Miguel corre `npx vercel --prod`).
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.

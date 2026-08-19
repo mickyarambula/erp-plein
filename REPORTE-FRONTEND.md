@@ -5007,3 +5007,47 @@ a `20260818g` (D-185). NO desplegado — `npx vercel --prod` lo corre Miguel.
 `modulos_erp`/`rol_modulos`; el menú de Camino C trae Customer PO/Sales Orders/Inventario/Compras
 sin depender de URL directa. Backend también ocultó 24 módulos legacy — solo quedan visibles
 Inicio, Camino C (5) y Usuarios. `PENDIENTES-BACKEND.md` actualizado.
+
+## E131 (2026-08-18) — Responsive Fase 1: CIMIENTO (una sola base de código) · D-193
+
+Nueva línea de trabajo: usar el ERP desde el celular (Miguel opera en bodegas y calle). **Una sola
+base responsive, no app móvil aparte.** Backend intacto (mismas vistas/RPCs). Fase 1 = cimiento;
+Fases 2 (aplicar a los 5 módulos) y 3 (PWA) pendientes.
+
+**Breakpoints (convención documentada en `SISTEMA-DISENO.md` §13):** móvil ≤640, tablet ≤1024,
+desktop >1024. CSS no admite `var()` en la condición `@media` → convención escrita, no variable.
+Todo en un bloque nuevo "CIMIENTO RESPONSIVE" en `estilos.css` (reemplaza el viejo bloque
+Responsive disperso de 860/620/480). Se consolidó el breakpoint del marco de 860 → 1024.
+
+**1. Marco colapsable:** desktop = riel 66px + menú fijo. Tablet (≤1024) = riel se queda, menú →
+cajón hamburguesa (overlay). Móvil (≤640) = **riel oculto** + shell a una columna + cajón desde
+`left:0`. Como el toggle de tema vive en el riel (`#btnTema`), en móvil se agregó `#btnTemaTop` en
+la modbar (nuevo botón en `index.html`, wired en `app.js`, íconos sincronizados en `pintarIconoTema`).
+
+**2. Patrón TABLA → TARJETA (reusable, lo más importante):** clase `.tabla-cards` + utilidad nueva
+`ERP.marcarTabla(ref)` en `comun.js` — copia cada `<th>` al `data-label` del `<td>` de su columna;
+el CSS (bajo `@media 640`) apila cada `<tr>` como tarjeta con etiqueta:valor. Idempotente; columnas
+de acción sin `<th>` quedan como fila de botones. En Fase 2 cada módulo lo llama en una línea.
+
+**3. Panel a pantalla completa en móvil** + `.panel-body` con `env(safe-area-inset-bottom)` para que
+el botón de guardar no quede tapado por el teclado.
+
+**4. Formularios táctiles:** 1 columna en móvil; inputs/select/textarea a **16px** (fin del zoom
+automático de iOS) + **min-height 44px**; botones ~40–44px; acciones a lo ancho.
+
+**5. Tipografía:** nada < ~12px en móvil (labels/hints 12px, valores/celdas 14px). `-webkit-text-
+size-adjust:100%`.
+
+**Verificado en navegador (Chrome DevTools, viewport de dispositivo):**
+- **iPhone (390×844, mobile+touch):** riel oculto, shell 1 columna, hamburguesa + toggle de tema
+  en la modbar, cajón desde `left:0` (ancho 300px) con overlay. Tabla del listado SO: antes
+  desbordaba (541px > 366px de su wrap); tras `ERP.marcarTabla` cada fila es tarjeta con etiquetas
+  ("Folio SO", "Cliente", "Sales Type"…) y valores/pills alineados. Formulario Editar SO:
+  full-width (390px), inputs 16px/44px, botones al ancho. **Cero scroll horizontal.**
+- **Tablet (800px):** riel se queda (66px), menú es cajón (`fixed`, `left:66px`), hamburguesa visible.
+- **Desktop (1440px):** **pixel-idéntico a antes** — shell `66px 1fr`, riel `flex`, menú `static`
+  (no cajón), `#btnTemaTop`/hamburguesa `display:none`. Cero scroll horizontal.
+
+`node --check` limpio en `comun.js` y `app.js`; llaves de `estilos.css` balanceadas (1575/1575).
+`?v=` de `index.html` subido a `20260818h` (D-185). NO desplegado — `npx vercel --prod` lo corre Miguel.
+Regla nueva permanente en `CLAUDE.md`: **todo módulo nuevo nace responsive.**
