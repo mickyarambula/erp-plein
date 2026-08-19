@@ -162,62 +162,96 @@ window.ERP.opDocumentos = (function () {
     return (data && data[0]) || null;
   }
 
-  /* ================= PDF oficial genérico (membrete Plein) =================
-     Mismo espíritu que ERP.membreteOficial/tablaLineasDoc/pieOficial (exportar.js) — que ya usan
-     Invoice/PO/Quote legacy sobre window.print() — pero dibujado con jsPDF (ya cargado en
-     index.html) para producir un Blob real que SÍ se puede guardar en el bucket, no solo
-     imprimirse. Mismo logo (ERP.logoPdfDataURL), mismo verde de marca, mismos rótulos de caja
-     (VENDOR/BILL TO). Genérico a propósito: reusable por cualquier documento oficial nuevo
-     (factura al cliente, liquidación…), no solo la Orden de Compra de Compras.
+  /* ================= PDF oficial genérico (membrete Plein REAL) =================
+     D-197 (corrección post-producción): la v1 redibujaba logo/dirección a mano porque nunca hubo
+     acceso a la hoja membretada real — quedó "feo y encimado". Ahora usa assets/hoja-membretada.jpg
+     (subida por Miguel: banda superior con logo + pie verde con logo circular/dirección, SIN texto
+     de título/meta — esos los pone cada documento) como FONDO DE PÁGINA completo (612×792pt,
+     tamaño carta), dibujado ANTES que cualquier contenido. El contenido va SOLO en el área blanca
+     segura, ya medida contra el membrete real: arriba 130pt (debajo de la banda), abajo 110pt
+     (encima del pie verde), laterales 50pt. NUNCA volver a dibujar logo/dirección de Plein a mano
+     — ya vienen en el membrete; duplicarlos es exactamente el bug que se corrige aquí.
+     Estructura tomada de las plantillas oficiales (Purchase Order/Quote/Invoice Template.docx,
+     subidas por Miguel): título a la derecha + meta (DATE/PO#/TERMS si aplica) debajo, cajas
+     BILL TO / SHIP TO lado a lado, tabla de líneas, totales SUBTOTAL/SALES TAX/OTHER/TOTAL a la
+     derecha, recuadro "Other Comments or Special Instructions" a la izquierda.
+     Genérico a propósito: reusable por cualquier documento oficial nuevo (factura al cliente,
+     liquidación…), no solo la Orden de Compra de Compras — solo cambian `o.titulo`/`o.meta`/cajas.
      o = { titulo, meta:[[label,val]], cajaIzq:{titulo,lineas:[str]}, cajaDer:{titulo,lineas:[str]},
-           lineas:[{item,descripcion,qty,precio,total}], moneda, total, notaLabel, nota } */
+           lineas:[{item,descripcion,qty,precio,total}], subtotal, impuesto, otro, total,
+           notaLabel, nota } */
   const VERDE_MARCA = [25, 107, 36];   // #196B24 — mismo verde que ya usa el jsPDF de Cotizaciones/Órdenes
   const DIRECCION_PLEIN = ['2595 Dallas Pkwy Ste 350', 'Frisco, TX 75034', '+1 (520) 300-3028', 'www.pleinproduce.com'];
   const EMPRESA_PLEIN = 'Plein Produce LLC';
+  const PAGINA = { w: 612, h: 792 };
+  const MARGEN = { top: 130, bottom: 682, left: 50, right: 562 };   // 612-50 / 792-110 — ver comentario arriba
+
+  let membretePromise = null;
+  /** dataURL de assets/hoja-membretada.jpg (fetch + FileReader), cacheado — mismo patrón que
+      ERP.logoPdfDataURL (exportar.js) para el logo suelto. */
+  function cargarMembreteDataURL() {
+    if (membretePromise) return membretePromise;
+    membretePromise = fetch('assets/hoja-membretada.jpg')
+      .then(r => { if (!r.ok) throw new Error('sin membrete'); return r.blob(); })
+      .then(b => new Promise((res, rej) => {
+        const fr = new FileReader();
+        fr.onload = () => res(fr.result);
+        fr.onerror = rej;
+        fr.readAsDataURL(b);
+      }))
+      .catch(() => null);
+    return membretePromise;
+  }
 
   async function construirPdfOficial(o) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'pt', format: 'letter' });
     const money = n => (n == null || isNaN(Number(n))) ? '—' : ERP.usd(n).replace(/<[^>]+>/g, '');
+    const membrete = await cargarMembreteDataURL();
 
-    const logo = ERP.logoPdfDataURL ? await ERP.logoPdfDataURL() : null;
-    if (logo) { try { const p = doc.getImageProperties(logo); const h = 30, w = p.width / p.height * h; doc.addImage(logo, 'PNG', 40, 30, w, h); } catch (_) { /* sin logo */ } }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(20, 38, 28);
-    doc.text(String(o.titulo || 'DOCUMENTO'), 555, 46, { align: 'right' });
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(107, 114, 104);
-    let metaY = 62;
+    function pintarMembrete() {
+      if (membrete) { try { doc.addImage(membrete, 'JPEG', 0, 0, PAGINA.w, PAGINA.h); } catch (_) { /* sin membrete: página en blanco, mejor que tronar */ } }
+    }
+    pintarMembrete();   // fondo de la página 1 — ANTES de cualquier contenido
+
+    // Título a la derecha, arriba del área de contenido.
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(20, 38, 28);
+    doc.text(String(o.titulo || 'DOCUMENTO'), MARGEN.right, MARGEN.top + 16, { align: 'right' });
+
+    // Meta (DATE/PO#/TERMS/VENDOR…) — label right-aligned en una columna angosta fija, valor
+    // LEFT-aligned con ajuste de línea (nunca right-aligned a un pivote compartido): un valor
+    // largo (ej. razón social del proveedor) NUNCA se encima con el label, sin importar cuánto
+    // mida — antes ambos lados usaban align:'right' contra pivotes fijos y un valor más ancho que
+    // su columna invadía el label (el bug real reportado: "VENDORRancho El Sol S.A. de C.V." pegado).
+    doc.setFontSize(9);
+    const metaLabelX = 400, metaValorX = 410, metaValorW = MARGEN.right - metaValorX;
+    let metaY = MARGEN.top + 40;
     (o.meta || []).forEach(([l, v]) => {
-      doc.text(String(l || ''), 460, metaY, { align: 'right' });
-      doc.setTextColor(20, 38, 28);
-      doc.text(v == null ? '—' : String(v), 555, metaY, { align: 'right' });
-      doc.setTextColor(107, 114, 104);
-      metaY += 13;
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(107, 114, 104);
+      doc.text(String(l || ''), metaLabelX, metaY, { align: 'right' });
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(20, 38, 28);
+      const lns = doc.splitTextToSize(v == null ? '—' : String(v), metaValorW);
+      doc.text(lns, metaValorX, metaY);
+      metaY += 13 * lns.length + 3;
     });
 
-    // Dirección de Plein bajo el logo (siempre visible, es el membrete — mismo criterio que
-    // ERP.membreteOficial en exportar.js).
-    doc.setFontSize(8); doc.setTextColor(74, 84, 80);
-    let dirY = 68;
-    DIRECCION_PLEIN.forEach(l => { doc.text(l, 40, dirY); dirY += 10; });
+    let y = metaY + 22;
 
-    let y = Math.max(metaY, dirY) + 14;
-
-    // Cajas VENDOR/BILL TO (o las que traiga cfg) lado a lado.
-    const cajaW = 250;
+    // Cajas BILL TO / SHIP TO (o las que traiga cfg) lado a lado, con gap real entre ellas.
+    const cajaW = 220, gap = 30;
     function pintarCaja(caja, x) {
-      if (!caja) return;
+      if (!caja) return 0;
       doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(107, 114, 104);
       doc.text(String(caja.titulo || ''), x, y);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(20, 38, 28);
-      let ly = y + 14;
-      (caja.lineas || []).filter(Boolean).forEach(l => { doc.text(String(l), x, ly); ly += 12; });
+      let ly = y + 16;
+      const lns = (caja.lineas || []).filter(Boolean);
+      lns.forEach(l => { doc.text(doc.splitTextToSize(String(l), cajaW), x, ly); ly += 12; });
+      return lns.length;
     }
-    pintarCaja(o.cajaIzq, 40);
-    pintarCaja(o.cajaDer, 40 + cajaW);
-    y += 14 + Math.max(
-      ((o.cajaIzq && o.cajaIzq.lineas) || []).filter(Boolean).length,
-      ((o.cajaDer && o.cajaDer.lineas) || []).filter(Boolean).length
-    ) * 12 + 18;
+    const nIzq = pintarCaja(o.cajaIzq, MARGEN.left);
+    const nDer = pintarCaja(o.cajaDer, MARGEN.left + cajaW + gap);
+    y += 16 + Math.max(nIzq, nDer) * 12 + 22;
 
     const lineas = Array.isArray(o.lineas) ? o.lineas : [];
     doc.autoTable({
@@ -232,22 +266,42 @@ window.ERP.opDocumentos = (function () {
       styles: { fontSize: 9, cellPadding: 6 },
       headStyles: { fillColor: VERDE_MARCA },
       columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
-      margin: { left: 40, right: 40 }
+      margin: { left: MARGEN.left, right: PAGINA.w - MARGEN.right },
+      // Si la tabla se pagina (muchas líneas), cada página nueva también necesita el membrete de
+      // fondo — jsPDF solo pintó la página 1 arriba.
+      didDrawPage: () => { if (doc.internal.getNumberOfPages() > 1) pintarMembrete(); }
     });
 
-    let y2 = doc.lastAutoTable.finalY + 18;
-    if (o.nota) {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(107, 114, 104);
-      doc.text(String(o.notaLabel || 'Notas'), 40, y2);
-      doc.setFont('helvetica', 'normal'); doc.setTextColor(20, 38, 28);
-      const lns = doc.splitTextToSize(String(o.nota), 320);
-      doc.text(lns, 40, y2 + 13);
-    }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(...VERDE_MARCA);
-    doc.text(`TOTAL: ${money(o.total)}`, 555, y2, { align: 'right' });
+    let y2 = doc.lastAutoTable.finalY + 22;
+    if (y2 > MARGEN.bottom - 90) { doc.addPage(); pintarMembrete(); y2 = MARGEN.top; }   // margen de aire para notas+totales
 
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(107, 114, 104);
-    doc.text('If you have any questions about this document, please contact sales@pleinproduce.com', 40, 740);
+    // Izquierda: "Other Comments or Special Instructions" con la nota. Derecha: desglose de
+    // totales SUBTOTAL/SALES TAX/OTHER/TOTAL (antes solo había TOTAL).
+    const anchoNota = cajaW + gap - 10;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(107, 114, 104);
+    doc.text(String(o.notaLabel || 'Other Comments or Special Instructions'), MARGEN.left, y2);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(20, 38, 28);
+    if (o.nota) doc.text(doc.splitTextToSize(String(o.nota), anchoNota), MARGEN.left, y2 + 14);
+
+    const subtotal = o.subtotal != null ? o.subtotal : lineas.reduce((s, l) => s + (Number(l.total) || 0), 0);
+    const filasTotales = [
+      ['SUBTOTAL', money(subtotal)],
+      ['SALES TAX', o.impuesto != null ? money(o.impuesto) : '$0.00'],
+      ['OTHER', o.otro != null ? money(o.otro) : '$0.00']
+    ];
+    doc.setFontSize(9);
+    let ty = y2;
+    filasTotales.forEach(([l, v]) => {
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(107, 114, 104);
+      doc.text(l, 470, ty, { align: 'right' });
+      doc.setTextColor(20, 38, 28);
+      doc.text(v, MARGEN.right, ty, { align: 'right' });
+      ty += 15;
+    });
+    ty += 4;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(...VERDE_MARCA);
+    doc.text('TOTAL', 470, ty, { align: 'right' });
+    doc.text(money(o.total), MARGEN.right, ty, { align: 'right' });
 
     return doc;
   }

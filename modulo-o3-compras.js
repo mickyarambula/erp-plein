@@ -678,12 +678,16 @@
 
     // Transiciones de gestión (O3b, D-194). Los estados de recepción los calcula el backend, no se
     // ofrecen aquí. Abierto → Enviada → Confirmada; Cancelar disponible mientras no haya recepción.
-    // O3c (D-196): "Enviada" ya NO se marca a mano — es consecuencia de "Enviar al proveedor" de
-    // verdad (ver abrirEnviarProveedor). puedeGenerarDoc: se puede (re)generar el PDF de la OC en
-    // cualquier estado activo, por si hace falta reimprimir/reenviar.
+    // O3c (D-196/D-197): "Enviada" ya NO se marca a mano — es consecuencia de "Enviar al
+    // proveedor" de verdad (ver abrirEnviarProveedor). puedeGenerarDoc/puedeEnviarProveedor:
+    // disponibles en CUALQUIER estado activo (D-197 — reenviar es un caso real: no llegó el
+    // correo, se manda a otro contacto, el proveedor lo vuelve a pedir), solo se ocultan en
+    // Cancelado. El cambio de estado a 'Enviada' dentro del envío SÍ sigue gateado a que la
+    // compra esté en Abierto (ver enviarOCPorCorreo/enviarOCPorWhatsapp) — reenviar una compra ya
+    // Confirmada/Recibida NO debe regresarla de estado, el backend lo rechazaría.
     const estL = String(s.estado || '').toLowerCase();
     const puedeGenerarDoc = puedeCap && estL !== 'cancelado';
-    const puedeEnviarProveedor = puedeCap && estL === 'abierto';
+    const puedeEnviarProveedor = puedeCap && estL !== 'cancelado';
     const puedeConfirmar = puedeCap && estL === 'enviada';
     const puedeCancelar = puedeCap && ['abierto', 'enviada', 'confirmada'].includes(estL);
 
@@ -787,30 +791,31 @@
     }));
   }
 
-  function bloqueProveedorOc(po) {
-    return [
-      po.proveedor_razon_social || po.proveedor,
-      po.proveedor_direccion,
-      [po.proveedor_ciudad, po.proveedor_pais].filter(Boolean).join(', ') || null,
-      po.proveedor_rfc ? `RFC: ${po.proveedor_rfc}` : null
-    ].filter(v => v && String(v).trim());
-  }
-
   async function construirOcPdfBlob(po) {
+    // Estructura tomada de Purchase Order Template.docx (D-197): BILL TO (Plein, quien paga) y
+    // SHIP TO (destino de la mercancía) — NO "VENDOR" como caja propia, ese formato es de las
+    // plantillas oficiales de Invoice/Quote/PO reusadas tal cual. El proveedor se identifica en el
+    // meta (fila VENDOR) — no hace falta repetirle su propia dirección/RFC de vuelta en el
+    // documento que le mandamos. SHIP TO: no hay un campo de "ubicación de entrega" propio por
+    // compra en v_op_spo_documento todavía — se usa la misma dirección de Plein que BILL TO
+    // (dato real conocido, no inventado) hasta que exista ese campo.
+    const poNum = po.numero_proveedor || po.folio;
+    const meta = [
+      ['VENDOR', po.proveedor_razon_social || po.proveedor || '—'],
+      ['DATE', fecha(po.fecha)],
+      ['PO #', poNum]
+    ];
+    if (poNum !== po.folio) meta.push(['REF. INTERNA', po.folio]);   // no repetir el mismo dato dos veces
+    meta.push(['MONEDA', po.moneda || 'USD']);
+
     const doc = await ERP.opDocumentos.construirPdfOficial({
       titulo: 'PURCHASE ORDER',
-      meta: [
-        ['DATE', fecha(po.fecha)],
-        ['PO #', po.numero_proveedor || po.folio],
-        ['REF. INTERNA', po.folio],
-        ['ESTADO', po.estado],
-        ['MONEDA', po.moneda || 'USD']
-      ],
-      cajaIzq: { titulo: 'VENDOR', lineas: bloqueProveedorOc(po) },
-      cajaDer: { titulo: 'BILL TO', lineas: ERP.opDocumentos.bloqueEmpresaPleinPdf() },
+      meta,
+      cajaIzq: { titulo: 'BILL TO', lineas: ERP.opDocumentos.bloqueEmpresaPleinPdf() },
+      cajaDer: { titulo: 'SHIP TO', lineas: ERP.opDocumentos.bloqueEmpresaPleinPdf() },
       lineas: lineasOcParaPdf(po),
       total: po.total,
-      notaLabel: 'Notes',
+      notaLabel: 'Other Comments or Special Instructions',
       nota: po.nota
     });
     return doc.output('blob');
@@ -910,6 +915,18 @@
     if (el) { el.className = 'aviso visible ' + tipo; el.innerHTML = html; }
   }
 
+  /** D-197: marca la compra como Enviada SOLO si sigue en Abierto. Reenviar (correo o WhatsApp)
+      ya es válido en cualquier estado activo (D-197 — no llegó, se manda a otro contacto, el
+      proveedor lo pide de nuevo), pero si la compra ya avanzó a Confirmada/Recibido, NO hay que
+      regresarla de estado — el backend rechaza esa transición con excepción y rompería el envío
+      completo (el registro del envío ya se hizo antes de esto, así que el rastro queda igual).
+      Devuelve true si sí cambió el estado, para ajustar el mensaje del toast. */
+  async function marcarEnviadaSiAbierto(s) {
+    if (String(s.estado || '').toLowerCase() !== 'abierto') return false;
+    await rpc('fn_op_spo_set_estado', { p_id: Number(s.supplier_po_id), p_estado: 'Enviada' });
+    return true;
+  }
+
   async function enviarOCPorCorreo(s, docSpo, boton) {
     boton.disabled = true;
     avisoEnv('warn', 'Preparando…');
@@ -931,10 +948,10 @@
         asunto: `Orden de compra ${s.folio} — Plein Produce`, pdfPath: path, estado: 'enviado',
         contraparteId: docSpo.proveedor_id, proveedorEnvio: 'mailto'
       });
-      await rpc('fn_op_spo_set_estado', { p_id: Number(s.supplier_po_id), p_estado: 'Enviada' });
+      const cambioAEnviada = await marcarEnviadaSiAbierto(s);
       ERP.marcarDatosSucios();
       await recargar();
-      ERP.toast('ok', `Compra <b>${esc(s.folio)}</b> enviada y marcada como <b>Enviada</b>.`);
+      ERP.toast('ok', `Compra <b>${esc(s.folio)}</b> enviada${cambioAEnviada ? ' y marcada como <b>Enviada</b>' : ''}.`);
       verSPO(s.supplier_po_id);
     } catch (e) {
       avisoEnv('err', `No se pudo enviar: ${esc(e.message)}`);
@@ -959,11 +976,11 @@
         mensaje, pdfPath: path, pdfUrl: url90, estado: 'enviado',
         contraparteId: docSpo.proveedor_id, proveedorEnvio: 'wa.me'
       });
-      await rpc('fn_op_spo_set_estado', { p_id: Number(s.supplier_po_id), p_estado: 'Enviada' });
+      const cambioAEnviada = await marcarEnviadaSiAbierto(s);
       ERP.marcarDatosSucios();
       await recargar();
       const win = window.open(`https://wa.me/${digitos}?text=${encodeURIComponent(mensaje)}`, '_blank', 'noopener');
-      ERP.toast('ok', `Compra <b>${esc(s.folio)}</b> marcada como <b>Enviada</b>.` + (win ? '' : ' No se pudo abrir WhatsApp automáticamente — revisa el bloqueo de ventanas emergentes.'));
+      ERP.toast('ok', `Compra <b>${esc(s.folio)}</b> enviada${cambioAEnviada ? ' y marcada como <b>Enviada</b>' : ''}.` + (win ? '' : ' No se pudo abrir WhatsApp automáticamente — revisa el bloqueo de ventanas emergentes.'));
       verSPO(s.supplier_po_id);
     } catch (e) {
       avisoEnv('err', `No se pudo enviar: ${esc(e.message)}`);
