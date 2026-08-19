@@ -5079,3 +5079,52 @@ fila con "−26 vs pedido" rojo, pill Parcial, compra "Recibido parcial". Intent
 bloqueo "El maximo permitido es 237.3 segun la tolerancia (5%)" tal cual. Recibir 30 (total 230) →
 toast "Recibido de MÁS (+4)", pill roja, compra "Recibido". 0 errores de consola. `node --check`
 limpio. `?v=` a `20260818i` (D-185). NO desplegado (Miguel corre `npx vercel --prod`).
+
+## E133 (2026-08-19) — Responsive Fase 2 (5 módulos) + 2 bugs reales de iPhone + Fase 3 PWA (D-195)
+
+Miguel probó la Fase 1 (E131/D-193) en su iPhone real y reportó 2 bugs con evidencia de captura,
+arreglados como parte de esta fase. Después: cimiento aplicado a los 5 módulos Camino C, uno por
+uno con commit por módulo, y Fase 3 (PWA) para cerrar la línea de trabajo responsive.
+
+**BUG 1 — modbar desbordada en móvil.** El síntoma reportado ("Soy: Miguel (camb…" cortado) tenía
+causa real: `.presencia-soy` no estaba oculta en ≤640px como sí `.presencia-online`/`.perfil`.
+Pero medir con `getBoundingClientRect` reveló una SEGUNDA causa que seguía desbordando incluso con
+presencia oculta: `.modbar .sp` traía `flex:none` (nunca encogía) y `.modbar .mod` sin tamaño
+fijo hacía que el chip de grupo se desbordara de un contenedor colapsado a 0px. Fix: `.sp{flex:1}`,
+`.mod{flex:none}`, chip solo-ícono en móvil (el título ya está en el H1), "Actualizar"/"Salir"
+pasan a cuadrados solo-ícono de 40px (`<i class="btn-ico">`+`<span class="btn-txt">` nuevos en
+`index.html`, texto oculto por CSS solo en móvil). Verificado con `scrollWidth === clientWidth`
+exacto (antes 468 vs 390, después 390 vs 390).
+
+**BUG 2 — Catálogos (master-detail) no colapsaba.** Lista y ficha quedaban lado a lado con scroll
+horizontal y contenido cortado. Fix: navegación de 2 pasos —
+`mostrarDetalleMovil()`/`ocultarDetalleMovil()` (nuevas en `modulo-catalogos-c.js`) alternan
+`.detalle-abierta` en `#catcSplit`, llamadas desde los 5 puntos que abren `#catcDetail` (fila,
+Listas, Papelera, Importar, Nuevo). Por default LISTA a ancho completo; con la clase, FICHA a
+ancho completo + botón fijo "Volver a la lista" (`#catcVolver`, nuevo). Se resetea a "lista" en
+cada `render()`/cambio de pestaña. Pestañas con scroll horizontal propio
+(`flex-wrap:nowrap;overflow-x:auto`). Bug encontrado y corregido en la misma verificación: sin
+regla base `display:none`, `#catcVolver` aparecía también en desktop (heredaba
+`display:inline-block` del navegador).
+
+**Fase 2 — patrón tabla→tarjeta en los 5 módulos** (commit por módulo, orden por uso):
+`ERP.marcarTabla(cont)` tras pintar cada tabla — `o1-cpo` (lista) → `o1-so` (lista + el tablero
+de 11 columnas, caso ancho crítico) → `o1-inventario` (lista de lotes, 14 columnas) →
+`o3-compras` (lista + líneas con Pedido/Recibido/Pendiente de O3b) → `catalogos-c` (matriz de SKU
++ papelera; las tablas del asistente de importar Excel quedan con scroll horizontal propio, no se
+convirtieron a tarjeta — flujo de escritorio, bajo riesgo). De paso, la regla de inputs 16px/44px
+de D-193 se extendió a `.so-linea-campo` (editor SKU/cantidad/precio de O1-CPO/O1-SO/O3-Compras).
+
+**Fase 3 — PWA:** `manifest.json` nuevo + `assets/icono-192.png`/`icono-180.png` (generados con
+`sips` desde el `icono.png` existente) + `sw.js` nuevo — service worker MÍNIMO a propósito
+(`fetch` hace passthrough directo a la red, sin caché ni nada offline). `index.html` gana
+`<link rel="manifest">` + meta `apple-mobile-web-app-*` + registro del service worker.
+
+**Verificado en navegador:** iPhone (390px) los 5 módulos en tarjetas sin scroll horizontal;
+tablet (800px) y desktop (1440px) sin regresión (texto completo en chip/botones, Catálogos lado a
+lado sin el botón "Volver" de sobra); modo oscuro con colores sanos por color computado; PWA con
+manifest 200, service worker `activated`, apple-touch-icon 200, 0 errores de consola.
+
+`node --check` limpio en los 5 módulos; `estilos.css` balanceado (1603/1603). 6 commits (uno por
+módulo/bug/fase). `?v=` a `20260818j` (D-185). NO desplegado — `npx vercel --prod` lo corre
+Miguel. `SISTEMA-DISENO.md` §13 actualizado con Fase 2/3 HECHO y los 2 bugs como precedente.

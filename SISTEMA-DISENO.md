@@ -240,9 +240,29 @@ cada `<tr>` se vuelve una **tarjeta apilada** con la etiqueta de cada campo visi
 - **Fase 1 (E131 · HECHO):** cimiento — breakpoints, marco colapsable, patrón tabla→tarjeta,
   formularios táctiles, tipografía. Verificado en iPhone (390px), tablet (800px) y desktop (1440px):
   cero scroll horizontal en los tres; desktop pixel-idéntico a antes.
-- **Fase 2 (pendiente):** aplicar a los 5 módulos Camino C uno por uno, verificando cada uno
-  (orden por uso: o1-cpo → o1-so → o1-inventario → o3-compras → catalogos-c). Commit por módulo.
-  Sobre todo: llamar `ERP.marcarTabla(cont)` tras pintar cada tabla, y revisar layouts a medida
-  (master-detail de Catálogos, tableros anchos del SO).
-- **Fase 3 (pendiente):** PWA — `manifest.json` + iconos + service worker mínimo (instalable en
-  iPhone "Agregar a pantalla de inicio", sin barra de navegador). No requiere offline.
+- **Fase 2 (E132 · HECHO, D-195):** aplicada a los 5 módulos Camino C, uno por uno, commit por
+  módulo, en el orden por uso (o1-cpo → o1-so → o1-inventario → o3-compras → catalogos-c):
+  `ERP.marcarTabla(cont)` tras pintar cada tabla (lista + tablero ancho del SO de 11 columnas +
+  líneas de compra de O3b). De paso, Miguel probó Fase 1 en su iPhone real y reportó 2 bugs, ambos
+  cerrados en esta misma fase — ver "Bugs reales cerrados" abajo.
+- **Fase 3 (E132 · HECHO, D-195):** PWA — `manifest.json` + iconos (192/180px, generados con
+  `sips` a partir de `assets/icono.png`) + service worker mínimo (`sw.js`, sin caché — solo
+  install/activate/fetch passthrough) + meta tags `apple-mobile-web-app-*`. Instalable en iPhone
+  ("Agregar a pantalla de inicio", sin barra de navegador, con ícono de Plein). Sin soporte
+  offline, como se pidió.
+
+### Bugs reales cerrados en Fase 2 (Miguel probó en su iPhone, con evidencia)
+- **BUG 1 — modbar se desbordaba en móvil.** Causa reportada (`.presencia-soy` sin ocultar en
+  ≤640px) más una causa raíz adicional encontrada al medir con `getBoundingClientRect` (no solo
+  el síntoma): `.modbar .sp` traía `flex:none` (no encogía) y `.modbar .mod` no tenía tamaño fijo,
+  así que el chip de grupo se desbordaba de un contenedor colapsado a 0. Fix: `.presencia-soy`
+  oculta en móvil; `.sp` ahora encoge; el chip queda solo-ícono en móvil (el título ya está en el
+  H1 de la pantalla); "Actualizar"/"Salir" pasan a botones cuadrados solo-ícono de 40px (nuevos
+  `<i>`+`<span class="btn-txt">` en `index.html`, texto oculto por CSS en móvil).
+- **BUG 2 — Catálogos (master-detail) no colapsaba.** Lista y ficha quedaban lado a lado con
+  scroll horizontal y contenido cortado. Fix: navegación de 2 pasos — `#catcSplit` gana/pierde
+  `.detalle-abierta` (JS: `mostrarDetalleMovil()`/`ocultarDetalleMovil()` en
+  `modulo-catalogos-c.js`); por default se ve la LISTA a ancho completo, al elegir un registro se
+  ve la FICHA a ancho completo con botón fijo "Volver a la lista" (oculto fuera de móvil con regla
+  base explícita — sin ella el `<button>` aparecía también en desktop, detectado y corregido en la
+  misma verificación). Pestañas con scroll horizontal propio (`flex-wrap:nowrap;overflow-x:auto`).

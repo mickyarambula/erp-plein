@@ -2840,3 +2840,77 @@ la factura"; fila +4 en rojo, pill Recibido de mas (rojo), estado compra "Recibi
 consola.** `node --check` limpio. `?v=` de `index.html` a `20260818i` (D-185). NO desplegado.
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-19, continuación) — Responsive Fase 2 (5 módulos) + 2 bugs reales de iPhone + Fase 3 PWA (D-195)
+_Miguel probó la Fase 1 (D-193) en su iPhone real y reportó 2 bugs con evidencia de captura, a
+arreglar como parte de esta fase. Después: aplicar el cimiento a los 5 módulos Camino C uno por
+uno (commit por módulo, orden por uso), y cerrar con la Fase 3 (PWA). Backend intacto — 100%
+frontend. Frontend (Claude Code, Sonnet 5 — aplicación mecánica del patrón ya definido en D-193)._
+
+- **D-195a — BUG 1, modbar desbordada en móvil (reportada + causa raíz adicional):** el síntoma
+  reportado ("Soy: Miguel (camb…" cortado) era real — `.presencia-soy` no estaba oculta en ≤640px
+  como sí lo estaban `.presencia-online`/`.perfil`. Se ocultó. Pero medir con
+  `getBoundingClientRect` (no solo el síntoma) reveló una SEGUNDA causa que seguía desbordando la
+  modbar incluso con presencia oculta: `.modbar .sp` traía `flex:none` (nunca encogía) y
+  `.modbar .mod` no tenía tamaño fijo — el chip de grupo se desbordaba visualmente de un
+  contenedor colapsado a 0 de ancho. Fix completo: `.sp{flex:1}` (ahora sí encoge), `.mod{flex:none}`
+  (el chip conserva su tamaño natural en vez de colapsar-y-desbordar), el chip queda **solo ícono**
+  en móvil (el nombre del grupo ya está redundante con el H1 de la pantalla), y "Actualizar"/"Salir"
+  pasan a botones cuadrados **solo-ícono de 40px** en móvil (`index.html`: `<i class="btn-ico">` +
+  `<span class="btn-txt">` nuevos alrededor del texto existente; el texto se oculta por CSS solo en
+  móvil, intacto en desktop/tablet). Verificado con `modbar.scrollWidth === modbar.clientWidth`
+  exacto a 390px (no solo "sin scroll visible") — antes 468 vs 390, después 390 vs 390.
+- **D-195b — BUG 2, Catálogos (master-detail) no colapsaba:** lista + ficha quedaban lado a lado
+  obligando a scroll horizontal con contenido cortado. Fix: navegación de 2 pasos.
+  `mostrarDetalleMovil()`/`ocultarDetalleMovil()` (nuevas en `modulo-catalogos-c.js`) alternan la
+  clase `.detalle-abierta` en `#catcSplit` — llamadas al elegir una fila y al abrir Listas/
+  Papelera/Importar/Nuevo (los 5 puntos de entrada a `#catcDetail`). CSS (`@media 640`): por
+  default `.catc-list` a ancho completo, `.catc-detail-wrap` oculto; con `.detalle-abierta` se
+  invierte, con botón fijo **"Volver a la lista"** (`#catcVolver`, nuevo, arriba de la ficha). Se
+  resetea a "lista" en cada `render()`/cambio de pestaña porque el template se reconstruye entero.
+  Pestañas (Productos/Proveedores/Clientes/Listas/Papelera) con scroll horizontal PROPIO
+  (`flex-wrap:nowrap;overflow-x:auto`) — nunca empujan el ancho de la página. **Bug encontrado y
+  corregido en la misma verificación:** sin una regla base `display:none` fuera de `@media 640`,
+  `#catcVolver` heredaba `display:inline-block` del navegador y aparecía de sobra arriba de la
+  ficha también en desktop/tablet — corregido antes de dar la tarea por cerrada.
+- **D-195c — Fase 2, patrón tabla→tarjeta aplicado a los 5 módulos (commit por módulo, en orden):**
+  `ERP.marcarTabla(cont)` tras pintar cada tabla. `o1-cpo` (lista de Customer PO) → `o1-so` (lista
+  + el tablero de 11 columnas Required/Allocated/Purchased/Open/Venta/Costo/Margen, el caso ancho
+  crítico explícito) → `o1-inventario` (lista de lotes, 14 columnas) → `o3-compras` (lista +
+  líneas de compra con Pedido/Recibido/Pendiente/Recepción de O3b/D-194) → `catalogos-c` (matriz
+  de SKU y papelera envueltas en `.tabla-wrap` + `ERP.marcarTabla($det())`; las tablas del
+  asistente de importar Excel, flujo de escritorio, no se convirtieron a tarjeta pero quedan con
+  scroll horizontal propio — nunca rompen el ancho). De paso se extendió la regla de inputs
+  16px/44px de D-193 a `.so-linea-campo` (editor de línea SKU/cantidad/precio de O1-CPO/O1-SO/
+  O3-Compras), que no estaba cubierta por `.form-erp`.
+- **D-195d — Fase 3, PWA:** `manifest.json` nuevo (name/short_name/icons/`display:standalone`/
+  theme_color) + `assets/icono-192.png` y `assets/icono-180.png` (generados con `sips` desde el
+  `icono.png` de 512×512 existente, sin herramientas nuevas) + `sw.js` nuevo en la raíz — service
+  worker MÍNIMO a propósito: `install`/`activate` triviales, `fetch` hace *passthrough* directo a
+  la red (sin caché, sin nada offline). `index.html` gana `<link rel="manifest">` + meta
+  `apple-mobile-web-app-*` (iOS "Agregar a pantalla de inicio" usa sobre todo estas meta tags, no
+  el manifest estándar) + registro del service worker (silencioso si falla, nunca bloquea el
+  arranque).
+
+**Verificado en navegador (Chrome DevTools, viewport de dispositivo, mocks con varias filas por
+módulo — las listas reales de Miguel están vacías tras la limpieza de backend):**
+- **iPhone (390px), los 5 módulos:** listas y tableros anchos en tarjetas, cero scroll horizontal
+  en ninguno. Catálogos: lista→ficha→Volver funcionando, pestañas se deslizan. Modbar sin overflow
+  (confirmado por medición, no solo visual).
+- **Tablet (800px) y Desktop (1440px):** sin regresión — riel/menú fijo de siempre en desktop,
+  cajón en tablet; botones "Actualizar"/"Salir" con texto completo; chip con texto completo;
+  Catálogos con split lado a lado y sin el botón "Volver" de sobra (bug detectado y corregido en
+  esta misma sesión, ver D-195b). Modo oscuro: colores sanos por color computado (sin hex nuevos,
+  todo por tokens).
+- **PWA:** `manifest.json` responde 200 con JSON válido; service worker registrado y `activated`
+  con scope raíz; `apple-touch-icon` (180px) responde 200; 0 errores de consola en el arranque
+  normal (pantalla de login).
+
+`node --check` limpio en los 5 módulos tocados; llaves de `estilos.css` balanceadas (1603/1603).
+6 commits, uno por módulo/bug/fase: `280ff2a`+`55a9882` (Fase 1, turno previo) → `c019c84` (BUG 1 +
+o1-cpo) → `f0d9586` (o1-so) → `0c395c3` (o1-inventario) → `c7b2b9b` (o3-compras) → `290957c` (BUG 2
++ catalogos-c) → `cc38424` (Fase 3 PWA). `?v=` de `index.html` a `20260818j` (D-185). NO
+desplegado — `npx vercel --prod` lo corre Miguel. `SISTEMA-DISENO.md` §13 actualizado (Fase 2/3
+HECHO + los 2 bugs documentados como precedente para futuros módulos).
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
