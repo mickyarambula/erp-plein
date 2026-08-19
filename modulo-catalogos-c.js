@@ -3,6 +3,12 @@
    modelo SKU del schema cat.* (ver SPEC-CATALOGOS-BACKEND.md — lo aplica el chat de backend).
    Portado de catalogos-completo.html a los tokens reales del proyecto (tokens.css, dark-aware).
 
+   Responsive (Fase 2, D-195): en móvil (<=640px) el master-detail se vuelve navegación de 2 pasos
+   — lista o ficha, nunca ambas a la vez. #catcSplit gana/pierde .detalle-abierta vía
+   mostrarDetalleMovil()/ocultarDetalleMovil() (CSS en estilos.css hace el display real). Botón
+   "Volver a la lista" (#catcVolver) siempre presente, visible solo en móvil. Tablas del detalle
+   (matriz de SKU, papelera) usan ERP.marcarTabla($det()) — patrón tabla→tarjeta de D-193.
+
    SOLO FRONTEND. Lee por vistas public.v_catc_*, escribe por RPCs public.fn_cat_* (SECURITY DEFINER).
    NO toca el modulo-catalogos.js viejo (Directorio Comercial) ni sus tablas vivas.
 
@@ -161,7 +167,7 @@
         <button class="catc-ic" id="catcListas" title="Listas de valores (empaque, calibre, grado…)"><i class="ti ti-list-details"></i><span>Listas</span></button>
         <button class="catc-ic" id="catcPapelera" title="Ver eliminados y restaurar"><i class="ti ti-trash"></i><span>Papelera</span></button>
       </div>
-      <div class="catc-split">
+      <div class="catc-split" id="catcSplit">
         <div class="catc-list">
           <div class="catc-lh">
             <div class="catc-sb"><i class="ti ti-search"></i><input id="catcBuscar" type="search" placeholder="Buscar" value="${esc(fTexto)}"></div>
@@ -178,24 +184,42 @@
           </div>
           <div class="catc-rows" id="catcRows"></div>
         </div>
-        <div class="catc-detail" id="catcDetail"></div>
+        <div class="catc-detail-wrap">
+          <button type="button" class="catc-volver" id="catcVolver"><i class="ti ti-arrow-left"></i>Volver a la lista</button>
+          <div class="catc-detail" id="catcDetail"></div>
+        </div>
       </div>
     </div>`;
 
     cont.querySelectorAll('.catc-tabs button[data-tab]').forEach(b => b.addEventListener('click', () => cambiarTab(b.dataset.tab)));
-    document.getElementById('catcListas').addEventListener('click', vistaListas);
-    document.getElementById('catcPapelera').addEventListener('click', vistaPapelera);
+    document.getElementById('catcListas').addEventListener('click', () => { vistaListas(); mostrarDetalleMovil(); });
+    document.getElementById('catcPapelera').addEventListener('click', () => { vistaPapelera(); mostrarDetalleMovil(); });
+    document.getElementById('catcVolver').addEventListener('click', ocultarDetalleMovil);
     document.getElementById('catcBuscar').addEventListener('input', e => { fTexto = e.target.value; pintarRows(); });
     const selTipo = document.getElementById('catcFiltroTipo');
     if (selTipo) selTipo.addEventListener('change', e => { fTipo = e.target.value; pintarRows(); });
     const bNuevo = document.getElementById('catcNuevo');
-    if (bNuevo) bNuevo.addEventListener('click', crearNuevo);
+    if (bNuevo) bNuevo.addEventListener('click', () => { crearNuevo(); mostrarDetalleMovil(); });
     const bImp = document.getElementById('catcImportar');
-    if (bImp) bImp.addEventListener('click', () => vistaImportar());
+    if (bImp) bImp.addEventListener('click', () => { vistaImportar(); mostrarDetalleMovil(); });
     document.getElementById('catcExportar').addEventListener('click', exportarExcel);
 
     pintarRows();
     abrirDetalle(selId);
+  }
+
+  /* Navegación de 2 pasos en móvil (Bug 2, Fase 2 · D-195): .catc-split gana/pierde la clase
+     .detalle-abierta; el display real (lista vs. ficha a ancho completo) vive en el CSS bajo
+     @media(max-width:640px) — en desktop/tablet estas clases no tienen efecto (split lado a lado
+     de siempre). Se resetea a "lista" en cada render()/cambio de pestaña porque el template se
+     reconstruye entero (la clase nueva no trae 'detalle-abierta'). */
+  function mostrarDetalleMovil() {
+    const split = document.getElementById('catcSplit');
+    if (split) split.classList.add('detalle-abierta');
+  }
+  function ocultarDetalleMovil() {
+    const split = document.getElementById('catcSplit');
+    if (split) split.classList.remove('detalle-abierta');
   }
 
   async function cambiarTab(t) {
@@ -237,7 +261,7 @@
       </div>`;
     }).join('');
     cont.querySelectorAll('.catc-row[data-id]').forEach(r => r.addEventListener('click', () => {
-      selId = r.dataset.id; pintarRows(); abrirDetalle(selId);
+      selId = r.dataset.id; pintarRows(); abrirDetalle(selId); mostrarDetalleMovil();
     }));
   }
 
@@ -271,7 +295,7 @@
 
   function matrizHTML(skus) {
     return `<div class="catc-hint" style="margin-bottom:8px">Todos los SKUs del producto en una vista.</div>
-      <table class="catc-tbl"><thead><tr><th>SKU</th><th>Calibre</th><th>Grado</th><th>GTIN</th>
+      <div class="tabla-wrap"><table class="catc-tbl"><thead><tr><th>SKU</th><th>Calibre</th><th>Grado</th><th>GTIN</th>
         <th style="text-align:right">Cajas/tar.</th><th style="text-align:right">Clientes</th>${puedeCap() ? '<th></th>' : ''}</tr></thead>
       <tbody>${skus.map(s => `<tr>
         <td>${esc(tituloSku(s))}</td>
@@ -279,7 +303,7 @@
         <td class="mono catc-mut" style="font-size:11px">${esc(s.gtin || '—')}</td>
         <td style="text-align:right" class="catc-sec">${esc(s.cajas_por_tarima ?? '—')}</td>
         <td style="text-align:right" class="catc-sec">${esc(s.n_clientes ?? 0)}</td>
-        ${puedeCap() ? `<td style="text-align:right"><i class="ti ti-pencil catc-go editar" data-editsku="${esc(s.id)}" title="Editar SKU"></i></td>` : ''}</tr>`).join('')}</tbody></table>`;
+        ${puedeCap() ? `<td style="text-align:right"><i class="ti ti-pencil catc-go editar" data-editsku="${esc(s.id)}" title="Editar SKU"></i></td>` : ''}</tr>`).join('')}</tbody></table></div>`;
   }
 
   function skuCardHTML(s, i, clientesDe) {
@@ -414,6 +438,7 @@
     $det().querySelectorAll('[data-unlinkcli]').forEach(el => el.addEventListener('click', () => {
       const [sid, cid] = el.dataset.unlinkcli.split(':'); desvincularClienteSku(sid, cid);
     }));
+    ERP.marcarTabla($det());   // matriz de SKU (D-193) — no-op si skuMode es "cards" (sin <table>)
   }
 
   async function guardarProducto() {
@@ -963,10 +988,10 @@
     $det().innerHTML = `<div class="catc-dwrap">
       <div style="font-size:17px;font-weight:600;margin-bottom:2px">Papelera</div>
       <div class="catc-hint" style="margin-bottom:14px">Registros eliminados. Restaurar los devuelve al catálogo. (Los contactos no se restauran desde aquí.) "Eliminar definitivo" los borra de la base — no se puede deshacer, y si tienen otros registros dependiendo de ellos (ej. un producto con SKUs), el ERP lo rechaza y explica por qué.</div>
-      ${(filas || []).length ? `<table class="catc-tbl"><thead><tr><th>Tipo</th><th>Registro</th><th>Eliminado</th><th></th></tr></thead>
+      ${(filas || []).length ? `<div class="tabla-wrap"><table class="catc-tbl"><thead><tr><th>Tipo</th><th>Registro</th><th>Eliminado</th><th></th></tr></thead>
         <tbody>${filas.map(f => `<tr><td class="catc-sec">${esc(f.entidad)}</td><td>${esc(f.etiqueta || '—')}</td>
           <td class="catc-sec">${esc(ERP.fecha(f.deleted_at))}</td>
-          <td style="text-align:right;white-space:nowrap">${(puedeCap() && RPC_RESTAURAR[f.entidad]) ? `<button class="catc-act" data-restore="${esc(f.entidad)}:${esc(f.id)}"><i class="ti ti-arrow-back-up"></i>Restaurar</button>` : ''}${(puedeCap() && RPC_PURGAR[f.entidad]) ? ` <button class="catc-act del" data-purgar="${esc(f.entidad)}:${esc(f.id)}" title="Borra de la base, sin vuelta atrás"><i class="ti ti-trash"></i>Eliminar definitivo</button>` : ''}</td></tr>`).join('')}</tbody></table>`
+          <td style="text-align:right;white-space:nowrap">${(puedeCap() && RPC_RESTAURAR[f.entidad]) ? `<button class="catc-act" data-restore="${esc(f.entidad)}:${esc(f.id)}"><i class="ti ti-arrow-back-up"></i>Restaurar</button>` : ''}${(puedeCap() && RPC_PURGAR[f.entidad]) ? ` <button class="catc-act del" data-purgar="${esc(f.entidad)}:${esc(f.id)}" title="Borra de la base, sin vuelta atrás"><i class="ti ti-trash"></i>Eliminar definitivo</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
         : '<div class="catc-hint">Papelera vacía.</div>'}
     </div>`;
     $det().querySelectorAll('[data-restore]').forEach(b => b.addEventListener('click', async () => {
@@ -989,6 +1014,7 @@
         ERP.toast('err', esc(e.message), 9000);
       }
     }));
+    ERP.marcarTabla($det());   // D-193
   }
 
   /* ================= Listas de valores ================= */
