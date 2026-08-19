@@ -140,6 +140,7 @@
 
     cont.querySelectorAll('tr.clic[data-id]').forEach(tr =>
       tr.addEventListener('click', () => verSO(Number(tr.dataset.id))));
+    ERP.marcarTabla(cont);   // patrón tabla→tarjeta en móvil (D-193/Fase 2)
   }
 
   async function render(cont) {
@@ -498,6 +499,9 @@
       const t = tablero.find(x => String(x.linea_id) === b.dataset.lineaId);
       if (t) abrirAsignarLote(so, t);
     }));
+    // El tablero (Required/Allocated/Purchased/Open/Venta/Costo/Margen, 11 columnas) es el caso
+    // crítico de desborde en móvil (D-193/Fase 2) — se convierte a tarjeta igual que cualquier tabla.
+    ERP.marcarTabla(document.getElementById('panelBody'));
   }
 
   /* ================= Asignar lote a línea (O2a — fn_op_alloc_crear) =================
