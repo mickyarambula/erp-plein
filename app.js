@@ -209,8 +209,10 @@
   }
 
   function pintarIconoTema() {
-    const ico = $('icoTema');
-    if (ico) ico.className = temaActual() === 'dark' ? 'ti ti-sun' : 'ti ti-moon';
+    // Dos toggles: #icoTema (riel, desktop/tablet) e #icoTemaTop (modbar, móvil). Se sincronizan.
+    const clase = temaActual() === 'dark' ? 'ti ti-sun' : 'ti ti-moon';
+    const ico = $('icoTema'); if (ico) ico.className = clase;
+    const icoTop = $('icoTemaTop'); if (icoTop) icoTop.className = clase;
   }
 
   function alternarTema() {
@@ -389,6 +391,7 @@
   $('btnSalir').addEventListener('click', salir);
   $('btnRf').addEventListener('click', actualizar);
   $('btnTema').addEventListener('click', alternarTema);
+  $('btnTemaTop').addEventListener('click', alternarTema);   // toggle de tema móvil (modbar)
   $('btnMenu').addEventListener('click', ERP.alternarMenu);
   $('menuFondo').addEventListener('click', ERP.cerrarMenu);
   $('panelCerrar').addEventListener('click', ERP.cerrarPanel);

@@ -784,6 +784,37 @@ window.ERP = (function () {
     document.querySelector('.menu-fondo').classList.remove('abierto');
   }
 
+  /* ============ Responsive: patrón TABLA → TARJETA (Fase 1, D-193) ============
+     Utilidad reusable, NO ad-hoc por módulo. Marca las tablas de un contenedor para que en
+     móvil (<=640px) cada fila se apile como tarjeta con la etiqueta de cada campo visible.
+     Cómo: agrega la clase .tabla-cards al .tabla-wrap y copia el texto del <th> de cada columna
+     al atributo data-label del <td> correspondiente (el CSS lo pinta con ::before en móvil).
+     En desktop/tablet no cambia nada (las reglas .tabla-cards solo viven bajo @media 640).
+     Idempotente: se puede llamar tras cada repintado de tabla sin efectos acumulados.
+     Uso típico (Fase 2, una línea por módulo tras pintar la tabla):  ERP.marcarTabla(cont);
+     `ref` puede ser un id (string), un elemento contenedor, o una <table> directamente. */
+  function marcarTabla(ref) {
+    const cont = typeof ref === 'string' ? document.getElementById(ref) : ref;
+    if (!cont) return;
+    const tablas = (cont.matches && cont.matches('table')) ? [cont] : cont.querySelectorAll('table');
+    tablas.forEach(tabla => {
+      const wrap = tabla.closest('.tabla-wrap') || tabla.parentElement;
+      if (wrap) wrap.classList.add('tabla-cards');
+      // Etiquetas = texto de cada <th> del encabezado (columnas de acciones sin texto → sin etiqueta).
+      const ths = [...tabla.querySelectorAll('thead th')].map(th => th.textContent.trim());
+      tabla.querySelectorAll('tbody tr').forEach(tr => {
+        const celdas = [...tr.children].filter(c => c.tagName === 'TD');
+        // Filas con una sola celda con colspan (ej. "Sin líneas"): no se etiquetan.
+        if (celdas.length === 1 && celdas[0].hasAttribute('colspan')) return;
+        celdas.forEach((td, i) => {
+          if (ths[i] && !td.hasAttribute('data-label') && !td.hasAttribute('colspan')) {
+            td.setAttribute('data-label', ths[i]);
+          }
+        });
+      });
+    });
+  }
+
   /* ============ Sesión y permisos ============
      v_mi_perfil trae una sola fila para el usuario logueado:
      socio_codigo, nombre, rol, puede_ver, puede_capturar, puede_editar, puede_administrar.
@@ -846,7 +877,7 @@ window.ERP = (function () {
     columna, tablaAuto, etiqueta, enlazarFolios, detallePor, crearCombo, crearPickerSku,
     abrirPanel, panelCuerpo, cerrarPanel, panelAbierto, toast, enviarPorCorreoDoc,
     registrar, moduloExiste, ir, irModulo, rutaActual, despachar,
-    alternarMenu, cerrarMenu, cargarPerfil, puede, esPermisoDenegado, avisarSiPermiso, marcarDatosSucios,
+    alternarMenu, cerrarMenu, marcarTabla, cargarPerfil, puede, esPermisoDenegado, avisarSiPermiso, marcarDatosSucios,
     get perfil() { return perfil; },
     get moduloActivo() { return moduloActivo; },
     setToken(t) { TOKEN = t; },

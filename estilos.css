@@ -71,6 +71,12 @@ a{color:inherit}
 .btn-menu{display:none;background:transparent;border:1px solid var(--bd);color:var(--ink);
   border-radius:7px;width:34px;height:34px;font-size:16px;cursor:pointer;flex:none;
   align-items:center;justify-content:center}
+/* Toggle de tema para móvil (vive en la modbar): oculto en desktop/tablet; el CSS responsive lo
+   muestra en móvil, donde el riel —y su #btnTema— se ocultan. Ver bloque CIMIENTO RESPONSIVE. */
+.themebtn-top{display:none;background:transparent;border:1px solid var(--bd);color:var(--i2);
+  border-radius:8px;width:40px;height:40px;font-size:17px;cursor:pointer;flex:none;
+  align-items:center;justify-content:center}
+.themebtn-top:hover{background:var(--hair)}
 
 .estado{
   font-family:'IBM Plex Mono',monospace;font-size:11px;
@@ -795,22 +801,82 @@ tr.anulada td:nth-child(2) .enlace{text-decoration:line-through;text-decoration-
 .btn-mini.confirmar-peligro{background:var(--rojo);color:#fff}
 .btn-mini.confirmar-peligro:hover{filter:brightness(1.1)}
 
-/* ---------- Responsive ---------- */
-@media(max-width:1000px){
+/* ============================================================================
+   CIMIENTO RESPONSIVE (Fase 1 · E131 / D-193) — UNA sola base de código responsive.
+   No hay app móvil aparte: los mismos módulos escalan de teléfono a laptop.
+
+   BREAKPOINTS (convención del sistema — documentada en SISTEMA-DISENO.md §13):
+     · MÓVIL   <= 640px   (teléfono)
+     · TABLET   641–1024px (tablet / ventana chica)  → media (max-width:1024px)
+     · DESKTOP  > 1024px   (default, sin media query)
+   CSS no admite var() dentro de la CONDICIÓN @media, por eso los breakpoints son una
+   CONVENCIÓN escrita, no una variable. Todo módulo NUEVO usa 640 y 1024 — no valores sueltos.
+
+   Piezas de esta base (reusables, no ad-hoc por módulo):
+     1. Menú: en tablet el menú agrupado colapsa a cajón (hamburguesa + overlay); en móvil
+        además se oculta el riel de 66px y el shell pasa a una sola columna.
+     2. Patrón TABLA → TARJETA: clase .tabla-cards en el .tabla-wrap + ERP.marcarTabla(cont)
+        (copia el <th> de cada columna a data-label del <td>). Definido UNA vez, aquí.
+     3. Drawer/panel a pantalla completa en móvil.
+     4. Formularios a una columna; inputs/botones con área táctil ~44px; inputs a 16px
+        (evita el zoom automático de iOS); el botón de guardar nunca queda tapado.
+     5. Tipografía sin texto < ~12px en móvil.
+   ---------------------------------------------------------------------------- */
+
+html{-webkit-text-size-adjust:100%}   /* iOS no infla el texto en horizontal por su cuenta */
+
+/* ---- 2. PATRÓN TABLA → TARJETA (mobile-only; se activa con .tabla-cards + ERP.marcarTabla) ----
+   Cada <tr> se vuelve una tarjeta apilada; cada <td> muestra su etiqueta (data-label, que
+   ERP.marcarTabla copia del <th> de su columna) a la izquierda y el valor a la derecha.
+   El <thead> se oculta accesiblemente (screen-reader-friendly, no display:none). */
+@media(max-width:640px){
+  .tabla-wrap.tabla-cards{overflow-x:visible}
+  .tabla-wrap.tabla-cards table,
+  .tabla-wrap.tabla-cards tbody,
+  .tabla-wrap.tabla-cards tr,
+  .tabla-wrap.tabla-cards td{display:block;width:auto}
+  .tabla-wrap.tabla-cards thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .tabla-wrap.tabla-cards tr{
+    border:1px solid var(--bd);border-radius:12px;background:var(--pan);
+    padding:4px 13px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.04);
+  }
+  .tabla-wrap.tabla-cards td{
+    border:none;border-bottom:1px solid var(--hair);
+    padding:9px 0;display:flex;gap:14px;align-items:baseline;justify-content:flex-end;
+    text-align:right;font-size:14px;white-space:normal;min-height:0;
+  }
+  .tabla-wrap.tabla-cards td:last-child{border-bottom:none}
+  .tabla-wrap.tabla-cards td[data-label]::before{
+    content:attr(data-label);
+    flex:none;margin-right:auto;text-align:left;
+    font-size:12px;font-weight:600;color:var(--i2);
+    text-transform:none;letter-spacing:0;line-height:1.4;
+  }
+  .tabla-wrap.tabla-cards td.num{white-space:normal}
+  /* Celda de acciones (columna sin <th>, sin data-label): botón(es) alineados a la derecha. */
+  .tabla-wrap.tabla-cards td:not([data-label]){justify-content:flex-end;padding-top:11px;gap:8px;flex-wrap:wrap}
+  /* Fila de total o celda con colspan (ej. "Sin líneas"): ocupa todo el ancho, sin etiqueta. */
+  .tabla-wrap.tabla-cards td[colspan]{justify-content:flex-start;text-align:left}
+  .tabla-wrap.tabla-cards td[colspan]::before{content:none}
+}
+
+/* ---- Grids amplios colapsan temprano ---- */
+@media(max-width:1024px){
   .grid2{grid-template-columns:1fr}
 }
-@media(max-width:860px){
-  /* MARCO en móvil: el riel se queda (66px); el menú agrupado se vuelve cajón deslizable. */
+
+/* ---- 1a. TABLET (<=1024px): el menú agrupado se vuelve cajón; el riel (66px) SE QUEDA ---- */
+@media(max-width:1024px){
   .btn-menu{display:flex}
   .modbar{padding:0 12px;gap:10px}
   .estado{display:none}
   nav.lateral{
-    position:fixed;top:52px;left:66px;bottom:0;z-index:50;width:228px;
-    transform:translateX(-110%);transition:transform .2s ease;box-shadow:0 12px 40px rgba(0,0,0,.28);
+    position:fixed;top:52px;left:66px;bottom:0;z-index:50;width:250px;
+    transform:translateX(-115%);transition:transform .2s ease;box-shadow:0 12px 40px rgba(0,0,0,.28);
   }
   nav.lateral.abierto{transform:translateX(0)}
   .menu-fondo.abierto{display:block;position:fixed;inset:52px 0 0 66px;background:rgba(0,0,0,.4);z-index:49}
-  main#app{padding:18px 14px 60px}
+  main#app{padding:20px 18px 64px}
   .det-grid{grid-template-columns:1fr 1fr}
   .panel{width:100%}
   .perfil{display:none !important}
@@ -819,15 +885,48 @@ tr.anulada td:nth-child(2) .enlace{text-decoration:line-through;text-decoration-
   .pipeline{gap:6px}
   .etapa .nombre{font-size:10.5px}
 }
-@media(max-width:620px){
-  /* En celular el buscador y las acciones mandan: la miga de pan cede su espacio. */
+
+/* ---- 1b. MÓVIL (<=640px): colapsa TODO. El riel (66px) también se oculta ---- */
+@media(max-width:640px){
+  /* El riel sale: el menú agrupado (eyebrow por grupo) ya cubre la navegación; el tema se
+     alterna con #btnTemaTop en la modbar. El shell pasa a una sola columna. */
+  #shell.visible{grid-template-columns:1fr}
+  .icrail{display:none}
+  nav.lateral{left:0;width:min(84vw,300px)}
+  .menu-fondo.abierto{inset:52px 0 0 0}
+  .themebtn-top{display:flex}
+
+  /* Barra de módulo: la miga cede su espacio; el buscador se estira. */
   .modbar .mod .sep,.modbar .mod .pg{display:none}
-  .buscador{width:150px}
-  .btn.lima,.btn.fantasma{padding:8px 11px}
-}
-@media(max-width:480px){
+  .modbar .mod .chip{padding:4px 9px}
+  .buscador{width:auto;flex:1;min-width:0}
+  .buscador input{height:40px}
+  .resultados{width:min(92vw,420px)}
+  .btn.lima,.btn.fantasma{padding:9px 11px}
+
+  /* Contenido y fichas. */
+  main#app{padding:16px 12px 72px}
+  .mod-head h1{font-size:19px}
   .det-grid{grid-template-columns:1fr}
-  .tarjeta .val{font-size:24px}
+  .tarjeta .val{font-size:23px}
+
+  /* 3. Panel a pantalla completa + botón de guardar accesible sobre el teclado. */
+  .panel-body{padding:16px 16px calc(80px + env(safe-area-inset-bottom))}
+  .panel-head .cerrar{width:40px;height:40px;display:flex;align-items:center;justify-content:center;margin:-4px -6px -4px auto}
+
+  /* 4. Área táctil ~44px + inputs a 16px (fin del zoom de iOS al enfocar). */
+  .form-erp input,.form-erp select,.form-erp textarea,
+  .filtros input.busca,.combo .combo-input{
+    font-size:16px;min-height:44px;padding:11px 12px;
+  }
+  .form-erp .acciones{flex-wrap:wrap}
+  .form-erp .acciones .btn-mini,.form-erp .acciones .btn{flex:1;min-width:130px}
+  .btn-mini,.btn,.filtros .chip,.btn-cap{min-height:40px;display:inline-flex;align-items:center;justify-content:center}
+  .btn-menu{width:40px;height:40px}
+
+  /* 5. Nada por debajo de ~12px en móvil. */
+  .det .l,.form-erp label,.leyenda,.alias-ayuda,.conteo,.solo-lectura{font-size:12px}
+  .det .v,td{font-size:14px}
 }
 
 /* ===================== Invoices (editor + impresión) ===================== */
