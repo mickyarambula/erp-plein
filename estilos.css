@@ -91,7 +91,9 @@ a{color:inherit}
 .btn{
   border:none;border-radius:6px;cursor:pointer;
   font-family:'Archivo',sans-serif;font-weight:700;font-size:12px;padding:8px 14px;
+  display:inline-flex;align-items:center;gap:6px;
 }
+.btn .btn-ico{font-size:14px}
 .btn.lima{background:var(--lima);color:#14261C}
 .btn.lima:hover{filter:brightness(1.08)}
 .btn.lima:disabled{opacity:.5;cursor:wait}
@@ -896,13 +898,30 @@ html{-webkit-text-size-adjust:100%}   /* iOS no infla el texto en horizontal por
   .menu-fondo.abierto{inset:52px 0 0 0}
   .themebtn-top{display:flex}
 
-  /* Barra de módulo: la miga cede su espacio; el buscador se estira. */
+  /* Barra de módulo: la miga cede su espacio; el buscador se estira.
+     .mod y .sp traían flex:none/min-width fijo desde desktop — a 390px eso fuerza overflow del
+     .modbar completo (comprobado por getBoundingClientRect, no solo "a ojo"): el chip de grupo se
+     desbordaba de su propio contenedor colapsado a 0 y .sp se negaba a encoger. Se corrige aquí:
+     .mod conserva su tamaño natural (ya es chico, solo trae el chip); .sp SÍ encoge para repartir
+     el espacio que sobra entre el buscador (que se lleva la peor parte) y los botones fijos. */
+  .modbar{gap:6px}
+  .modbar .mod{flex:none}
   .modbar .mod .sep,.modbar .mod .pg{display:none}
   .modbar .mod .chip{padding:4px 9px}
-  .buscador{width:auto;flex:1;min-width:0}
-  .buscador input{height:40px}
+  .modbar .mod .chip span:not(.ti){display:none}   /* solo el ícono del grupo — el título ya está en el H1 de abajo */
+  .modbar .sp{flex:1;min-width:0;gap:6px}
+  .buscador{width:auto;flex:1;min-width:60px}
+  .buscador input{height:40px;padding-right:6px}
   .resultados{width:min(92vw,420px)}
-  .btn.lima,.btn.fantasma{padding:9px 11px}
+  /* "Actualizar"/"Salir": solo ícono en móvil (cuadrados de 40px, como #btnTemaTop) — con texto no
+     entraban junto al buscador sin empujarlo a un hilo de pocos px. */
+  .btn.lima,.btn.fantasma{padding:0;width:40px;height:40px;justify-content:center;flex:none}
+  .btn .btn-txt{display:none}
+  /* BUG 1 (Miguel, iPhone): "Soy: Miguel (cambiar)" no cabía y desbordaba la modbar contra el
+     borde derecho. Igual que .presencia-online/.perfil (ya ocultos desde tablet): no hay espacio
+     en 390px para texto de longitud variable + separador. Se pierde el atajo "(cambiar)" en móvil
+     — sigue disponible en desktop/tablet; en el teléfono normalmente lo usa una sola persona. */
+  .presencia-soy{display:none !important}
 
   /* Contenido y fichas. */
   main#app{padding:16px 12px 72px}
@@ -914,15 +933,22 @@ html{-webkit-text-size-adjust:100%}   /* iOS no infla el texto en horizontal por
   .panel-body{padding:16px 16px calc(80px + env(safe-area-inset-bottom))}
   .panel-head .cerrar{width:40px;height:40px;display:flex;align-items:center;justify-content:center;margin:-4px -6px -4px auto}
 
-  /* 4. Área táctil ~44px + inputs a 16px (fin del zoom de iOS al enfocar). */
+  /* 4. Área táctil ~44px + inputs a 16px (fin del zoom de iOS al enfocar). Incluye los editores de
+     línea (.so-linea-campo — SKU/cantidad/precio en O1-CPO/O1-SO/O3-Compras), no solo .form-erp. */
   .form-erp input,.form-erp select,.form-erp textarea,
-  .filtros input.busca,.combo .combo-input{
+  .filtros input.busca,.combo .combo-input,.picker-sku-buscador .combo-input,
+  .so-linea-campo input,.so-linea-campo select{
     font-size:16px;min-height:44px;padding:11px 12px;
   }
   .form-erp .acciones{flex-wrap:wrap}
   .form-erp .acciones .btn-mini,.form-erp .acciones .btn{flex:1;min-width:130px}
   .btn-mini,.btn,.filtros .chip,.btn-cap{min-height:40px;display:inline-flex;align-items:center;justify-content:center}
   .btn-menu{width:40px;height:40px}
+  /* Editor de línea (SKU/cantidad/precio): cada campo ocupa ancho completo, no wrap apretado. */
+  .so-linea-fila{gap:8px}
+  .so-linea-campo{min-width:0;flex:1 1 100%}
+  .so-linea-campo.num{max-width:none;flex:1 1 45%}
+  .so-linea-quitar{width:40px;height:40px}
 
   /* 5. Nada por debajo de ~12px en móvil. */
   .det .l,.form-erp label,.leyenda,.alias-ayuda,.conteo,.solo-lectura{font-size:12px}
@@ -2282,3 +2308,39 @@ html{-webkit-text-size-adjust:100%}   /* iOS no infla el texto en horizontal por
 .pantalla-catalogos-c .catc-pk i{font-size:15px;color:var(--brand)}
 
 .pantalla-catalogos-c .errbox{background:var(--red-bg);border:1px solid var(--red);color:var(--red);border-radius:8px;padding:14px 16px;font-size:13px}
+
+/* ---------- Responsive (BUG 2, Fase 2 · D-195): navegación de 2 pasos en móvil ----------
+   El master-detail (.catc-split: lista 320px + ficha) no colapsaba — quedaban lado a lado,
+   obligando a scroll horizontal con contenido cortado. En móvil se vuelve navegación de 2 pasos:
+   por default se ve la LISTA a ancho completo; al elegir un registro (o abrir Listas/Papelera/
+   Importar/Nuevo — ver mostrarDetalleMovil() en el JS) .catc-split gana .detalle-abierta y se
+   muestra la FICHA a ancho completo con el botón "Volver a la lista" fijo arriba. Se resetea a
+   "lista" en cada render()/cambio de pestaña porque el template se reconstruye entero. */
+@media(max-width:640px){
+  /* Pestañas (Productos/Proveedores/Clientes/Listas/Papelera): scroll horizontal PROPIO — nunca
+     empujan el ancho de la página. */
+  .pantalla-catalogos-c .catc-tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px;margin:0 -12px 12px;padding-left:12px;padding-right:12px}
+  .pantalla-catalogos-c .catc-tabs button,.pantalla-catalogos-c .catc-ic{flex:none}
+  .pantalla-catalogos-c .catc-tabs .grow{flex:none;width:10px}
+
+  /* Master-detail -> navegación de 2 pasos (lista / ficha, nunca ambas a la vez). */
+  .pantalla-catalogos-c .catc-split{display:block;height:auto;min-height:0;border:none;border-radius:0;overflow:visible;background:none}
+  .pantalla-catalogos-c .catc-list{width:100%;border-right:none;border:1px solid var(--bd);border-radius:12px;overflow:hidden}
+  .pantalla-catalogos-c .catc-detail-wrap{display:none}
+  .pantalla-catalogos-c .catc-split.detalle-abierta .catc-list{display:none}
+  .pantalla-catalogos-c .catc-split.detalle-abierta .catc-detail-wrap{display:block}
+  .pantalla-catalogos-c .catc-detail{padding:16px}
+  .pantalla-catalogos-c .catc-dwrap{max-width:none}
+  .pantalla-catalogos-c .catc-volver{
+    display:flex;align-items:center;gap:6px;width:100%;margin-bottom:12px;
+    background:var(--pan);border:1px solid var(--bd);color:var(--ink);border-radius:8px;
+    padding:11px 12px;font-size:13px;font-weight:600;cursor:pointer;min-height:44px;
+  }
+  .pantalla-catalogos-c .catc-volver:hover{border-color:var(--brand);color:var(--brand)}
+
+  /* Tablas secundarias sin marcarTabla (ej. el asistente de importar Excel, flujo de escritorio):
+     al menos no rompen el ancho de la página — scroll horizontal propio. Las que sí se convirtieron
+     a tarjeta (matriz de SKU, papelera) quedan cubiertas por .tabla-wrap.tabla-cards de D-193. */
+  .pantalla-catalogos-c .catc-tbl{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .pantalla-catalogos-c .catc-g2,.pantalla-catalogos-c .catc-g3{grid-template-columns:1fr}
+}

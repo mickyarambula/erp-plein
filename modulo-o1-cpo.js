@@ -148,6 +148,7 @@
     cont.querySelectorAll('tr.clic[data-id]').forEach(tr =>
       tr.addEventListener('click', () => verCPO(Number(tr.dataset.id))));
     cablearVerAdjunto(cont, true);
+    ERP.marcarTabla(cont);   // patrón tabla→tarjeta en móvil (D-193/Fase 2)
   }
 
   async function render(cont) {
