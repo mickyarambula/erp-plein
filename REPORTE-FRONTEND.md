@@ -5051,3 +5051,31 @@ size-adjust:100%`.
 `node --check` limpio en `comun.js` y `app.js`; llaves de `estilos.css` balanceadas (1575/1575).
 `?v=` de `index.html` subido a `20260818h` (D-185). NO desplegado — `npx vercel --prod` lo corre Miguel.
 Regla nueva permanente en `CLAUDE.md`: **todo módulo nuevo nace responsive.**
+
+## E132 (2026-08-18) — O3b en Compras: estados + recibir cantidad real + variación por línea (backend D-194)
+
+Backend cerró la recepción con diferencias y los estados reales de la compra (probado end-to-end).
+Solo `modulo-o3-compras.js`; backend intacto.
+
+**Estados de la compra:** Abierto → Enviada → Confirmada → Recibido parcial → Recibido (+ Cancelado).
+Botones contextuales en la ficha (`fn_op_spo_set_estado`): "Marcar enviada"/"Marcar confirmada" según
+estado, "Cancelar compra" mientras no haya recepción. Estados de recepción los calcula el backend
+(no se ofrecen). `enviada_en`/`confirmada_en` se muestran si existen. `chipEstado` reescrito.
+
+**Recibir cantidad real (lo importante):** `fn_op_spo_recibir_linea` gana `p_cantidad` (NULL = todo
+lo pendiente). Panel con input "Cantidad recibida" prellenado con lo pendiente pero editable (pediste
+226, llegaron 200) + detalle Pedido/Ya recibido/Pendiente. Toast según `estado_linea`: Parcial (warn,
+dice cuánto falta), Recibido de mas (warn, "revísalo contra la factura"), Completo (ok). Una línea se
+recibe varias veces; el botón "Recibir" solo se oculta cuando ya no cabe más dentro de la tolerancia.
+Bloqueo por tolerancia excedida → mensaje del backend tal cual.
+
+**Variación por línea:** columnas nuevas Pedido/Recibido/Pendiente + pastilla `chipRecepcion`
+(estado_recepcion) + `diferencia` resaltada en rojo cuando ≠ 0. Se quitó "Costo línea" de la tabla
+por línea (el total sigue en la cabecera).
+
+**Verificado en navegador (mock O3b con tolerancia, flujo completo):** Abierto → Enviada (+timestamp,
+aparece "Marcar confirmada") → Confirmada (+timestamp). Recibir parcial 200/226 → toast "faltan 26",
+fila con "−26 vs pedido" rojo, pill Parcial, compra "Recibido parcial". Intento 40 (240>237.3) →
+bloqueo "El maximo permitido es 237.3 segun la tolerancia (5%)" tal cual. Recibir 30 (total 230) →
+toast "Recibido de MÁS (+4)", pill roja, compra "Recibido". 0 errores de consola. `node --check`
+limpio. `?v=` a `20260818i` (D-185). NO desplegado (Miguel corre `npx vercel --prod`).

@@ -2794,3 +2794,49 @@ por eso Opus 4.8); Fases 2 (5 módulos) y 3 (PWA) quedan pendientes para Sonnet 
 de `index.html` a `20260818h` (D-185). NO desplegado (Miguel corre `npx vercel --prod`).
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-18, continuación) — O3b: estados de la compra + recibir cantidad real + variación por línea (D-194)
+_Backend cerró la recepción con diferencias y los estados reales de la compra (O3b), todo probado
+end-to-end. Frontend (Claude Code) conecta `modulo-o3-compras.js`. Backend intacto — mismas vistas/RPCs._
+
+- **D-194a — Estados de la compra (cabecera):** nuevos estados Abierto → Enviada → Confirmada →
+  Recibido parcial → Recibido (+ Cancelado). En la ficha, botones contextuales que llaman
+  `fn_op_spo_set_estado(p_id, p_estado)` con `p_estado ∈ 'Abierto'|'Enviada'|'Confirmada'|
+  'Cancelado'`: "Marcar enviada al proveedor" (solo si Abierto), "Marcar confirmada por el
+  proveedor" (solo si Enviada), "Cancelar compra" (mientras no haya recepción). Los estados de
+  RECEPCIÓN los calcula el backend solo — NO se ofrecen en la UI. Si la compra ya tiene mercancía
+  recibida, el backend bloquea con mensaje legible (se muestra tal cual). `v_op_supplier_po` trae
+  `enviada_en`/`confirmada_en` (timestamps) — se muestran como celdas de detalle si existen.
+  `chipEstado` reescrito: enviada/confirmada → azul, recibido → verde, parcial/abierto → ámbar,
+  cancelado → rojo.
+- **D-194b — Recibir la CANTIDAD REAL (lo importante):** `fn_op_spo_recibir_linea` acepta un 4º
+  parámetro `p_cantidad` (cuánto llegó realmente; NULL = todo lo pendiente). En el panel de recibir,
+  input nuevo "Cantidad recibida" **prellenado con lo pendiente pero EDITABLE** (caso real: pediste
+  226, llegaron 200), más el detalle Pedido / Ya recibido / Pendiente. El RPC devuelve
+  `{ok, lot_id, lot_folio, recibido_ahora, recibido_total, pedido, diferencia, estado_linea,
+  auto_asignado}`. El toast usa `estado_linea`: **Parcial** → warn, dice cuánto falta; **Recibido
+  de mas** → warn, "llegaron X vs Y pedidos (+Z), revísalo contra la factura"; **Completo** → ok.
+  (Combina con el aviso de auto-asignación a la venta de D-192.) Una línea se recibe VARIAS veces:
+  el botón "Recibir" ya no se bloquea por "línea recibida" — solo se oculta cuando `recibido >=
+  pedido·(1+tolerancia)` (ya no cabe más). Si el backend bloquea por exceder tolerancia, el mensaje
+  ("El maximo permitido es X segun la tolerancia") se muestra tal cual.
+- **D-194c — Variación en la tabla de líneas:** `v_op_spo_lineas` trae `recibido`, `pendiente`,
+  `diferencia`, `tolerancia_pct`, `estado_recepcion` ('Pendiente'|'Parcial'|'Completo'|'Recibido de
+  mas'). La tabla de líneas ahora muestra columnas **Pedido / Recibido / Pendiente**, una pastilla
+  `chipRecepcion` (Completo verde, Parcial ámbar, Recibido de mas rojo, Pendiente gris) y, cuando
+  `diferencia ≠ 0`, la diferencia **resaltada en rojo** ("−26 vs pedido" / "+4 vs pedido") — es lo
+  que se coteja contra la factura del proveedor. (Se quitó "Costo línea" de la tabla por línea para
+  dar espacio a las 3 columnas de recepción; el total sigue en la cabecera.)
+
+**Verificado en navegador (Chrome DevTools, mock de `fn_op_spo_set_estado`/`recibir_linea` con
+tolerancia + vistas O3b, flujo completo):** compra Abierta → "Marcar enviada" → estado Enviada +
+timestamp ENVIADA + aparece "Marcar confirmada" → estado Confirmada + timestamp CONFIRMADA
+(transiciones y botones contextuales correctos). Recibir parcial (pedí 226, edité el input a 200)
+→ toast warn "Recibido parcial … 200 de 226, faltan 26"; fila: Recibido 200 con "−26 vs pedido"
+en rojo, Pendiente 26, pill Parcial, estado compra "Recibido parcial". Intento de 40 (240 > 237.3)
+→ bloqueo legible "El maximo permitido es 237.3 segun la tolerancia (5%)" tal cual, panel abierto.
+Recibir 30 (total 230, dentro de tolerancia) → toast warn "Recibido de MÁS … +4, revísalo contra
+la factura"; fila +4 en rojo, pill Recibido de mas (rojo), estado compra "Recibido". **0 errores de
+consola.** `node --check` limpio. `?v=` de `index.html` a `20260818i` (D-185). NO desplegado.
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
