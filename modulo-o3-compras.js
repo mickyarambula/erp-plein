@@ -9,18 +9,34 @@
      v_op_supplier_po (supplier_po_id, folio, proveedor, numero_proveedor, fecha, moneda, estado,
        so_folio, adjunto_ref, nota, num_lineas, total_costo)
      v_op_spo_lineas (linea_id, supplier_po_id, spo_folio, linea_num, sku_id, sku, cantidad, uom,
-       costo_unitario, costo_moneda, costo_linea, recibido, lot_id, lot_folio, recibida)
+       costo_unitario, costo_moneda, costo_linea, recibido, lot_id, lot_folio, recibida,
+       so_linea_id, so_folio, auto_asigna) — so_linea_id/so_folio/auto_asigna nuevos (D-192,
+       "Comprar desde el SO"): cuando la línea de compra nació de una Sales Order, auto_asigna=true
+       y recibirla asigna sola el lote a esa línea de venta (ver fn_op_spo_recibir_linea abajo).
    Catálogos (vistas ya vivas, reusadas del resto de O1/O2):
      v_catc_contrapartes (id, nombre, alias, es_proveedor, ...) — picker de proveedor.
      v_op_sales_orders — dropdown opcional para ligar la compra a una venta (trazabilidad).
+     v_op_so_lineas (id, sales_order_id, so_folio, linea_num, sku_id, sku, cantidad, uom, ...) —
+       líneas heredadas SOLO LECTURA al generar una compra desde una SO (D-192).
      Picker de SKU: ERP.crearPickerSku (fn_cat_sugerir_sku), mismo componente que O1-SO.
    RPCs (capacidad 'capturar'):
      fn_op_spo_alta(p_proveedor_id, p_lineas jsonb, p_numero_proveedor, p_fecha, p_moneda,
        p_sales_order_id, p_adjunto_ref, p_nota) -> { supplier_po_id, folio, lineas }
        p_lineas = [{sku_id, cantidad, uom, costo_unitario|null, costo_moneda, nota}]
        (costo_unitario null = consignación, se costea al recibir o después, igual que O2b)
-     fn_op_spo_recibir_linea(p_spo_linea_id, p_location_id, p_fecha) -> { ok, lot_id, lot_folio }
-       — nace el lote de Inventario (O2) DESDE esta línea.
+     fn_op_spo_desde_so(p_sales_order_id, p_proveedor_id, p_costos jsonb, p_numero_proveedor,
+       p_fecha, p_moneda, p_adjunto_ref, p_nota) -> { supplier_po_id, folio, lineas, desde_so }
+       (D-192, "Comprar desde el SO" — botón en la ficha de la Sales Order, modulo-o1-so.js, vía
+       ERP.o3AbrirSPODesdeSO(soId, soFolio)). SKU y cantidad se HEREDAN de las líneas de la SO —
+       el usuario SOLO elige proveedor + costo unitario por línea; nunca re-elige SKU/cantidad,
+       que era justo la causa de errores de recaptura (ej. vender Maradol y terminar comprando
+       Formosa). p_costos = [{so_linea_id, costo_unitario|null, costo_moneda}] (costo puede ir
+       null en consignación, igual que fn_op_spo_alta).
+     fn_op_spo_recibir_linea(p_spo_linea_id, p_location_id, p_fecha) -> { ok, lot_id, lot_folio,
+       auto_asignado } — nace el lote de Inventario (O2) DESDE esta línea. `auto_asignado` (D-192)
+       viene {allocation_id, pendiente_linea, disponible_lote_restante} cuando la línea venía ligada
+       a una línea de venta (auto_asigna=true) — el backend ya asignó el lote solo; viene null si
+       no. El toast debe distinguir ambos casos (ver guardarRecibirLinea).
      fn_op_spo_eliminar(p_id) -> ok (el backend bloquea si ya hay líneas recibidas — mensaje
        legible, se muestra tal cual).
    NOTA proveedor picker: se usa ERP.crearCombo sobre v_catc_contrapartes&es_proveedor=eq.true —
@@ -31,7 +47,7 @@
    Adjunto: mismo patrón de O1-CPO (bucket cpo-adjuntos, subida real + ver por URL firmada).
    Ubicación al recibir: mismo patrón de "Recibir inventario" (dedupe de v_op_inventario +
    "+ Nueva ubicación" inline vía fn_op_location_alta).
-   Expone ERP.o3AbrirSPO(id) para saltar aquí desde otro módulo. */
+   Expone ERP.o3AbrirSPO(id) y ERP.o3AbrirSPODesdeSO(soId, soFolio) para saltar aquí desde otro módulo. */
 
 (function () {
   'use strict';
@@ -409,6 +425,151 @@
     }
   }
 
+  /* ================= Generar compra DESDE una Sales Order (D-192) =================
+     "Comprar" desde la ficha del SO (modulo-o1-so.js → botón "Generar compra" → ERP.o3AbrirSPODesdeSO).
+     Elimina la re-captura redundante que causaba errores reales (vender un SKU y terminar
+     comprando otro por tener que re-elegir): SKU y cantidad se HEREDAN de las líneas de la SO,
+     de solo lectura aquí — el usuario únicamente elige proveedor + costo unitario por línea.
+     Reusa el mismo picker de proveedor y el mismo patrón de adjunto (mismos ids: spoProveedor,
+     spoNumProveedor, spoFecha, spoMoneda, spoAdjunto/spoArchivo/spoArchivoEstado, spoNota) que
+     "Nueva compra" — solo hay un panel abierto a la vez, no hay colisión. */
+
+  let lineasSO = [];   // [{so_linea_id, sku, cantidad, uom, costo_unitario, costo_moneda}] — SKU/cantidad NO editables
+  let soOrigenDs = null;   // { id, folio }
+
+  async function abrirSPODesdeSO(soId, soFolio) {
+    if (!ERP.puede('capturar')) return;
+    ERP.cerrarPanel();
+    adjuntoSubido = null;
+    soOrigenDs = { id: Number(soId), folio: soFolio || '' };
+    ERP.abrirPanel('Generar compra', `desde Sales Order ${esc(soFolio || '')}`, '<div class="skel">Cargando líneas de la venta…</div>');
+    let sol;
+    try {
+      [proveedoresCat, sol] = await Promise.all([
+        q('v_catc_contrapartes', '&es_proveedor=eq.true&order=nombre.asc'),
+        q('v_op_so_lineas', `&sales_order_id=eq.${Number(soId)}&order=linea_num.asc`)
+      ]);
+    } catch (e) {
+      ERP.abrirPanel('Generar compra', '', `<div class="errbox">No se pudieron leer las líneas de la venta: ${esc(e.message)}</div>`);
+      return;
+    }
+    if (!sol || !sol.length) {
+      ERP.abrirPanel('Generar compra', '', '<div class="errbox">Esta Sales Order no tiene líneas.</div>');
+      return;
+    }
+    lineasSO = sol.map(l => ({ so_linea_id: l.id, sku: l.sku || l.producto || '', cantidad: l.cantidad, uom: l.uom, costo_unitario: '', costo_moneda: 'USD' }));
+
+    ERP.abrirPanel('Generar compra', `desde Sales Order <span class="mono">${esc(soFolio || '')}</span>`, `
+      <div class="form-erp">
+        <div class="campos">
+          <div class="campo ancho"><label>Proveedor <span class="req">*</span></label><div id="spoProveedor"></div>
+            <div class="alias-ayuda">Contraparte marcada como proveedor en el Directorio.</div></div>
+          <div class="campo"><label>N° de PO / referencia del proveedor</label>
+            <input id="spoNumProveedor" type="text" maxlength="60" placeholder="Ej. EST-1001 (opcional)"></div>
+          <div class="campo"><label>Fecha</label>
+            <input id="spoFecha" type="date" value="${hoyISO()}"></div>
+          <div class="campo"><label>Moneda</label>
+            <select id="spoMoneda">${ERP.MONEDAS.map(m => `<option value="${m}">${m}</option>`).join('')}</select></div>
+          <div class="campo ancho"><label>Adjunto (Estimate/Invoice del proveedor)</label>
+            <input id="spoAdjunto" class="mono" type="text" placeholder="Pega una URL… o sube un archivo abajo">
+            <div class="adjunto-sube">
+              <label class="btn-file" for="spoArchivo"><i class="ti ti-upload"></i> o subir archivo (PDF/imagen)</label>
+              <input id="spoArchivo" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" style="display:none">
+              <span class="adjunto-estado" id="spoArchivoEstado"></span>
+            </div>
+            <div class="alias-ayuda">Pega la URL/ruta, <b>o</b> sube el archivo (máx 20 MB: PDF, PNG, JPG, WEBP).</div></div>
+          <div class="campo ancho"><label>Nota</label><textarea id="spoNota" rows="2"></textarea></div>
+        </div>
+        <div class="seccion-head"><h4>Líneas (heredadas de la venta — SKU y cantidad no se editan aquí)</h4></div>
+        <div id="spoDsLineasBody" class="so-lineas-lista"></div>
+        <div class="alias-ayuda">El costo unitario es opcional: déjalo vacío en consignación — se captura después con "Costear" en Inventario, o al recibir la línea aquí.</div>
+        <div class="acciones">
+          <button class="btn-mini" id="spoCrear">Generar compra</button>
+          <button class="btn-mini gris" id="spoCancelar">Cancelar</button>
+        </div>
+        <div class="aviso" id="spoNvAviso"></div>
+      </div>`);
+
+    comboProveedor = ERP.crearCombo({
+      contenedor: document.getElementById('spoProveedor'),
+      items: proveedoresCat.map(p => ({ id: p.id, nombre: p.nombre, alias: p.alias || [] })),
+      placeholder: 'Busca proveedor por nombre o alias…', permitirNuevo: false
+    });
+    montarLineasDesdeSO();
+
+    document.getElementById('spoArchivo').addEventListener('change', onArchivoSPO);
+    document.getElementById('spoCancelar').addEventListener('click', () => (ERP.o1VerSO ? ERP.o1VerSO(soOrigenDs.id) : ERP.cerrarPanel()));
+    document.getElementById('spoCrear').addEventListener('click', crearSPODesdeSO);
+  }
+
+  function montarLineasDesdeSO() {
+    const body = document.getElementById('spoDsLineasBody');
+    if (!body) return;
+    body.innerHTML = lineasSO.map((l, i) => `<div class="so-linea-card" data-i="${i}">
+      <div class="det-grid" style="margin-bottom:6px">
+        <div class="det"><span class="l">SKU</span><span class="v">${esc(l.sku || '—')}</span></div>
+        <div class="det"><span class="l">Cantidad</span><span class="v mono">${esc(ERP.fmt0(l.cantidad))} ${esc(l.uom || '')}</span></div>
+      </div>
+      <div class="so-linea-fila">
+        <div class="so-linea-campo num"><label>Costo unit.</label><input class="spo-ds-li num" data-i="${i}" data-k="costo_unitario" type="number" step="0.01" min="0" value="${esc(l.costo_unitario)}" placeholder="opcional"></div>
+        <div class="so-linea-campo"><label>Moneda</label>
+          <select class="spo-ds-li" data-i="${i}" data-k="costo_moneda">${ERP.MONEDAS.map(m => `<option value="${m}" ${l.costo_moneda === m ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+      </div>
+    </div>`).join('');
+
+    body.querySelectorAll('.spo-ds-li').forEach(inp => {
+      inp.addEventListener('input', e => { lineasSO[Number(e.target.dataset.i)][e.target.dataset.k] = e.target.value; });
+      inp.addEventListener('change', e => { lineasSO[Number(e.target.dataset.i)][e.target.dataset.k] = e.target.value; });
+    });
+  }
+
+  function recogerLineasDesdeSO() {
+    document.querySelectorAll('#spoDsLineasBody .spo-ds-li').forEach(inp => {
+      const i = Number(inp.dataset.i), k = inp.dataset.k;
+      if (lineasSO[i]) lineasSO[i][k] = inp.value;
+    });
+  }
+
+  async function crearSPODesdeSO() {
+    const proveedor_id = comboProveedor && comboProveedor.valorId();
+    if (!proveedor_id) { avisoNv('err', 'Elige el proveedor.'); return; }
+    recogerLineasDesdeSO();
+    const p_costos = lineasSO.map(l => ({
+      so_linea_id: l.so_linea_id,
+      costo_unitario: numOrNull(l.costo_unitario),   // null = consignación, correcto
+      costo_moneda: String(l.costo_moneda || '').trim() || 'USD'
+    }));
+
+    const v = id => (document.getElementById(id) || {}).value;
+    const adjRef = adjuntoSubido || (v('spoAdjunto') || '').trim() || null;
+    const args = {
+      p_sales_order_id: soOrigenDs.id,
+      p_proveedor_id: Number(proveedor_id),
+      p_costos,
+      p_numero_proveedor: (v('spoNumProveedor') || '').trim() || null,
+      p_fecha: v('spoFecha') || null,
+      p_moneda: v('spoMoneda') || 'USD',
+      p_adjunto_ref: adjRef,
+      p_nota: (v('spoNota') || '').trim() || null
+    };
+
+    const btn = document.getElementById('spoCrear');
+    btn.disabled = true;
+    avisoNv('warn', 'Generando compra…');
+    try {
+      const r = uno(await rpc('fn_op_spo_desde_so', args));
+      if (!r.supplier_po_id) throw new Error('El ERP no devolvió la compra.');
+      ERP.toast('ok', `Compra <b>${esc(r.folio || '')}</b> generada desde ${esc(soOrigenDs.folio || '')}.`);
+      ERP.marcarDatosSucios();
+      await recargar();
+      verSPO(Number(r.supplier_po_id));
+    } catch (e) {
+      if (ERP.avisarSiPermiso && ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
+      avisoNv('err', `El ERP rechazó la compra: ${esc(e.message)}`);
+      btn.disabled = false;
+    }
+  }
+
   /* ================= Ficha + recibir línea ================= */
 
   function fichaAviso(tipo, html) {
@@ -437,7 +598,7 @@
 
     const filasLineas = lineasF.map(l => `<tr>
       <td class="mono">${esc(l.linea_num ?? '—')}</td>
-      <td class="ent">${esc(l.sku || '—')}</td>
+      <td class="ent">${esc(l.sku || '—')}${l.auto_asigna ? `<div class="i3" style="font-size:11px">se asignará solo a <span class="mono">${esc(l.so_folio || '')}</span></div>` : ''}</td>
       <td class="mono">${esc(l.uom || '—')}</td>
       <td class="num">${esc(ERP.fmt0(l.cantidad))}</td>
       <td class="num">${l.costo_unitario != null ? esc(ERP.usd(l.costo_unitario)) + ' ' + esc(l.costo_moneda || 'USD') : '<span class="i3">—</span>'}</td>
@@ -614,7 +775,15 @@
     avisoRec('warn', 'Recibiendo…');
     try {
       const r = uno(await rpc('fn_op_spo_recibir_linea', { p_spo_linea_id: Number(l.linea_id), p_location_id: Number(location_id), p_fecha: fechaVal }));
-      ERP.toast('ok', `Línea recibida — lote <b>${esc(r.lot_folio || '')}</b>.`);
+      // auto_asignado (D-192): la línea venía ligada a una línea de venta (auto_asigna=true) y el
+      // backend ya asignó el lote solo — el toast lo distingue del caso normal, no un texto genérico.
+      if (r.auto_asignado) {
+        const pend = r.auto_asignado.pendiente_linea;
+        const pendTxt = pend != null ? ` (quedan ${esc(ERP.fmt0(pend))} pendientes)` : '';
+        ERP.toast('ok', `Lote <b>${esc(r.lot_folio || '')}</b> recibido y asignado a la venta${pendTxt}.`);
+      } else {
+        ERP.toast('ok', `Línea recibida — lote <b>${esc(r.lot_folio || '')}</b>.`);
+      }
       ERP.marcarDatosSucios();
       await recargar();
       verSPO(s.supplier_po_id);
@@ -632,4 +801,5 @@
   });
 
   ERP.o3AbrirSPO = verSPO;
+  ERP.o3AbrirSPODesdeSO = abrirSPODesdeSO;
 })();

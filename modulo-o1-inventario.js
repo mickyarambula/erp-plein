@@ -25,6 +25,13 @@
        { lot_id, folio, on_hand, valor_lote }   (folio formato LOT-26-001)
      fn_op_lot_set_costo(p_lot_id, p_costo_unitario, p_costo_moneda) -> { ok, lot_id,
        costo_unitario, valor_lote } — pone o corrige el costo de un lote ya recibido.
+     fn_op_lot_eliminar(p_lot_id) -> { ok, lote_eliminado, lineas_compra_reabiertas } (D-192,
+       pedido por Miguel para poder limpiar pruebas/errores). Destructivo — pide confirm() antes.
+       El backend BLOQUEA con mensaje legible si el lote tiene inventario apartado para una venta
+       ("tiene X caja(s) apartada(s)... libera la asignación primero") — se muestra tal cual, no es
+       un error genérico. Si el lote nació de una línea de compra (O3a), esa línea vuelve sola a
+       quedar pendiente de recibir (lineas_compra_reabiertas) — el backend ya lo maneja, el
+       frontend solo recarga.
    NOTA (sin vista dedicada de ubicaciones todavía): el picker de ubicación se arma a partir de
    las ubicaciones que YA aparecen en v_op_inventario (dedupe en frontend) + "+ Nueva ubicación"
    inline. Con el inventario en 0 (arranque), el picker empieza vacío — se resuelve solo en cuanto
@@ -104,13 +111,17 @@
         <td class="num">${dinero(l.valor_disponible, l.costo_moneda)}</td>
         <td>${esc(l.proveedor || '—')}</td>
         <td>${esc(fecha(l.fecha))}</td>
-        <td>${puedeCap ? `<button class="btn-mini gris" data-costear="${esc(l.lot_id)}">${l.costo_unitario != null ? 'Editar costo' : 'Costear'}</button>` : ''}</td>
+        <td>${puedeCap ? `<button class="btn-mini gris" data-costear="${esc(l.lot_id)}">${l.costo_unitario != null ? 'Editar costo' : 'Costear'}</button> <button class="btn-mini gris" data-eliminar="${esc(l.lot_id)}">Eliminar</button>` : ''}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
 
     cont.querySelectorAll('[data-costear]').forEach(b => b.addEventListener('click', () => {
       const lot = lotes.find(x => String(x.lot_id) === b.dataset.costear);
       if (lot) abrirCostearLote(lot);
+    }));
+    cont.querySelectorAll('[data-eliminar]').forEach(b => b.addEventListener('click', () => {
+      const lot = lotes.find(x => String(x.lot_id) === b.dataset.eliminar);
+      if (lot) eliminarLote(lot);
     }));
   }
 
@@ -399,6 +410,27 @@
       if (ERP.avisarSiPermiso && ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
       avisoCosteo('err', `El ERP rechazó el costo: ${esc(e.message)}`);
       btn.disabled = false;
+    }
+  }
+
+  /* ================= Eliminar lote (D-192) ================= */
+  // Destructivo — confirm() explícito. Si el backend bloquea (inventario apartado para una venta)
+  // o reabre una línea de compra, el mensaje/efecto ya viene resuelto del backend: se muestra tal
+  // cual, no se reinterpreta aquí (mismo patrón que eliminarSPO/eliminarSO en los otros módulos).
+  async function eliminarLote(lot) {
+    if (!confirm(`¿Eliminar el lote ${lot.folio}? Esta acción no se puede deshacer.`)) return;
+    try {
+      const r = uno(await rpc('fn_op_lot_eliminar', { p_lot_id: Number(lot.lot_id) }));
+      const reabiertas = r.lineas_compra_reabiertas;
+      const notaReabierta = (Array.isArray(reabiertas) ? reabiertas.length > 0 : !!reabiertas)
+        ? ' La línea de compra vuelve a quedar pendiente de recibir.' : '';
+      ERP.toast('ok', `Lote <b>${esc(lot.folio || '')}</b> eliminado.${notaReabierta}`);
+      ERP.marcarDatosSucios();
+      await recargar();
+      render(document.getElementById('modContenido'));
+    } catch (e) {
+      if (ERP.avisarSiPermiso && ERP.avisarSiPermiso(e)) return;
+      ERP.toast('err', esc(e.message), 9000);
     }
   }
 

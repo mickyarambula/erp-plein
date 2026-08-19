@@ -36,6 +36,11 @@
      fn_op_so_eliminar(p_id, p_actor) — borra SO/líneas/OP y regresa el CPO a 'Abierto'
      fn_op_alloc_crear(p_so_linea_id, p_lot_id, p_cantidad) -> { allocation_id,
        disponible_lote_restante, pendiente_linea } — asignar lote a línea (O2a, ver abajo)
+   "Generar compra" (D-192): botón en la ficha que delega en modulo-o3-compras.js vía
+   ERP.o3AbrirSPODesdeSO(so.id, so.folio) — abre el panel de compra con SKU/cantidad heredados de
+   las líneas de la SO (solo lectura); este módulo NO llama directo a fn_op_spo_desde_so, la lógica
+   vive en o3-compras (misma convención que "Asignar" delega en o1AbrirRecibirInventario si falta
+   inventario).
    Expone ERP.o1CrearSODesde(cpoId, cpoFolio) y ERP.o1VerSO(soId). */
 
 (function () {
@@ -459,6 +464,7 @@
 
         <div class="acciones">
           ${gestionEstado}
+          ${puedeCap ? '<button class="btn-mini" id="soGenerarCompra">Generar compra</button>' : ''}
           ${puedeCap ? '<button class="btn-mini gris" id="soEditar">Editar</button>' : ''}
           ${puedeCap ? '<button class="btn-mini gris" id="soEliminar">Eliminar</button>' : ''}
           <button class="btn-mini gris" id="soCerrar">Cerrar</button>
@@ -482,6 +488,11 @@
     if (bEdSO) bEdSO.addEventListener('click', () => editarSO(so));
     const bDelSO = document.getElementById('soEliminar');
     if (bDelSO) bDelSO.addEventListener('click', () => eliminarSO(so));
+    const bCompra = document.getElementById('soGenerarCompra');
+    if (bCompra) bCompra.addEventListener('click', () => {
+      if (ERP.o3AbrirSPODesdeSO) ERP.o3AbrirSPODesdeSO(so.id, so.folio);
+      else ERP.toast('err', 'El módulo de Compras no está cargado.');
+    });
 
     document.querySelectorAll('.asignar-lote').forEach(b => b.addEventListener('click', () => {
       const t = tablero.find(x => String(x.linea_id) === b.dataset.lineaId);
