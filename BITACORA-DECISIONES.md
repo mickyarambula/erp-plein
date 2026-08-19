@@ -3048,3 +3048,68 @@ y **ESTADO cambia a Enviada** con timestamp (`fn_op_spo_set_estado` se llamó ex
 `20260818l` (D-185). NO desplegado — `npx vercel --prod` lo corre Miguel.
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-19, continuación) — bug visual .det en toda la app + catálogo de Destinos y SHIP TO real (D-198/D-199)
+_Miguel pidió dos tareas: TAREA 1 bug visual prioritario (label/valor encimados en TODAS las
+fichas de detalle, no solo Compras) y TAREA 2 backend ya listo (`v_op_destinos` +
+`fn_op_location_alta/editar` + `fn_op_spo_set_destino`) para reemplazar el SHIP TO fijo del PDF de
+compras por un destino real. Frontend (Claude Code), backend intacto._
+
+- **D-198 — `.det`/`.l`/`.v` encimado (compartido, TODA la app):** causa real: `.det .l` y `.det .v`
+  son `<span>` (inline por default) en TODO el código que arma fichas — `PROVEEDORCarrifoods USA
+  Corp.` — el `margin-top:3px` que llevaba `.v` en `estilos.css` **no hacía nada** porque un
+  elemento inline no respeta `margin-top`. No era un bug de un módulo: `.det`/`.det-grid` es un
+  patrón GLOBAL usado en Compras, Customer PO, Sales Orders y varios módulos legacy (cargas,
+  expediente, comercial, liquidaciones, proyectos, operaciones, programas) — confirmado por grep
+  antes de tocar nada. Arreglo único en el bloque compartido (`estilos.css` ~L384): `.det` pasa a
+  `display:flex;flex-direction:column;gap:4px` (los `<span>` se "blockifican" automáticamente
+  dentro de un contenedor flex, sin necesidad de tocar el markup de ningún módulo) + `display:block`
+  explícito en `.l`/`.v` como refuerzo. Cero cambios de JS — es puramente CSS, un solo bloque, no
+  hubo que parchear módulo por módulo.
+- **D-199a — catálogo de Destinos:** pestaña nueva "Destinos" en Catálogos (`modulo-catalogos-c.js`,
+  icono junto a Listas/Papelera — mismo patrón de "vista propia" que esas dos: se pinta directo en
+  el detalle, no se metió al master-detail de Productos/Proveedores/Clientes porque Destinos no
+  tiene sub-entidades y forzarlo ahí hubiera sido más riesgo que beneficio). Lista con nombre,
+  código, tipo (etiqueta legible), contraparte, ciudad, lotes, activo/inactivo. Alta y edición
+  contra `fn_op_location_alta`/`fn_op_location_editar` (`v_op_destinos`, `location_id` como PK).
+  Cuando el tipo es "Bodega de cliente" o "Bodega de proveedor" aparece un picker de contraparte
+  (`ERP.crearCombo`, mismo componente que el picker de proveedor de Compras) filtrado por
+  `es_cliente`/`es_proveedor`. Sin RPC de eliminar — "borrar" es desactivar (`p_activo=false`)
+  desde editar. **Verificado en navegador:** los 3 destinos existentes cargan con tipo "propia" por
+  default como avisó Miguel; se editó "Northgate markets" → tipo "cliente" → apareció el picker →
+  se ligó a "Northgate Gonzalez Markets" → `fn_op_location_editar` se llamó con
+  `p_id:2, p_tipo:'cliente', p_contraparte_id:12` — exactamente lo esperado. Alta de un destino
+  nuevo también verificada (`fn_op_location_alta` con los args correctos, sin `p_activo`).
+- **D-199b — selector de destino en la compra:** "Destino (SHIP TO)" en "Nueva compra" y en
+  "Generar compra desde Sales Order" (`v_op_destinos&activo=eq.true`) — se puede dejar sin elegir.
+  Al crear la compra, si se eligió destino, se fija con una segunda llamada a
+  `fn_op_spo_set_destino` (si falla, la compra igual queda creada — se avisa aparte, no se pierde
+  el alta por un problema del destino). En la ficha: nuevo renglón "Destino (SHIP TO)" en el
+  det-grid (lee `v_op_spo_documento.destino_nombre`) + control "Cambiar destino" (select +
+  "Guardar destino") que llama `fn_op_spo_set_destino` con el `location_id` elegido o `null` para
+  quitarlo. Sin destino asignado: aviso suave ámbar invitando a elegir uno. **Verificado:** compra
+  mock en estado Confirmada mostró "Cross-dock Nogales" en el det-grid y el selector con las 3
+  opciones activas; "Guardar destino" llamó `fn_op_spo_set_destino` con `p_id:501,
+  p_destino_location_id:1` al cambiarlo.
+- **D-199c — SHIP TO real en el PDF:** `construirOcPdfBlob()` (`modulo-o3-compras.js`) tenía la
+  caja SHIP TO hardcodeada a `bloqueEmpresaPleinPdf()` desde D-197 (documentado ahí mismo como
+  limitación temporal — "hasta que exista ese campo"). Nueva función `cajaShipTo(po)`: si
+  `po.destino_nombre` existe, arma la caja con nombre/dirección/ciudad-estado-país/contacto-
+  teléfono de `v_op_spo_documento` (ya trae esos campos); si no, cae a `bloqueEmpresaPleinPdf()`
+  igual que antes (dato real conocido, no inventado, para compras sin destino asignado). Reusa el
+  mismo `pintarCaja()` de `construirPdfOficial()` (D-197, ya probado con arrays de líneas
+  arbitrarias) — no hubo que tocar `modulo-op-documentos.js`.
+
+**Verificado en navegador (Chrome DevTools con Supabase/fetch/RPC mockeados — sin tocar
+producción):** login mock → Compras → "Nueva compra" muestra el select Destino con las 3 opciones
+→ ficha de una compra Confirmada muestra el destino real + "Cambiar destino" funcional → Catálogos
+→ pestaña Destinos lista los 3 destinos → editar Northgate markets a tipo cliente + vincular su
+contraparte → RPC con los args exactos → alta de un destino nuevo → RPC con los args exactos. Fix
+de `.det` confirmado visualmente en claro, oscuro y 390px (valores cortos y largos, con wrap) tanto
+en una página de verificación aislada como en la ficha real de una compra. **0 errores de consola**
+en todo el recorrido.
+
+`node --check` limpio en `modulo-catalogos-c.js`/`modulo-o3-compras.js` (`estilos.css` no aplica).
+`?v=` de `index.html` a `20260818m` (D-185). NO desplegado — `npx vercel --prod` lo corre Miguel.
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.

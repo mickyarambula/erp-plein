@@ -5208,3 +5208,42 @@ del alcance de este fix.
 
 `node --check` limpio en los 2 archivos. `?v=` a `20260818l` (D-185). NO desplegado (Miguel corre
 `npx vercel --prod`).
+
+## E136 (2026-08-19) — bug visual .det en toda la app + catálogo de Destinos y SHIP TO real (D-198/D-199)
+
+Dos tareas de Miguel: TAREA 1 bug visual prioritario (label/valor encimados en TODAS las fichas,
+no solo Compras) y TAREA 2 backend ya listo para un catálogo de destinos de entrega + SHIP TO real
+en el PDF de compras.
+
+**D-198 — `.det` encimado (compartido, TODA la app).** Causa: `.det .l`/`.det .v` son `<span>`
+(inline) en todo el código que arma fichas — el `margin-top:3px` que llevaba `.v` no hacía nada
+porque un inline no lo respeta ("PROVEEDORCarrifoods USA Corp." pegado). Confirmado por grep que
+`.det`/`.det-grid` es un patrón GLOBAL (Compras, Customer PO, Sales Orders + varios módulos
+legacy) — arreglo único en el bloque compartido de `estilos.css`: `.det` pasa a
+`display:flex;flex-direction:column;gap:4px` (los spans se blockifican solos dentro de un flex,
+sin tocar el markup de ningún módulo) + `display:block` de refuerzo en `.l`/`.v`. Cero JS.
+
+**D-199 — catálogo de Destinos + SHIP TO real.** Pestaña nueva "Destinos" en Catálogos
+(`modulo-catalogos-c.js`, icono junto a Listas/Papelera — misma "vista propia" que esas dos, sin
+meterse al master-detail de Productos/Proveedores/Clientes porque Destinos no tiene
+sub-entidades). Lista + alta/edición contra `v_op_destinos`/`fn_op_location_alta`/
+`fn_op_location_editar`; picker de contraparte (`ERP.crearCombo`) cuando el tipo es cliente o
+proveedor. Sin RPC de eliminar — desactivar es editar con `p_activo=false`. En Compras: selector
+"Destino (SHIP TO)" en Nueva compra y en Generar compra desde SO (`v_op_destinos&activo=eq.true`,
+se fija con `fn_op_spo_set_destino` tras crear la compra); en la ficha, renglón "Destino (SHIP TO)"
++ control "Cambiar destino". PDF: `cajaShipTo(po)` en `modulo-o3-compras.js` usa
+`v_op_spo_documento.destino_*` cuando hay destino asignado, cae a `bloqueEmpresaPleinPdf()` si no
+(mismo fallback que D-197, ahora ya no es la única opción) — reusa `pintarCaja()` de
+`construirPdfOficial()` sin tocar `modulo-op-documentos.js`.
+
+**Verificado en navegador** (Supabase/fetch/RPC mockeados, sin tocar producción): "Nueva compra"
+muestra el select Destino con las 3 opciones; ficha de compra Confirmada muestra el destino real +
+"Cambiar destino" funcional (`fn_op_spo_set_destino` con los args correctos); Catálogos → Destinos
+lista los 3 destinos existentes con tipo "propia" por default como avisó Miguel; se editó
+"Northgate markets" → tipo cliente → apareció el picker → se ligó a su contraparte →
+`fn_op_location_editar` con `p_contraparte_id` correcto; alta de destino nuevo también verificada.
+Fix de `.det` confirmado en claro/oscuro/390px, valores cortos y largos con wrap, en una página
+aislada y en la ficha real. 0 errores de consola.
+
+`node --check` limpio en `modulo-catalogos-c.js`/`modulo-o3-compras.js`. `?v=` a `20260818m`
+(D-185). NO desplegado (Miguel corre `npx vercel --prod`).
