@@ -2914,3 +2914,77 @@ desplegado — `npx vercel --prod` lo corre Miguel. `SISTEMA-DISENO.md` §13 act
 HECHO + los 2 bugs documentados como precedente para futuros módulos).
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-19, continuación) — O3c: documentos y envíos reales en Compras (D-196)
+_Backend cerró documentos y envíos. "Marcar enviada" deja de ser un botón de estado suelto: ahora
+es consecuencia de haber generado la OC de verdad, guardarla, y mandarla. Miguel pidió
+explícitamente reusar el formato legacy de la orden de compra (v_documento_po / bloque "Invoices
+(editor + impresión)" de estilos.css) — no inventar uno nuevo. Backend intacto — mismas vistas/RPCs.
+Frontend (Claude Code)._
+
+- **D-196a — módulo nuevo genérico `modulo-op-documentos.js` (`ERP.opDocumentos`), a propósito NO
+  atado a Compras:** hermano del sistema legacy `ERP.documentos` (mismo bucket privado
+  'documentos', misma filosofía de componente montable), pero sobre el contrato op.* nuevo
+  (`v_op_documentos`/`fn_op_doc_registrar`/`fn_op_doc_anular`, `v_op_envios`/
+  `fn_op_envio_registrar`). Expone `montar()`/`montarEnvios()` (secciones "Documentos"/"Envíos"
+  reusando las clases CSS ya existentes de `documentos.js` — `.docs-zona`/`.doc-fila`/etc., **cero
+  CSS nuevo**), más las primitivas `subir()`/`urlFirmada()`/`anular()`/`registrarEnvio()` para que
+  cualquier módulo las use directo. Se replica igual a factura al cliente o liquidación más
+  adelante: solo cambia `entidad`/`entidad_id` al montar.
+- **D-196b — `construirPdfOficial()`, el "reusa el formato" pedido, resuelto con jsPDF (ya cargado
+  en `index.html`) en vez de `ERP.imprimirArea`/`window.print`:** el PO oficial legacy
+  (`htmlPOOficial` en `modulo-ordenes.js`, vía `ERP.membreteOficial`/`bloqueEmpresaPlein`/
+  `tablaLineasDoc`/`pieOficial` de `exportar.js`) solo IMPRIME — no hay forma de convertir
+  `window.print()` en un Blob real para el bucket. La tarea explícita permitía "HTML + print en
+  v1, pero el archivo DEBE quedar guardado" — en vez de eso se replicó el MISMO layout con jsPDF
+  (mismo logo vía `ERP.logoPdfDataURL`, mismo verde de marca `#196B24`, mismos rótulos VENDOR/BILL
+  TO y columnas ITEM#/DESCRIPTION/QTY/UNIT PRICE/TOTAL) — esto SÍ produce un Blob real, siguiendo
+  el mismo patrón que YA usa `modulo-comercial.js` para el envío por WhatsApp de cotizaciones/OC
+  legacy (`construirDoc` + `.output('blob')` + subida al bucket) — arquitectura ya probada en este
+  código, no una invención nueva.
+- **D-196c — "Generar orden de compra" (TAREA 1):** botón en la ficha de la compra. Lee
+  `v_op_spo_documento` (trae TODOS los datos del proveedor ya registrados — nunca se piden a
+  mano), arma el PDF con `construirPdfOficial`, lo sube a `oc/{folio}.pdf` (ruta FIJA — regenerar
+  reemplaza el mismo archivo, `upsert:true`) y lo registra con `fn_op_doc_registrar(p_entidad=
+  'supplier_po', p_entidad_id=folio, p_categoria='Orden de compra')`. Abre el PDF en pestaña nueva
+  y refresca la sección Documentos.
+- **D-196d — "Enviar al proveedor" (TAREA 2):** panel nuevo que muestra correo/WhatsApp del
+  proveedor YA REGISTRADOS (de `v_op_spo_documento`, sin pedirlos) con botón deshabilitado si
+  falta el dato. **Correo:** reusa `ERP.enviarPorCorreoDoc` (comun.js, ya existía — mailto interino
+  con destinatario/asunto "Orden de compra {folio} — Plein Produce"/cuerpo; el envío real por
+  servicio queda para una 2ª vuelta, necesita dominio verificado). **WhatsApp:** wa.me con el
+  teléfono a dígitos + mensaje con URL firmada de **90 días** (`60*60*24*90` segundos — wa.me no
+  adjunta archivos, la liga va en el texto). Si el PDF de la OC aún no existe (nunca se generó a
+  mano), `asegurarDocumentoOC()` lo genera y sube automáticamente antes de enviar — un solo click.
+  Ambos canales registran con `ERP.opDocumentos.registrarEnvio` ->
+  `fn_op_envio_registrar(p_canal='correo'|'whatsapp', p_estado='enviado')` y AL TERMINAR llaman
+  `fn_op_spo_set_estado(p_id,'Enviada')` — se quitó el botón suelto "Marcar enviada al proveedor"
+  (D-194): ahora "Enviada" es una consecuencia, no una acción directa. "Marcar confirmada por el
+  proveedor" (D-194) sigue siendo un botón directo, sin cambio.
+- **D-196e — Documentos y envíos en la ficha (TAREA 3):** secciones "Documentos" (lista de
+  `v_op_documentos` filtrada por `entidad='supplier_po'`/`entidad_id=folio`, botón Ver por URL
+  firmada de 5 min, botón Anular -> `fn_op_doc_anular`) y "Envíos" (historial de `v_op_envios`:
+  canal/destinatario/estado/cuándo/quién) montadas vía `ERP.opDocumentos`. "Adjuntar documento"
+  (lo que MANDA el proveedor — Invoice, BOL, manifiesto, certificado QC) con categoría de una
+  lista fija: Factura, Cotización, Orden de compra, BL/Guía, Certificado QC, Liquidación,
+  Comprobante de pago, Otro.
+
+**Verificado en navegador (Chrome DevTools, mock de storage/RPCs op.* nuevos, flujo completo x2 —
+una compra con correo+whatsapp registrados, otra solo con whatsapp):** "Generar orden de compra"
+→ PDF real (49 KB) generado y subido a `oc/SPO-2026-05001.pdf`, toast de confirmación, aparece en
+Documentos con Ver/Anular. "Enviar al proveedor" → panel muestra correo/whatsapp ya registrados
+(botón Correo deshabilitado cuando falta el dato, confirmado con la 2ª compra); Correo abre
+`mailto:contacto@ranchoelsol.mx?subject=Orden%20de%20compra%20SPO-2026-05001...` exacto y reabre
+el PDF; WhatsApp abre `wa.me/526681112233?text=...` con el mensaje y `exp=7776000` (= 90 días
+exactos) en la URL firmada — auto-generó el PDF porque aún no existía. Ambos casos: envío
+registrado en la tabla de Envíos, estado de la compra pasa a **Enviada** con timestamp, el botón
+"Enviar al proveedor" desaparece (gating `estado==='abierto'`) y aparece "Marcar confirmada".
+"Adjuntar documento": subida con categoría "Factura" + nota, aparece en la lista; "Anular" lo
+quita de la lista con confirmación. **0 errores de consola** en todo el flujo. Modo oscuro:
+colores sanos (cero CSS nuevo — todo reusa clases ya dark-aware). Móvil (390px): panel completo
+sin scroll horizontal (hereda D-193/Fase 2).
+
+`node --check` limpio en `modulo-o3-compras.js` y `modulo-op-documentos.js` (nuevo). `?v=` de
+`index.html` a `20260818k` (D-185). NO desplegado — `npx vercel --prod` lo corre Miguel.
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.

@@ -5128,3 +5128,46 @@ manifest 200, service worker `activated`, apple-touch-icon 200, 0 errores de con
 `node --check` limpio en los 5 módulos; `estilos.css` balanceado (1603/1603). 6 commits (uno por
 módulo/bug/fase). `?v=` a `20260818j` (D-185). NO desplegado — `npx vercel --prod` lo corre
 Miguel. `SISTEMA-DISENO.md` §13 actualizado con Fase 2/3 HECHO y los 2 bugs como precedente.
+
+## E134 (2026-08-19) — O3c: documentos y envíos reales en Compras (backend D-196)
+
+Backend cerró documentos y envíos. "Marcar enviada" ya no es un botón de estado suelto — ahora es
+consecuencia de generar la OC de verdad, guardarla y mandarla. Miguel pidió explícitamente reusar
+el formato legacy de la orden de compra (no inventar uno nuevo). Backend intacto.
+
+**Módulo nuevo genérico `modulo-op-documentos.js` (`ERP.opDocumentos`)**, a propósito NO atado a
+Compras: hermano del sistema legacy `ERP.documentos` (mismo bucket 'documentos'), sobre el
+contrato op.* (`v_op_documentos`/`fn_op_doc_registrar`/`fn_op_doc_anular`,
+`v_op_envios`/`fn_op_envio_registrar`). `montar()`/`montarEnvios()` reusan las clases CSS de
+`documentos.js` (`.docs-zona`/`.doc-fila`) — **cero CSS nuevo**. Reusable tal cual para factura al
+cliente/liquidación más adelante.
+
+**`construirPdfOficial()`** — el "reusa el formato" pedido por Miguel, resuelto con jsPDF (ya
+cargado) en vez de `ERP.imprimirArea`/`window.print`: el PO oficial legacy solo IMPRIME, no hay
+forma de convertir eso en un Blob real para el bucket. Se replicó el MISMO layout (logo, verde de
+marca #196B24, VENDOR/BILL TO, columnas ITEM#/DESCRIPTION/QTY/UNIT PRICE/TOTAL) con jsPDF —
+mismo patrón que ya usa `modulo-comercial.js` para enviar por WhatsApp cotizaciones/OC legacy
+(`construirDoc` + `.output('blob')`), no una arquitectura nueva.
+
+**"Generar orden de compra"**: lee `v_op_spo_documento` (datos del proveedor YA registrados, nunca
+a mano), sube a `oc/{folio}.pdf` (ruta fija, `upsert:true`), registra con `fn_op_doc_registrar`
+(categoría 'Orden de compra'), abre el PDF y refresca Documentos.
+
+**"Enviar al proveedor"**: panel con correo/WhatsApp ya registrados (botón deshabilitado si falta
+el dato). Correo reusa `ERP.enviarPorCorreoDoc` (mailto interino, ya existía en comun.js). WhatsApp
+= wa.me con URL firmada de 90 días (wa.me no adjunta archivos). Si el PDF no existe aún, se genera
+solo antes de enviar. Ambos registran el envío y AL TERMINAR llaman
+`fn_op_spo_set_estado(p_id,'Enviada')` — se quitó el botón suelto "Marcar enviada al proveedor".
+
+**Documentos + Envíos en la ficha**: lista con Ver (URL firmada 5 min)/Anular, "Adjuntar documento"
+(lo que manda el proveedor) con categoría de lista fija (Factura/Cotización/Orden de
+compra/BL-Guía/Certificado QC/Liquidación/Comprobante de pago/Otro), historial de envíos.
+
+**Verificado en navegador (mock de storage/RPCs op.* nuevos, 2 compras):** Generar OC → PDF real
+(49 KB) subido y registrado. Enviar → mailto exacto + wa.me con `exp=7776000` (90 días exactos) en
+la URL; auto-generó el PDF cuando no existía. Ambos casos: envío registrado, estado → Enviada con
+timestamp, botones cambian según gating. Adjuntar documento con categoría + Anular funcionando.
+0 errores de consola. Modo oscuro sano (cero CSS nuevo). Móvil (390px) sin scroll horizontal.
+
+`node --check` limpio en `modulo-o3-compras.js` y `modulo-op-documentos.js` (nuevo). `?v=` a
+`20260818k` (D-185). NO desplegado (Miguel corre `npx vercel --prod`).
