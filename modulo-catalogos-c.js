@@ -1083,7 +1083,8 @@
           <td class="catc-sec">${esc(f.ciudad || '—')}</td>
           <td style="text-align:right" class="catc-sec">${esc(f.lotes ?? 0)}</td>
           <td>${f.activo === false ? '<span class="catc-pill off"><span class="catc-dot"></span>Inactivo</span>' : '<span class="catc-pill ok"><span class="catc-dot"></span>Activo</span>'}</td>
-          <td style="text-align:right">${puedeCap() ? `<i class="ti ti-pencil catc-go editar" data-editdest="${esc(f.location_id)}" title="Editar destino"></i>` : ''}</td>
+          <td style="text-align:right;white-space:nowrap">${puedeCap() ? `<i class="ti ti-pencil catc-go editar" data-editdest="${esc(f.location_id)}" title="Editar destino"></i>
+            <i class="ti ti-trash catc-go" data-deldest="${esc(f.location_id)}" data-nombre="${esc(f.nombre || '')}" title="Eliminar destino"></i>` : ''}</td>
         </tr>`).join('')}</tbody></table></div>`
         : '<div class="catc-hint">Sin destinos aún.</div>'}
     </div>`;
@@ -1092,6 +1093,19 @@
     $det().querySelectorAll('[data-editdest]').forEach(b => b.addEventListener('click', () => {
       const f = filas.find(x => String(x.location_id) === b.dataset.editdest);
       if (f) formDestino(f);
+    }));
+    $det().querySelectorAll('[data-deldest]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm(`¿Eliminar el destino «${b.dataset.nombre}»? Si tiene lotes o compras con historial, el ERP lo va a rechazar (mejor desactivarlo en ese caso).`)) return;
+      const id = b.dataset.deldest;
+      try {
+        await rpc('fn_op_location_eliminar', { p_id: Number(id) });
+        ERP.limpiarCache();
+        ERP.toast('ok', `Destino «${esc(b.dataset.nombre)}» eliminado.`);
+        const tr = b.closest('tr');
+        if (tr) tr.remove();
+      } catch (e) {
+        if (!(ERP.avisarSiPermiso && ERP.avisarSiPermiso(e))) ERP.toast('err', esc(e.message), 9000);
+      }
     }));
   }
 

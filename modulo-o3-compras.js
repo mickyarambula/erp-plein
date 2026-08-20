@@ -265,9 +265,44 @@
 
   /* ================= Alta ================= */
 
-  let proveedoresCat = [], sosCat = [], destinosCat = [], comboProveedor = null;
+  let proveedoresCat = [], sosCat = [], destinosCat = [], proveedoresPorProductoCat = [], comboProveedor = null;
+  let acotadoProveedor = true;   // toggle "ver todos" — nunca bloquea, solo cambia qué se muestra primero (D-200)
   const optsDestino = (destinos, sel) => `<option value="">— sin destino —</option>` +
     destinos.map(d => `<option value="${esc(d.location_id)}" ${String(sel || '') === String(d.location_id) ? 'selected' : ''}>${esc(d.nombre)}${d.tipo_etiqueta ? ` (${esc(d.tipo_etiqueta)})` : ''}</option>`).join('');
+
+  /** Sugerencia de proveedor por producto (D-200) — NUNCA bloquea (REGLAS-DE-TRABAJO.md §11.4):
+      el combo siempre puede buscar cualquier proveedor escribiendo; "acotado" solo decide qué se
+      ve por default en la lista sin escribir, con un link "ver todos" siempre a un clic. Mismo
+      espíritu que el toggle soloVinculados de ERP.crearPickerSku. */
+  function productoIdsDeLineas() {
+    const set = new Set();
+    lineas.forEach(l => { const pid = l.picker && l.picker.valorProductoId && l.picker.valorProductoId(); if (pid != null) set.add(Number(pid)); });
+    return set;
+  }
+  function destacadosProveedorPorProductos(pids) {
+    if (!pids.size) return new Set();
+    return new Set(proveedoresPorProductoCat.filter(v => pids.has(Number(v.producto_id))).map(v => Number(v.contraparte_id)));
+  }
+  function refrescarSugerenciaProveedor(pids, hintId) {
+    if (!comboProveedor) return;
+    const destacados = destacadosProveedorPorProductos(pids);
+    const items = proveedoresCat.map(p => ({ id: p.id, nombre: p.nombre, alias: p.alias || [], destacado: destacados.has(Number(p.id)) }));
+    const hint = document.getElementById(hintId);
+    if (!destacados.size) {
+      if (hint) hint.style.display = 'none';
+      comboProveedor.actualizarItems(items);
+      return;
+    }
+    const acotados = items.filter(i => i.destacado);
+    comboProveedor.actualizarItems(acotadoProveedor && acotados.length ? acotados : items);
+    if (hint) {
+      hint.style.display = '';
+      hint.innerHTML = `${destacados.size} proveedor${destacados.size === 1 ? '' : 'es'} ya surte${destacados.size === 1 ? '' : 'n'} este producto — se muestra${destacados.size === 1 ? '' : 'n'} primero. ` +
+        `<a class="enlace" id="${hintId}Toggle">${acotadoProveedor ? 'Ver todos los proveedores' : 'Solo los que ya surten este producto'}</a>`;
+      const t = document.getElementById(hintId + 'Toggle');
+      if (t) t.addEventListener('click', () => { acotadoProveedor = !acotadoProveedor; refrescarSugerenciaProveedor(pids, hintId); });
+    }
+  }
   let lineas = [];
   let adjuntoSubido = null;   // 'storage:cpo-adjuntos/<ruta>' si se subió un archivo en esta alta
 
@@ -284,22 +319,25 @@
     adjuntoSubido = null;
     ERP.abrirPanel('Nueva compra', 'Registra el PO que le mandamos al proveedor', '<div class="skel">Cargando catálogos…</div>');
     try {
-      [proveedoresCat, sosCat, destinosCat] = await Promise.all([
+      [proveedoresCat, sosCat, destinosCat, proveedoresPorProductoCat] = await Promise.all([
         q('v_catc_contrapartes', '&es_proveedor=eq.true&order=nombre.asc'),
         q('v_op_sales_orders', '&order=created_at.desc').catch(() => []),
-        q('v_op_destinos', '&activo=eq.true&order=nombre.asc').catch(() => [])
+        q('v_op_destinos', '&activo=eq.true&order=nombre.asc').catch(() => []),
+        q('v_catc_proveedores_por_producto').catch(() => [])
       ]);
     } catch (e) {
       ERP.abrirPanel('Nueva compra', '', `<div class="errbox">No se pudieron leer los catálogos: ${esc(e.message)}</div>`);
       return;
     }
     lineas = [nuevaLinea()];
+    acotadoProveedor = true;
 
     ERP.abrirPanel('Nueva compra', 'Registra el PO que le mandamos al proveedor', `
       <div class="form-erp">
         <div class="campos">
           <div class="campo ancho"><label>Proveedor <span class="req">*</span></label><div id="spoProveedor"></div>
-            <div class="alias-ayuda">Contraparte marcada como proveedor en el Directorio.</div></div>
+            <div class="alias-ayuda">Contraparte marcada como proveedor en el Directorio.</div>
+            <div class="alias-ayuda" id="spoProveedorHint" style="display:none"></div></div>
           <div class="campo"><label>N° de PO / referencia del proveedor</label>
             <input id="spoNumProveedor" type="text" maxlength="60" placeholder="Ej. EST-1001 (opcional)"></div>
           <div class="campo"><label>Fecha</label>
@@ -364,9 +402,11 @@
       l.picker = ERP.crearPickerSku({
         contenedor: document.getElementById(`spoLiSku${i}`),
         placeholder: 'Busca SKU…',
-        valorInicial: l.sku_id ? { sku_id: l.sku_id, etiqueta: l.sku_etiqueta } : null
+        valorInicial: l.sku_id ? { sku_id: l.sku_id, etiqueta: l.sku_etiqueta } : null,
+        alCambiar: () => refrescarSugerenciaProveedor(productoIdsDeLineas(), 'spoProveedorHint')
       });
     });
+    refrescarSugerenciaProveedor(productoIdsDeLineas(), 'spoProveedorHint');
 
     body.querySelectorAll('.spo-li').forEach(inp => {
       inp.addEventListener('input', e => { lineas[Number(e.target.dataset.i)][e.target.dataset.k] = e.target.value; });
@@ -510,10 +550,11 @@
     ERP.abrirPanel('Generar compra', `desde Sales Order ${esc(soFolio || '')}`, '<div class="skel">Cargando líneas de la venta…</div>');
     let sol;
     try {
-      [proveedoresCat, sol, destinosCat] = await Promise.all([
+      [proveedoresCat, sol, destinosCat, proveedoresPorProductoCat] = await Promise.all([
         q('v_catc_contrapartes', '&es_proveedor=eq.true&order=nombre.asc'),
         q('v_op_so_lineas', `&sales_order_id=eq.${Number(soId)}&order=linea_num.asc`),
-        q('v_op_destinos', '&activo=eq.true&order=nombre.asc').catch(() => [])
+        q('v_op_destinos', '&activo=eq.true&order=nombre.asc').catch(() => []),
+        q('v_catc_proveedores_por_producto').catch(() => [])
       ]);
     } catch (e) {
       ERP.abrirPanel('Generar compra', '', `<div class="errbox">No se pudieron leer las líneas de la venta: ${esc(e.message)}</div>`);
@@ -523,13 +564,15 @@
       ERP.abrirPanel('Generar compra', '', '<div class="errbox">Esta Sales Order no tiene líneas.</div>');
       return;
     }
-    lineasSO = sol.map(l => ({ so_linea_id: l.id, sku: l.sku || l.producto || '', cantidad: l.cantidad, uom: l.uom, costo_unitario: '', costo_moneda: 'USD' }));
+    acotadoProveedor = true;
+    lineasSO = sol.map(l => ({ so_linea_id: l.id, sku: l.sku || l.producto || '', producto_id: l.producto_id ?? null, cantidad: l.cantidad, uom: l.uom, costo_unitario: '', costo_moneda: 'USD' }));
 
     ERP.abrirPanel('Generar compra', `desde Sales Order <span class="mono">${esc(soFolio || '')}</span>`, `
       <div class="form-erp">
         <div class="campos">
           <div class="campo ancho"><label>Proveedor <span class="req">*</span></label><div id="spoProveedor"></div>
-            <div class="alias-ayuda">Contraparte marcada como proveedor en el Directorio.</div></div>
+            <div class="alias-ayuda">Contraparte marcada como proveedor en el Directorio.</div>
+            <div class="alias-ayuda" id="spoProveedorHint" style="display:none"></div></div>
           <div class="campo"><label>N° de PO / referencia del proveedor</label>
             <input id="spoNumProveedor" type="text" maxlength="60" placeholder="Ej. EST-1001 (opcional)"></div>
           <div class="campo"><label>Fecha</label>
@@ -564,6 +607,10 @@
       items: proveedoresCat.map(p => ({ id: p.id, nombre: p.nombre, alias: p.alias || [] })),
       placeholder: 'Busca proveedor por nombre o alias…', permitirNuevo: false
     });
+    // Aquí el producto de cada línea YA se conoce (heredado de la SO, de solo lectura) — se
+    // calcula una sola vez, no hace falta recalcular en cada cambio como en "Nueva compra".
+    const pidsDesdeSO = new Set(lineasSO.filter(l => l.producto_id != null).map(l => Number(l.producto_id)));
+    refrescarSugerenciaProveedor(pidsDesdeSO, 'spoProveedorHint');
     montarLineasDesdeSO();
 
     document.getElementById('spoArchivo').addEventListener('change', onArchivoSPO);
