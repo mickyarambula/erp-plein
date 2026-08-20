@@ -5247,3 +5247,37 @@ aislada y en la ficha real. 0 errores de consola.
 
 `node --check` limpio en `modulo-catalogos-c.js`/`modulo-o3-compras.js`. `?v=` a `20260818m`
 (D-185). NO desplegado (Miguel corre `npx vercel --prod`).
+
+## E137 (2026-08-19) — 4 conexiones de backend nuevo (D-200)
+
+Backend entregó 4 cosas. Se verificó cada una contra la base en vivo (probes anónimos al REST real
+— 401 permission denied = existe, 404 = no existe) antes de programar, sin Supabase MCP.
+
+**PDFs huérfanos en `oc/`.** Revisado: el upload de la OC ya usa `upsert: !!storagePath` desde
+D-196 (`modulo-op-documentos.js:108`) — el fix de código ya estaba. Los 4 archivos son restos
+previos a ese fix. Sin credenciales de Storage reales en este chat — instrucciones manuales para
+Miguel (Dashboard de Supabase).
+
+**Eliminar en Destinos.** `fn_op_location_eliminar` confirmado vivo. Icono papelera en
+`vistaDestinos()`: si hay candado (lotes/compras con historial), el mensaje del backend se muestra
+tal cual; si acepta, la fila se quita del DOM sin recargar la pantalla.
+
+**Proveedor sugerido por producto.** `v_catc_proveedores_por_producto` confirmada viva. En "Nueva
+compra" y "Generar compra desde SO", el combo de Proveedor arranca acotado a los que ya surten el
+producto de las líneas actuales (con aviso + link "Ver todos los proveedores" que quita el
+filtro) — mismo espíritu que el toggle `soloVinculados` de `ERP.crearPickerSku`, nunca bloquea la
+selección. "Desde SO" calcula una vez (producto ya conocido); "Nueva compra" recalcula en vivo al
+elegir SKU por línea.
+
+**Clientes por SKU en Sales Orders — sin cambio de código, hallazgo documentado.**
+`v_catc_clientes_por_sku` confirmada viva (vacía hoy). Revisado a fondo: en el flujo actual el
+cliente SIEMPRE se elige antes que el SKU (SO hereda el cliente del CPO; en CPO el SKU ya se acota
+por el cliente ya elegido, la relación inversa). No hay hoy una pantalla "SKU ya elegido, falta
+cliente" — no se inventó una para esto.
+
+**Verificado en navegador:** Destinos con candado (mensaje exacto, fila no se quita) y sin candado
+(fila desaparece); combo de proveedor acotado + "ver todos" en ambos flujos de compra, incluyendo
+el recálculo en vivo al elegir SKU. 0 errores de consola.
+
+`node --check` limpio. `?v=` a `20260818n` (D-185). NO desplegado (Miguel corre `npx vercel
+--prod`).

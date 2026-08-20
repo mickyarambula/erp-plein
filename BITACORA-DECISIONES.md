@@ -3113,3 +3113,56 @@ en todo el recorrido.
 `?v=` de `index.html` a `20260818m` (D-185). NO desplegado — `npx vercel --prod` lo corre Miguel.
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-19, continuación) — 4 conexiones de backend nuevo: limpieza PDFs huérfanos, eliminar Destinos, proveedor sugerido por producto (D-200)
+_Backend (otro chat) entregó 4 cosas: vistas/RPC nuevos + un bug de Storage. Antes de programar se
+verificó CADA pieza contra la base en vivo (GET/POST anónimos al REST real de Supabase — sin
+Supabase MCP autenticado en este chat — distinguiendo 401 `permission denied` = objeto SÍ existe,
+de 404 `PGRST205/202` = no existe). Frontend (Claude Code), backend intacto._
+
+- **D-200a — PDFs huérfanos en `oc/`: SIN cambio de código.** Se revisó `modulo-op-documentos.js:108`
+  y el upload de la orden de compra **ya usa `upsert: !!storagePath`** desde D-196, y `storagePath`
+  siempre es la ruta fija `RUTA_OC(folio)` para el PDF de compras — el fix de código que se pidió
+  **ya estaba aplicado**, no había nada que tocar. Se revisaron también los otros 4 `.upload()` del
+  repo (`modulo-comercial.js`, adjuntos CPO/SPO en `modulo-o1-cpo.js`/`modulo-o3-compras.js`) — sin
+  relación con este bucket/carpeta. Conclusión: los 4 archivos huérfanos (`oc/SPO-26-001..004.pdf`)
+  son restos de antes de que ese `upsert:true` quedara en el código (o de la ventana de pruebas de
+  D-196/197), no un bug activo. **Borrado real:** Claude Code no tiene credenciales de Storage
+  reales (solo la llave publicable/anon del frontend) — se le dieron a Miguel los pasos manuales
+  por el Dashboard de Supabase (ver instrucciones de prueba de esta sesión).
+- **D-200b — botón Eliminar en Destinos:** `fn_op_location_eliminar(p_id)` confirmado vivo (probe
+  anónimo → `401 permission denied for function`, no 404). Icono papelera por fila en
+  `vistaDestinos()` (`modulo-catalogos-c.js`) junto al de editar; si el RPC rechaza (candado: lotes
+  con historial o compras apuntando al destino), el mensaje del backend se muestra **tal cual** en
+  el toast; si acepta, la fila se quita del DOM directamente (`tr.remove()`), sin recargar toda la
+  pantalla.
+- **D-200c — proveedor sugerido por producto en Compras:** `v_catc_proveedores_por_producto`
+  confirmada viva. Nuevas funciones en `modulo-o3-compras.js`: `destacadosProveedorPorProductos()`
+  + `refrescarSugerenciaProveedor()` — cuando algún producto de las líneas actuales tiene
+  proveedor(es) conocidos, el combo de Proveedor arranca acotado a esos (con aviso "N proveedor(es)
+  ya surte(n) este producto — se muestra(n) primero") y un link **"Ver todos los proveedores"**
+  que quita el filtro (mismo espíritu que el toggle `soloVinculados` que ya tenía
+  `ERP.crearPickerSku` — nunca bloquea, es guía, ver `REGLAS-DE-TRABAJO.md` §11.4). Aplicado en los
+  dos flujos que crean una compra: "Generar compra desde SO" (el producto de cada línea ya se
+  conoce de entrada, cálculo único al montar) y "Nueva compra" (recalcula en vivo cada vez que se
+  elige un SKU en una línea, vía el `alCambiar` del picker).
+- **D-200d — clientes por SKU en Sales Orders: NO se tocó código, hallazgo documentado.**
+  `v_catc_clientes_por_sku` confirmada viva (hoy sin filas, como avisó el mensaje). Se revisó
+  `modulo-o1-so.js` y `modulo-o1-cpo.js` a fondo: en TODO el flujo actual el cliente se elige
+  **antes** que el SKU (la Sales Order hereda el cliente del Customer PO; en el CPO el cliente se
+  elige primero y el picker de SKU ya se acota por ese cliente vía `contraparteId`/`soloVinculados`
+  — la relación inversa, ya construida). No existe hoy una pantalla con el orden "SKU ya elegido,
+  falta cliente" al que enganchar `v_catc_clientes_por_sku` — coincide con la propia advertencia
+  del mensaje ("cuando exista esa pantalla"). No se inventó una pantalla nueva para esto.
+
+**Verificado en navegador** (Supabase/fetch/RPC mockeados): Destinos → eliminar uno con candado
+(RPC llamado, mensaje exacto mostrado, fila NO se quita) y uno sin candado (RPC llamado, fila
+desaparece del DOM). "Generar compra desde SO" con línea de un producto con 1 proveedor conocido →
+combo arranca mostrando solo ese proveedor + aviso + "Ver todos los proveedores" → clic → los 3
+proveedores. "Nueva compra" → aviso empieza oculto (sin producto aún) → aparece dinámico al elegir
+el SKU de la línea. 0 errores de consola en todo el recorrido.
+
+`node --check` limpio en `modulo-catalogos-c.js`/`modulo-o3-compras.js`. `?v=` de `index.html` a
+`20260818n` (D-185). NO desplegado — `npx vercel --prod` lo corre Miguel.
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
