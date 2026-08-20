@@ -3290,3 +3290,76 @@ degradaría a solo los conteos (sin folios), no a un error — Miguel lo confirm
 --prod` lo corre Miguel.
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-20) — cierre de la puerta vieja de recepción + vigilancia de versión (D-204)
+_Miguel recibió 2 compras sin ver la opción de rechazo por calidad. Causa: coexistían DOS caminos
+al inventario desde una compra — la pantalla nueva "Recibir mercancía" (D-201/D-203) y el modal
+viejo "Recibir línea" (sin calidad, nace el lote directo). El botón viejo se había quitado en
+D-201, pero una pestaña con JS cacheado de ANTES de ese deploy siguió teniendo el botón y el
+código funcionando, y usó ese camino. Backend cerró la puerta: `fn_op_spo_recibir_linea` ahora
+SIEMPRE lanza una excepción explicando el reemplazo. Frontend (Claude Code), backend intacto._
+
+- **D-204a — código muerto del modal viejo:** barrido de TODO el repo (`.js`/`.html`/`.css`) por
+  `fn_op_spo_recibir_linea` y cualquier id/clase del modal (`recLiCantidad`, `recLiUbicacion`,
+  `recLiGuardar`, etc.). El modal y la llamada a la RPC **ya no existían** — se habían quitado en
+  D-201 al reemplazar por `abrirRecepcion()`. Solo quedaban **dos comentarios de cabecera**
+  desactualizados en `modulo-o3-compras.js` describiendo la RPC vieja como si siguiera siendo el
+  contrato vigente — corregidos (uno apunta ahora a `fn_op_recepcion_registrar`, el otro documenta
+  la RPC como RETIRADA explícitamente, para que nadie la vuelva a usar guiándose por el comentario).
+  El caso real de D-204 (una pestaña con código de ANTES del commit de D-201, no del repo actual)
+  no se resuelve borrando código — de ahí D-204b.
+- **D-204b — vigilancia de versión (aprobado por Miguel, opción "los dos combinados" con reglas
+  específicas):** el `?v=` en sí está bien — se confirmó que los 41 tags `<script>`/`<link>`
+  locales comparten el mismo valor, sin excepciones. El problema real es que `?v=` **solo actúa en
+  una petición nueva** (recarga o primera carga); una pestaña ya abierta desde antes de un deploy
+  nunca vuelve a pedir nada por sí sola, así que ningún cache-busting la salva. Se descartó el
+  service worker (`sw.js`) como causa — confirmado que no cachea nada (pass-through puro).
+  Implementado en `comun.js` (núcleo, visible a toda la app):
+  - `chequearVersion()`: pide `/` fresco (`cache:'no-store'`) y compara el `?v=` de `app.js` ahí
+    contra el que trae el propio `<script>` ya cargado en el DOM. Si no hay red o el fetch falla,
+    **no hace nada** (nunca bloquea el ERP por un problema de conexión). Throttle de 55s para que
+    intervalo + `visibilitychange` casi simultáneos no dupliquen.
+  - `iniciarVigilanciaVersion()`: un chequeo al entrar (llamado desde `sesionActiva()` en
+    `app.js`, junto a `iniciarPresencia()`) + cada 10 min + cada vez que la pestaña vuelve a
+    primer plano (`visibilitychange` → `visibilityState==='visible'`, el momento típico: se deja
+    el ERP abierto, se hace otra cosa, se regresa).
+  - Detectada la versión vieja: **franja fija arriba, permanente** (sin botón de cerrar — el único
+    botón es "Recargar ahora", `location.reload()`). LEER sigue funcionando normal — navegar, abrir
+    fichas, consultar, sin fricción.
+  - **ESCRIBIR se bloquea del todo:** `exigirVersionActual()` es el único punto de paso — vive
+    dentro de `rpc()` (cubre ~130 sitios de llamada de una sola vez) y se agregó a mano en los 6
+    `sb.rpc()` directos que bypasean el wrapper (`documentos.js` ×2 legacy, `modulo-op-documentos.js`
+    ×4: `subir`/`anular`/`purgar`/`registrarEnvio`). En las dos funciones `subir()` (documentos +
+    documentos de op.*) el guard va ANTES de la subida a Storage, no solo antes del RPC — si no,
+    una pestaña vieja podría subir el archivo igual y solo fallar en el registro, dejando otro
+    huérfano (justo el patrón que se ha estado limpiando toda la semana). Si está vieja: muestra un
+    modal **sin forma de cerrarlo salvo recargar** (nada de click-fuera ni X) y lanza, deteniendo el
+    flujo del que llamó igual que cualquier otro error del backend — el mensaje avisa explícitamente
+    que el formulario NO se guardó y que hay que copiarlo antes de recargar si no se quiere perder
+    (satisface "si es posible no pierdas lo capturado, o al menos avisa" — se optó por avisar, un
+    auto-guardado de borradores es una función aparte, no se improvisó aquí).
+  - **Excluido a propósito:** `fn_latido` (`modulo-presencia.js`, heartbeat de presencia) — no es
+    una escritura de negocio, bloquearlo no protege nada y rompería el indicador de "quién está
+    conectado" en una pestaña vieja sin necesidad.
+  - **Gap conocido, documentado y no cerrado (fuera del alcance pedido):** las subidas a Storage que
+    preceden a un RPC YA gateado (adjuntos de CPO/SPO en `modulo-o1-cpo.js`/`modulo-o3-compras.js`,
+    PDF de envío en `modulo-comercial.js`, todas `upsert:false` o a una ruta fija reemplazable) NO
+    llevan el guard aparte — una pestaña vieja podría subir un archivo suelto, pero el RPC que
+    completa la operación de negocio SÍ está bloqueado (falla el registro, no se crea un dato malo
+    estructurado — a lo mucho un archivo huérfano, ya con tooling de limpieza para `op.*`). Se
+    priorizó igual que Miguel lo pidió: "la barrera va donde está el daño real".
+
+**Verificado en navegador** (mock de `fetch('/')`/RPC/Storage, sin sesión real — Claude Code no
+tiene credenciales): versión igual al arrancar → sin franja; versión distinta → franja permanente
+visible, LEER (navegar Inicio con datos) sigue normal; intento de escritura (`ERP.rpc(...)`) →
+modal bloqueante + **0 llamadas llegaron al servidor** (`window.__RPC.length === 0`); los 3 puntos
+directos (`ERP.opDocumentos.anular/purgar`, `ERP.documentos.anular` legacy) también bloqueados,
+0 fugas; sin red durante el chequeo → sin franja, sin errores, la app carga normal. Franja
+verificada también en 390px (envuelve a 3 líneas, no tapa la barra ni el contenido). 0 errores de
+consola en todo el recorrido.
+
+`node --check` limpio en `comun.js`/`app.js`/`documentos.js`/`modulo-op-documentos.js`/
+`modulo-o3-compras.js`. `?v=` de `index.html` a `20260818q` (D-185). NO desplegado — `npx vercel
+--prod` lo corre Miguel.
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.

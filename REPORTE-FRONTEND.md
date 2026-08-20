@@ -5349,3 +5349,33 @@ la base real (anon no ejecuta RPCs) — Miguel lo confirma en el E2E.
 
 `node --check` limpio. `?v=` a `20260818p` (D-185). NO desplegado (Miguel corre `npx vercel
 --prod`).
+
+## E140 (2026-08-20) — cierre de la puerta vieja de recepción + vigilancia de versión (D-204)
+
+Miguel recibió 2 compras sin ver el rechazo por calidad: una pestaña con JS de ANTES de D-201 (que
+ya había quitado el botón, pero esa pestaña no se enteró) siguió usando el modal viejo "Recibir
+línea" (sin calidad). Backend cerró la RPC (`fn_op_spo_recibir_linea` ahora siempre rechaza).
+
+**Código muerto.** Barrido completo del repo: el modal y la llamada ya no existían (se quitaron en
+D-201). Solo quedaban 2 comentarios de cabecera desactualizados en `modulo-o3-compras.js`,
+corregidos.
+
+**Vigilancia de versión (nuevo, aprobado por Miguel).** El `?v=` está bien aplicado (los 41 tags
+locales comparten valor) — el problema real es que solo actúa en una petición NUEVA; una pestaña ya
+abierta nunca vuelve a pedir nada por sí sola. `comun.js` ahora compara el `?v=` cargado contra el
+de un `/` pedido fresco (sin caché), al entrar + cada 10 min + al volver a la pestaña
+(`visibilitychange`). Si detecta versión vieja:
+- **Franja permanente arriba** (sin botón de cerrar) — LEER sigue funcionando normal, sin fricción.
+- **ESCRIBIR se bloquea del todo**: `exigirVersionActual()` vive dentro de `rpc()` (cubre ~130
+  sitios de una sola vez) + se agregó a mano en los 6 `sb.rpc()` directos que bypasean el wrapper
+  (`documentos.js`, `modulo-op-documentos.js`) — en las funciones `subir()` va ANTES de tocar
+  Storage, no solo antes del RPC. Muestra un modal sin forma de cerrarlo salvo recargar. Excluido a
+  propósito: `fn_latido` (heartbeat de presencia, no es una escritura de negocio).
+- Sin red durante el chequeo: no hace nada, nunca bloquea el ERP por un problema de conexión.
+
+**Verificado en navegador** (mockeado, sin sesión real): sin franja cuando coincide la versión;
+franja + LEER normal + escritura bloqueada con 0 llamadas al servidor cuando no coincide; sin red →
+sin franja, sin errores. Franja verificada en 390px. 0 errores de consola.
+
+`node --check` limpio en los 5 JS. `?v=` a `20260818q` (D-185). NO desplegado (Miguel corre `npx
+vercel --prod`).
