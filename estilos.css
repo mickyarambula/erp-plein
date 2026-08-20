@@ -2144,6 +2144,25 @@ html{-webkit-text-size-adjust:100%}   /* iOS no infla el texto en horizontal por
 .so-linea-campo.num{max-width:110px}
 .so-linea-quitar{border:1px solid var(--bd);background:var(--pan);color:var(--i3);border-radius:6px;width:32px;height:32px;cursor:pointer;flex:none}
 .so-linea-quitar:hover{border-color:var(--red);color:var(--red)}
+
+/* Recepción por calidad (D-201) — tarjeta por línea en el drawer #panelBody (fuera de scope de
+   pantalla; reusa tokens globales). Cada línea: encabezado (SKU + selector de resultado) y, si hay
+   resultado, una rejilla de campos (cantidad/afectada/defecto/nota). */
+.rec-linea{border:1px solid var(--bd);border-radius:8px;padding:11px 12px;background:var(--pan);margin-bottom:10px}
+.rec-linea-top{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.rec-sku .nm{font-weight:600;font-size:13px}
+.rec-mut{font-size:11.5px;color:var(--i3);margin-top:2px}
+.rec-linea-det{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:10px;padding-top:10px;border-top:1px dashed var(--bd)}
+.rec-campo{display:flex;flex-direction:column;gap:4px;min-width:120px;flex:1 1 140px}
+.rec-campo.ancho{flex:1 1 100%}
+.rec-campo label{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--i3);font-weight:700}
+.rec-check{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0}
+.rec-check input{width:auto;margin:0}
+@media(max-width:640px){
+  .rec-linea-top{flex-direction:column}
+  .rec-linea-top select{width:100%;max-width:none}
+  .rec-campo{flex:1 1 100%}
+}
 .ia-lineas-lista .ia-leido{max-width:none;margin-bottom:8px}
 
 /* Picker de SKU (ERP.crearPickerSku): chip ancho de etiqueta COMPLETA una vez elegido — nunca

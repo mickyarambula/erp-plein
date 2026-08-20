@@ -168,6 +168,7 @@
 
   let spos = [];
   let fEstado = '', fTexto = '';
+  let huerfanos = [];   // v_op_documentos_huerfanos (D-201) — solo se carga para rol administrar
 
   function filtrados() {
     const t = ERP.norm(fTexto);
@@ -222,6 +223,7 @@
 
   async function render(cont) {
     const puedeCap = ERP.puede('capturar');
+    const esAdmin = ERP.puede('administrar');
     let filas;
     try {
       filas = await q('v_op_supplier_po', '&order=fecha.desc');
@@ -231,6 +233,13 @@
     }
     spos = filas || [];
     fEstado = ''; fTexto = '';
+
+    // Documentos huérfanos (D-201, TAREA 2c): PDFs en el bucket cuya compra ya no existe. Solo se
+    // muestran a rol administrar y SOLO si hay (>0) — con 0 no aparece nada (no ensuciar la
+    // pantalla de uso diario). Ubicación PROVISIONAL aquí porque hoy la vista solo cubre
+    // supplier_po; cuando cubra ventas/CPO se replantea (anotado en BITACORA D-201).
+    huerfanos = [];
+    if (esAdmin) { try { huerfanos = (await q('v_op_documentos_huerfanos', '&order=nombre_archivo.asc')) || []; } catch (_) { huerfanos = []; } }
 
     cont.innerHTML = `<div class="pantalla-o3-compras">
       <div class="kpistrip" id="spoKpis"></div>
@@ -244,6 +253,7 @@
           <option value="Cancelado">Cancelado</option>
         </select>
         <input class="busca" id="spoBuscar" type="search" placeholder="Buscar folio, proveedor, N° proveedor o SO…" style="flex:1;min-width:180px">
+        ${huerfanos.length ? `<button class="btn-mini gris" id="spoHuerfanos" title="PDFs en el bucket sin compra — limpieza"><i class="ti ti-trash"></i> Huérfanos (${esc(huerfanos.length)})</button>` : ''}
         <span class="conteo" id="spoConteo"></span>
       </div>
       <div id="spoTabla"></div>
@@ -254,8 +264,71 @@
 
     const bNuevo = document.getElementById('spoNuevo');
     if (bNuevo) bNuevo.addEventListener('click', nuevaSPO);
+    const bHuerf = document.getElementById('spoHuerfanos');
+    if (bHuerf) bHuerf.addEventListener('click', abrirHuerfanos);
     document.getElementById('spoFEstado').addEventListener('change', e => { fEstado = e.target.value; pintarTabla(); });
     document.getElementById('spoBuscar').addEventListener('input', e => { fTexto = e.target.value; pintarTabla(); });
+  }
+
+  /* ================= Documentos huérfanos (D-201, TAREA 2c) — admin =================
+     Drawer de mantenimiento: lista v_op_documentos_huerfanos con "Limpiar" por fila. Limpiar =
+     purgar (fn_op_doc_purgar, que exige el doc ya anulado → si aún no lo está, se anula primero)
+     + borrar el archivo del bucket con lo que devuelva el backend (archivo_a_borrar). */
+  async function abrirHuerfanos() {
+    if (!ERP.puede('administrar')) return;
+    ERP.abrirPanel('Documentos huérfanos', 'PDFs en el bucket cuya compra ya no existe', `
+      <div class="form-erp">
+        <div class="alias-ayuda">Estos archivos quedaron en Storage sin una compra que los respalde. "Limpiar" los borra de la base y del bucket — no se puede deshacer. (Al eliminar una compra hoy, esto ya se hace solo; esta lista atrapa restos previos.)</div>
+        <div id="huerfList" style="margin-top:12px"></div>
+        <div class="acciones"><button class="btn-mini gris" id="huerfCerrar">Cerrar</button></div>
+        <div class="aviso" id="huerfAviso"></div>
+      </div>`);
+    pintarHuerfanos();
+    document.getElementById('huerfCerrar').addEventListener('click', ERP.cerrarPanel);
+  }
+
+  function pintarHuerfanos() {
+    const cont = document.getElementById('huerfList');
+    if (!cont) return;
+    if (!huerfanos.length) { cont.innerHTML = '<div class="vacio">No quedan documentos huérfanos. 🎉</div>'; return; }
+    cont.innerHTML = `<div class="tabla-wrap"><table class="so-tablero">
+      <thead><tr><th>Archivo</th><th>Categoría</th><th>Ruta</th><th></th></tr></thead>
+      <tbody>${huerfanos.map((h, i) => `<tr>
+        <td class="ent">${esc(h.nombre_archivo || '—')}</td>
+        <td>${esc(h.categoria || '—')}</td>
+        <td class="mono i3" style="font-size:11px">${esc(h.storage_path || '—')}</td>
+        <td><button type="button" class="btn-mini gris" data-limpiar="${i}">Limpiar</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+    cont.querySelectorAll('[data-limpiar]').forEach(b => b.addEventListener('click', () => limpiarHuerfano(huerfanos[Number(b.dataset.limpiar)], b)));
+    ERP.marcarTabla(cont);
+  }
+
+  async function limpiarHuerfano(h, boton) {
+    if (!h || !confirm(`¿Limpiar "${h.nombre_archivo}"? Se borra de la base y del bucket, sin vuelta atrás.`)) return;
+    if (boton) { boton.disabled = true; boton.textContent = 'Limpiando…'; }
+    const aviso = (t, html) => { const el = document.getElementById('huerfAviso'); if (el) { el.className = 'aviso visible ' + t; el.innerHTML = html; } };
+    try {
+      let r;
+      try {
+        r = await ERP.opDocumentos.purgar(h.documento_id);
+      } catch (e1) {
+        // "papelera primero": si el doc aún no está anulado, purgar lo rechaza — se anula y reintenta.
+        if (/anul/i.test(e1.message || '')) { await ERP.opDocumentos.anular(h.documento_id); r = await ERP.opDocumentos.purgar(h.documento_id); }
+        else throw e1;
+      }
+      const path = (r && r.archivo_a_borrar) || h.storage_path;
+      const res = await ERP.opDocumentos.borrarDeStorage(path);
+      huerfanos = huerfanos.filter(x => String(x.documento_id) !== String(h.documento_id));
+      pintarHuerfanos();
+      ERP.marcarDatosSucios();
+      aviso('ok', res.fallidos.length
+        ? `Registro purgado, pero el archivo del bucket no se pudo borrar (puede que ya no existiera).`
+        : `<b>${esc(h.nombre_archivo)}</b> limpiado de la base y del bucket.`);
+    } catch (e) {
+      if (boton) { boton.disabled = false; boton.textContent = 'Limpiar'; }
+      if (!(ERP.avisarSiPermiso && ERP.avisarSiPermiso(e))) aviso('err', `No se pudo limpiar: ${esc(e.message)}`);
+    }
   }
 
   async function recargar() {
@@ -722,11 +795,6 @@
       const pedido = Number(l.cantidad) || 0;
       const recibido = Number(l.recibido) || 0;
       const pendiente = l.pendiente != null ? Number(l.pendiente) : Math.max(pedido - recibido, 0);
-      const tol = Number(l.tolerancia_pct) || 0;
-      const maxConTol = pedido * (1 + tol / 100);
-      // Se puede recibir mientras no se llegue al máximo con tolerancia (permite recibir en varias
-      // parcialidades y también un excedente dentro de tolerancia). Solo se oculta cuando ya no cabe más.
-      const puedeRecibir = puedeCap && recibido < maxConTol - 1e-6;
       // diferencia ≠ 0 = lo que hay que vigilar contra la factura del proveedor: se resalta.
       const dif = l.diferencia;
       const difTxt = (dif != null && Number(dif) !== 0)
@@ -740,9 +808,15 @@
         <td class="num">${esc(ERP.fmt0(pendiente))}</td>
         <td class="num">${l.costo_unitario != null ? esc(ERP.usd(l.costo_unitario)) + ' ' + esc(l.costo_moneda || 'USD') : '<span class="i3">—</span>'}</td>
         <td>${chipRecepcion(l.estado_recepcion)}${l.lot_folio ? `<div class="i3" style="font-size:11px">${esc(l.lot_folio)}</div>` : ''}</td>
-        <td>${puedeRecibir ? `<button type="button" class="btn-cap recibir-linea" data-linea-id="${esc(l.linea_id)}">Recibir</button>` : ''}</td>
       </tr>`;
     }).join('');
+
+    // Recepción por calidad (D-201) es a nivel COMPRA (una inspección + varias líneas), no por
+    // línea suelta: se ofrece un solo botón "Recibir mercancía" mientras quede algo pendiente.
+    const hayPendiente = lineasF.some(l => {
+      const ped = Number(l.cantidad) || 0, rec = Number(l.recibido) || 0;
+      return (l.pendiente != null ? Number(l.pendiente) : Math.max(ped - rec, 0)) > 0.0001;
+    });
 
     // Transiciones de gestión (O3b, D-194). Los estados de recepción los calcula el backend, no se
     // ofrecen aquí. Abierto → Enviada → Confirmada; Cancelar disponible mientras no haya recepción.
@@ -758,6 +832,7 @@
     const puedeEnviarProveedor = puedeCap && estL !== 'cancelado';
     const puedeConfirmar = puedeCap && estL === 'enviada';
     const puedeCancelar = puedeCap && ['abierto', 'enviada', 'confirmada'].includes(estL);
+    const puedeRecibirCompra = puedeCap && estL !== 'cancelado' && hayPendiente;
 
     ERP.abrirPanel(`Compra <span class="mono">${esc(s.folio || '')}</span>`, esc(s.proveedor || ''), `
       <div class="so-ficha">
@@ -776,7 +851,7 @@
         </div>
         ${puedeCap ? `<div class="alias-ayuda" style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span>Cambiar destino:</span>
-          <select id="spoDestinoSel" style="height:30px">${optsDestino(destinosCat, s.destino_location_id)}</select>
+          <select id="spoDestinoSel" style="height:30px">${optsDestino(destinosCat, docSpo && docSpo.destino_location_id)}</select>
           <button type="button" class="btn-mini gris" id="spoDestinoGuardar" style="height:30px">Guardar destino</button>
         </div>` : ''}
         ${(!docSpo || !docSpo.destino_nombre) ? '<div class="alias-ayuda" style="color:var(--ambar)">Esta compra no tiene destino asignado — el PDF usará la dirección de Plein como SHIP TO por respaldo.</div>' : ''}
@@ -786,12 +861,13 @@
         <div class="tabla-wrap"><table class="so-tablero">
           <thead><tr><th>#</th><th>SKU</th><th>UOM</th>
             <th class="num">Pedido</th><th class="num">Recibido</th><th class="num">Pendiente</th>
-            <th class="num">Costo unit.</th><th>Recepción</th><th></th></tr></thead>
-          <tbody>${filasLineas || '<tr><td colspan="9" class="vacio">Sin líneas.</td></tr>'}</tbody>
+            <th class="num">Costo unit.</th><th>Recepción</th></tr></thead>
+          <tbody>${filasLineas || '<tr><td colspan="8" class="vacio">Sin líneas.</td></tr>'}</tbody>
         </table></div>
-        <div class="alias-ayuda">"Recibir" crea/agrega el lote de Inventario (O2) desde esta línea — puede recibirse en varias parcialidades. La <b>diferencia</b> vs. lo pedido es lo que se coteja contra la factura del proveedor.</div>
+        <div class="alias-ayuda">"Recibir mercancía" registra la recepción por calidad de toda la compra (una inspección, resultado por línea). La <b>diferencia</b> vs. lo pedido es lo que se coteja contra la factura del proveedor.</div>
 
         <div class="so-estados">
+          ${puedeRecibirCompra ? '<button class="btn-mini" id="spoRecibir">Recibir mercancía</button>' : ''}
           ${puedeGenerarDoc ? `<button class="btn-mini" id="spoGenerarDoc">Generar orden de compra</button>` : ''}
           ${puedeEnviarProveedor ? '<button class="btn-mini" id="spoEnviarProveedor">Enviar al proveedor</button>' : ''}
           ${puedeConfirmar ? '<button class="btn-mini" id="spoConfirmar">Marcar confirmada por el proveedor</button>' : ''}
@@ -842,10 +918,8 @@
         bDestGuardar.disabled = false;
       }
     });
-    document.querySelectorAll('.recibir-linea').forEach(b => b.addEventListener('click', () => {
-      const l = lineasF.find(x => String(x.linea_id) === b.dataset.lineaId);
-      if (l) abrirRecibirLinea(s, l);
-    }));
+    const bRecibir = document.getElementById('spoRecibir');
+    if (bRecibir) bRecibir.addEventListener('click', () => abrirRecepcion(s));
     // Líneas de la compra (Pedido/Recibido/Pendiente/Costo/Recepción, D-194) — otro caso ancho.
     ERP.marcarTabla(document.getElementById('panelBody'));
 
@@ -1094,8 +1168,20 @@
   async function eliminarSPO(s) {
     if (!confirm(`¿Eliminar la compra ${s.folio}? Esta acción no se puede deshacer.`)) return;
     try {
-      await rpc('fn_op_spo_eliminar', { p_id: Number(s.supplier_po_id) });
-      ERP.toast('ok', `Compra <b>${esc(s.folio || '')}</b> eliminada.`);
+      // Cascada (D-201): el backend anula documentos + marca envíos huérfanos y devuelve
+      // archivos_a_borrar[] (storage_path). El backend NO borra de Storage (Supabase lo bloquea);
+      // el frontend cierra el ciclo. Si algún archivo falla al borrar, se avisa pero NO se
+      // considera fallida la eliminación de la compra (que ya ocurrió en la base).
+      const r = uno(await rpc('fn_op_spo_eliminar', { p_id: Number(s.supplier_po_id) }));
+      let extra = '';
+      const archivos = (r && r.archivos_a_borrar) || [];
+      if (Array.isArray(archivos) && archivos.length) {
+        const res = await ERP.opDocumentos.borrarDeStorage(archivos);
+        extra = res.fallidos.length
+          ? ` (${res.borrados} archivo(s) borrado(s); ${res.fallidos.length} no se pudieron borrar del bucket)`
+          : ` y ${res.borrados} archivo(s) del bucket`;
+      }
+      ERP.toast('ok', `Compra <b>${esc(s.folio || '')}</b> eliminada${extra}.`);
       ERP.marcarDatosSucios();
       await recargar();
       ERP.cerrarPanel();
@@ -1106,166 +1192,250 @@
     }
   }
 
-  /* ---- Recibir línea: mismo picker de ubicación que "Recibir inventario" (dedupe de
-     v_op_inventario + "+ Nueva ubicación" inline) ---- */
+  /* ================= Recepción por calidad (D-201) =================
+     Reemplaza el modal viejo "Recibir línea" (cantidad + ubicación con búsqueda libre — cuyo
+     catálogo salía de v_op_inventario, por eso un destino nuevo sin stock nunca aparecía: bug
+     TAREA-3, resuelto al desaparecer ese picker). Ahora es UNA recepción por compra que entiende
+     calidad (PACA): una inspección + "¿descargó?" + destino heredado del propio destino de la
+     compra, y por línea un resultado (Aceptada / Aceptada con incidencia / Rechazada).
+       fn_op_recepcion_registrar(p_supplier_po_id, p_lineas jsonb, p_fecha, p_location_id,
+         p_inspeccion_tipo, p_inspeccion_folio, p_inspeccion_fecha, p_descargada, p_nota)
+       p_lineas = [{spo_linea_id, cantidad, afectada, resultado, defecto_tipo, defecto_motivo, nota}]
+     Efectos (los aplica el backend, aquí solo se reflejan): Aceptada→lote Sano (+auto-asigna si la
+     línea venía ligada a SO); Aceptada con incidencia→lote Retenido (NO asignable); Rechazada→sin
+     lote, no suma a recibido. El rechazo es SIEMPRE por línea completa (nunca una fracción). Si se
+     registra un rechazo con la carga ya descargada, el backend devuelve `advertencia` (texto
+     legal) — se MUESTRA, no se esconde; es informativo, no bloquea. */
 
-  let comboUbicacionRec = null, ubicacionesEnMemoria = [];
+  const INSPECCION_TIPOS = ['Ninguna', 'Propia', 'USDA', 'Federal-Estatal', 'Privada'];
+  const RESULTADOS_REC = ['Aceptada', 'Aceptada con incidencia', 'Rechazada'];
+  let recLineas = [], recDefectos = { calidad: [], condicion: [] }, recDestinosCat = [], recHereda = null;
 
-  function avisoRec(tipo, html) {
-    const el = document.getElementById('recLiAviso');
+  function optsDefecto(tipo, sel) {
+    const vals = tipo === 'condicion' ? recDefectos.condicion : recDefectos.calidad;
+    return '<option value="">— elige motivo —</option>' +
+      vals.map(v => `<option value="${esc(v)}" ${sel === v ? 'selected' : ''}>${esc(v)}</option>`).join('');
+  }
+
+  function recFilaHTML(l, i) {
+    const esInc = l.resultado === 'Aceptada con incidencia';
+    const esRech = l.resultado === 'Rechazada';
+    return `<div class="rec-linea" data-i="${i}">
+      <div class="rec-linea-top">
+        <div class="rec-sku"><div class="nm">${esc(l.sku || '—')}</div>
+          <div class="rec-mut">Pedido ${esc(ERP.fmt0(l.pedido))} · recibido ${esc(ERP.fmt0(l.recibido))} · <b>pendiente ${esc(ERP.fmt0(l.pendiente))}</b> ${esc(l.uom || '')}</div></div>
+        <select class="rec-f" data-i="${i}" data-k="resultado" style="max-width:210px">
+          <option value="">— no recibir ahora —</option>
+          ${RESULTADOS_REC.map(r => `<option value="${esc(r)}" ${l.resultado === r ? 'selected' : ''}>${esc(r)}</option>`).join('')}
+        </select>
+      </div>
+      ${l.resultado ? `<div class="rec-linea-det">
+        <div class="rec-campo"><label>Cantidad ${esRech ? '(línea completa)' : 'recibida'}</label>
+          <input class="rec-f mono" data-i="${i}" data-k="cantidad" type="number" step="0.01" min="0" value="${esc(l.cantidad)}" ${esRech ? 'disabled' : ''}></div>
+        ${esInc ? `
+          <div class="rec-campo"><label>Viene afectada <span class="req">*</span></label>
+            <input class="rec-f mono" data-i="${i}" data-k="afectada" type="number" step="0.01" min="0" value="${esc(l.afectada)}" placeholder="0"></div>
+          <div class="rec-campo"><label>Tipo de defecto <span class="req">*</span></label>
+            <select class="rec-f" data-i="${i}" data-k="defecto_tipo">
+              <option value="">— elige —</option>
+              <option value="calidad" ${l.defecto_tipo === 'calidad' ? 'selected' : ''}>Calidad</option>
+              <option value="condicion" ${l.defecto_tipo === 'condicion' ? 'selected' : ''}>Condición</option>
+            </select></div>
+          <div class="rec-campo ancho"><label>Motivo <span class="req">*</span></label>
+            <select class="rec-f" data-i="${i}" data-k="defecto_motivo" ${l.defecto_tipo ? '' : 'disabled'}>${optsDefecto(l.defecto_tipo, l.defecto_motivo)}</select></div>` : ''}
+        <div class="rec-campo ancho"><label>Nota${esRech ? ' (motivo del rechazo)' : ''}</label>
+          <input class="rec-f" data-i="${i}" data-k="nota" type="text" value="${esc(l.nota)}" placeholder="${esRech ? 'Ej. temperatura de arribo fuera de rango' : 'opcional'}"></div>
+      </div>` : ''}
+    </div>`;
+  }
+
+  function recPintarLineas() {
+    const body = document.getElementById('recLineasBody');
+    if (!body) return;
+    body.innerHTML = recLineas.map((l, i) => recFilaHTML(l, i)).join('');
+    body.querySelectorAll('.rec-f').forEach(el => {
+      const ev = el.tagName === 'SELECT' ? 'change' : 'input';
+      el.addEventListener(ev, e => {
+        const i = Number(e.target.dataset.i), k = e.target.dataset.k;
+        recLineas[i][k] = e.target.value;
+        if (k === 'resultado') {
+          // Rechazo = línea completa: la cantidad se fija al pendiente y no se edita.
+          if (e.target.value === 'Rechazada') recLineas[i].cantidad = recLineas[i].pendiente;
+          if (e.target.value !== 'Aceptada con incidencia') { recLineas[i].afectada = ''; recLineas[i].defecto_tipo = ''; recLineas[i].defecto_motivo = ''; }
+          recPintarLineas();
+        } else if (k === 'defecto_tipo') {
+          recLineas[i].defecto_motivo = '';
+          recPintarLineas();
+        }
+      });
+    });
+  }
+
+  function recAviso(tipo, html) {
+    const el = document.getElementById('recAviso');
     if (el) { el.className = 'aviso visible ' + tipo; el.innerHTML = html; }
   }
 
-  async function abrirRecibirLinea(s, l) {
+  async function abrirRecepcion(s) {
     if (!ERP.puede('capturar')) return;
     ERP.cerrarPanel();
-    ERP.abrirPanel('Recibir línea', `${esc(s.folio || '')} · ${esc(l.sku || '')}`, '<div class="skel">Cargando ubicaciones…</div>');
-    let inv;
+    ERP.abrirPanel('Recibir mercancía', `${esc(s.folio || '')} · ${esc(s.proveedor || '')}`, '<div class="skel">Cargando líneas e inspección…</div>');
+    let lin, doc, defs;
     try {
-      inv = await q('v_op_inventario', '&order=fecha.desc').catch(() => []);
+      [lin, doc, defs, recDestinosCat] = await Promise.all([
+        q('v_op_spo_lineas', `&supplier_po_id=eq.${Number(s.supplier_po_id)}&order=linea_num.asc`),
+        q('v_op_spo_documento', `&supplier_po_id=eq.${Number(s.supplier_po_id)}`).then(r => r && r[0]).catch(() => null),
+        q('v_catc_listas_valores', '&tipo=in.(defecto_calidad,defecto_condicion)&order=tipo.asc,orden.asc,valor.asc').catch(() => []),
+        q('v_op_destinos', '&activo=eq.true&order=nombre.asc').catch(() => [])
+      ]);
     } catch (e) {
-      ERP.abrirPanel('Recibir línea', '', `<div class="errbox">No se pudo leer el inventario: ${esc(e.message)}</div>`);
+      ERP.abrirPanel('Recibir mercancía', '', `<div class="errbox">No se pudo preparar la recepción: ${esc(e.message)}</div>`);
       return;
     }
-    const mapa = new Map();
-    (inv || []).forEach(x => {
-      if (x.location_id != null && !mapa.has(x.location_id)) {
-        mapa.set(x.location_id, { id: x.location_id, nombre: [x.location_codigo, x.location_nombre].filter(Boolean).join(' — ') || `Ubicación ${x.location_id}` });
-      }
+    recDefectos = { calidad: [], condicion: [] };
+    (defs || []).filter(v => v.activo !== false).forEach(v => {
+      if (v.tipo === 'defecto_calidad') recDefectos.calidad.push(v.valor);
+      else if (v.tipo === 'defecto_condicion') recDefectos.condicion.push(v.valor);
     });
-    ubicacionesEnMemoria = [...mapa.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
 
-    const pedido = Number(l.cantidad) || 0;
-    const yaRecibido = Number(l.recibido) || 0;
-    const pendiente = l.pendiente != null ? Number(l.pendiente) : Math.max(pedido - yaRecibido, 0);
+    const pendientes = (lin || []).map(l => {
+      const pedido = Number(l.cantidad) || 0, recibido = Number(l.recibido) || 0;
+      const pendiente = l.pendiente != null ? Number(l.pendiente) : Math.max(pedido - recibido, 0);
+      return { linea_id: l.linea_id, sku: l.sku || l.producto || '', uom: l.uom || '', pedido, recibido, pendiente,
+        resultado: '', cantidad: pendiente, afectada: '', defecto_tipo: '', defecto_motivo: '', nota: '' };
+    }).filter(l => l.pendiente > 0.0001);
 
-    ERP.abrirPanel('Recibir línea', `${esc(s.folio || '')} · ${esc(l.sku || '')}`, `
+    if (!pendientes.length) {
+      ERP.abrirPanel('Recibir mercancía', '', '<div class="errbox">Esta compra ya no tiene líneas pendientes de recibir.</div>');
+      return;
+    }
+    recLineas = pendientes;
+
+    // Ubicación (SHIP TO): se hereda del destino de la compra (v_op_spo_documento). Solo si la
+    // compra no tiene destino asignado se pide uno — y del catálogo CORRECTO (v_op_destinos, no
+    // del inventario, que era el bug del picker viejo).
+    recHereda = doc && doc.destino_location_id != null
+      ? { id: doc.destino_location_id, nombre: doc.destino_nombre || `Ubicación ${doc.destino_location_id}` } : null;
+
+    ERP.abrirPanel('Recibir mercancía', `${esc(s.folio || '')} · ${esc(s.proveedor || '')}`, `
       <div class="form-erp">
-        <div class="det-grid">
-          <div class="det"><span class="l">Pedido</span><span class="v mono">${esc(ERP.fmt0(pedido))} ${esc(l.uom || '')}</span></div>
-          <div class="det"><span class="l">Ya recibido</span><span class="v mono">${esc(ERP.fmt0(yaRecibido))}</span></div>
-          <div class="det"><span class="l">Pendiente</span><span class="v mono">${esc(ERP.fmt0(pendiente))}</span></div>
-          <div class="det"><span class="l">Costo unit.</span><span class="v mono">${l.costo_unitario != null ? esc(ERP.usd(l.costo_unitario)) + ' ' + esc(l.costo_moneda || 'USD') : 'Sin costear'}</span></div>
-        </div>
         <div class="campos">
-          <div class="campo">
-            <label>Cantidad recibida <span class="req">*</span></label>
-            <input id="recLiCantidad" class="mono" type="number" step="0.01" min="0" value="${esc(pendiente)}">
-            <div class="alias-ayuda">Lo que llegó realmente. Prellenado con lo pendiente; edítalo si llegó distinto (ej. pediste 226 y llegaron 200). Se puede recibir en varias parcialidades.</div>
-          </div>
-          <div class="campo ancho">
-            <label>Ubicación <span class="req">*</span></label>
-            <div id="recLiUbicacion"></div>
-            <div class="ia-leer-wrap">
-              <button type="button" class="btn-mini gris" id="recLiNuevaUbicacion"><i class="ti ti-plus"></i> Nueva ubicación</button>
-              <span class="alias-ayuda">${ubicacionesEnMemoria.length ? '' : 'Todavía no hay ubicaciones — crea la primera.'}</span>
-            </div>
-            <div id="recLiUbicacionForm" style="display:none;margin-top:8px" class="campo-fijo">
-              <div class="campos">
-                <div class="campo"><label>Código</label><input id="recLiUbCodigo" type="text" maxlength="20" placeholder="Ej. NGL-01"></div>
-                <div class="campo"><label>Nombre</label><input id="recLiUbNombre" type="text" maxlength="80" placeholder="Ej. Bodega Nogales"></div>
-              </div>
-              <div class="acciones" style="margin-top:8px">
-                <button type="button" class="btn-mini gris" id="recLiUbCrear">Crear ubicación</button>
-                <button type="button" class="btn-mini gris" id="recLiUbCancelar">Cancelar</button>
-              </div>
-            </div>
-          </div>
-          <div class="campo"><label>Fecha</label><input id="recLiFecha" type="date" value="${hoyISO()}"></div>
+          <div class="campo"><label>Fecha de recepción</label><input id="recFecha" type="date" value="${hoyISO()}"></div>
+          <div class="campo"><label>¿Ya se descargó la carga?</label>
+            <label class="rec-check"><input type="checkbox" id="recDescargada" checked> Sí, la mercancía ya bajó del transporte</label></div>
         </div>
+        ${recHereda
+          ? `<div class="alias-ayuda">Entra a <b>${esc(recHereda.nombre)}</b> (destino de la compra). Para cambiarlo, edita el destino en la ficha de la compra.</div>`
+          : `<div class="campo ancho"><label>Destino (SHIP TO) <span class="req">*</span></label>
+              <select id="recDestino"><option value="">— elige destino —</option>${recDestinosCat.map(d => `<option value="${esc(d.location_id)}">${esc(d.nombre)}${d.tipo_etiqueta ? ` (${esc(d.tipo_etiqueta)})` : ''}</option>`).join('')}</select>
+              <div class="alias-ayuda">Esta compra no tiene destino asignado — elige a dónde entra la mercancía.</div></div>`}
+
+        <div class="seccion-head"><h4>Inspección</h4></div>
+        <div class="campos">
+          <div class="campo"><label>Tipo</label>
+            <select id="recInspTipo">${INSPECCION_TIPOS.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select></div>
+          <div class="campo"><label>Folio de inspección</label><input id="recInspFolio" type="text" maxlength="60" placeholder="opcional"></div>
+          <div class="campo"><label>Fecha de inspección</label><input id="recInspFecha" type="date"></div>
+        </div>
+
+        <div class="seccion-head"><h4>Líneas — resultado por producto</h4></div>
+        <div class="alias-ayuda" style="margin-bottom:8px">Aceptada → nace lote sano. <b>Aceptada con incidencia</b> → nace lote retenido (no se puede vender hasta liberarlo). <b>Rechazada</b> → no nace lote (línea completa, nunca una fracción). Deja "no recibir ahora" lo que aún no llega.</div>
+        <div id="recLineasBody"></div>
+
+        <div class="campo ancho" style="margin-top:12px"><label>Nota general de la recepción</label><textarea id="recNota" rows="2"></textarea></div>
         <div class="acciones">
-          <button class="btn-mini" id="recLiGuardar">Recibir</button>
-          <button class="btn-mini gris" id="recLiCancelar">Cancelar</button>
+          <button class="btn-mini" id="recGuardar">Registrar recepción</button>
+          <button class="btn-mini gris" id="recCancelar">Cancelar</button>
         </div>
-        <div class="aviso" id="recLiAviso"></div>
+        <div class="aviso" id="recAviso"></div>
       </div>`);
 
-    montarComboUbicacionRec();
-    document.getElementById('recLiNuevaUbicacion').addEventListener('click', () => { document.getElementById('recLiUbicacionForm').style.display = ''; });
-    document.getElementById('recLiUbCancelar').addEventListener('click', () => { document.getElementById('recLiUbicacionForm').style.display = 'none'; });
-    document.getElementById('recLiUbCrear').addEventListener('click', crearUbicacionInlineRec);
-    document.getElementById('recLiCancelar').addEventListener('click', () => verSPO(s.supplier_po_id));
-    document.getElementById('recLiGuardar').addEventListener('click', () => guardarRecibirLinea(s, l));
-  }
-
-  function montarComboUbicacionRec(preseleccionar) {
-    comboUbicacionRec = ERP.crearCombo({
-      contenedor: document.getElementById('recLiUbicacion'),
-      items: ubicacionesEnMemoria,
-      placeholder: 'Busca ubicación…', permitirNuevo: false
+    recPintarLineas();
+    document.getElementById('recInspTipo').addEventListener('change', e => {
+      // "Ninguna" no necesita folio/fecha — se dejan pero no estorban; no se fuerza nada.
+      const off = e.target.value === 'Ninguna';
+      document.getElementById('recInspFolio').disabled = off;
+      document.getElementById('recInspFecha').disabled = off;
     });
-    if (preseleccionar) comboUbicacionRec.seleccionar(preseleccionar);
+    document.getElementById('recInspTipo').dispatchEvent(new Event('change'));
+    document.getElementById('recCancelar').addEventListener('click', () => verSPO(s.supplier_po_id));
+    document.getElementById('recGuardar').addEventListener('click', () => registrarRecepcion(s));
   }
 
-  async function crearUbicacionInlineRec() {
-    const codigo = (document.getElementById('recLiUbCodigo').value || '').trim();
-    const nombre = (document.getElementById('recLiUbNombre').value || '').trim();
-    if (!codigo || !nombre) { avisoRec('err', 'Código y nombre son obligatorios para la nueva ubicación.'); return; }
-    const btn = document.getElementById('recLiUbCrear');
-    btn.disabled = true;
-    avisoRec('warn', 'Creando ubicación…');
-    try {
-      const r = uno(await rpc('fn_op_location_alta', { p_codigo: codigo, p_nombre: nombre }));
-      const id = r.location_id ?? r.id;
-      if (id == null) throw new Error('El ERP no devolvió el id de la ubicación.');
-      const nueva = { id, nombre: `${codigo} — ${nombre}` };
-      ubicacionesEnMemoria = [...ubicacionesEnMemoria.filter(u => String(u.id) !== String(id)), nueva]
-        .sort((a, b) => a.nombre.localeCompare(b.nombre));
-      montarComboUbicacionRec(nueva);
-      document.getElementById('recLiUbicacionForm').style.display = 'none';
-      avisoRec('ok', `Ubicación <b>${esc(nueva.nombre)}</b> creada y seleccionada.`);
-    } catch (e) {
-      if (ERP.avisarSiPermiso && ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
-      avisoRec('err', `No se pudo crear la ubicación: ${esc(e.message)}`);
+  async function registrarRecepcion(s) {
+    const val = id => (document.getElementById(id) || {}).value;
+    const activas = recLineas.filter(l => l.resultado);
+    if (!activas.length) { recAviso('err', 'Elige un resultado en al menos una línea (o "no recibir ahora" en todas para cancelar).'); return; }
+
+    for (const l of activas) {
+      if (l.resultado !== 'Rechazada' && !(Number(l.cantidad) > 0)) { recAviso('err', `La cantidad recibida de "${esc(l.sku)}" debe ser mayor a cero.`); return; }
+      if (l.resultado === 'Aceptada con incidencia') {
+        if (!(Number(l.afectada) > 0)) { recAviso('err', `Captura cuánto viene afectado en "${esc(l.sku)}".`); return; }
+        if (Number(l.afectada) > Number(l.cantidad) + 1e-9) { recAviso('err', `Lo afectado no puede ser mayor que lo recibido en "${esc(l.sku)}".`); return; }
+        if (!l.defecto_tipo) { recAviso('err', `Elige el tipo de defecto en "${esc(l.sku)}".`); return; }
+        if (!l.defecto_motivo) { recAviso('err', `Elige el motivo del defecto en "${esc(l.sku)}".`); return; }
+      }
     }
-    btn.disabled = false;
-  }
 
-  async function guardarRecibirLinea(s, l) {
-    const location_id = comboUbicacionRec && comboUbicacionRec.valorId();
-    if (!location_id) { avisoRec('err', 'Elige o crea una ubicación.'); return; }
-    const fechaVal = (document.getElementById('recLiFecha') || {}).value || null;
-    // p_cantidad = lo que llegó realmente; null (input vacío) = recibe todo lo pendiente.
-    const cantVal = numOrNull((document.getElementById('recLiCantidad') || {}).value);
-    if (cantVal != null && !(cantVal > 0)) { avisoRec('err', 'La cantidad recibida debe ser mayor a cero.'); return; }
+    let p_location_id = null;
+    if (!recHereda) {
+      const d = val('recDestino');
+      if (!d) { recAviso('err', 'Elige el destino de la mercancía.'); return; }
+      p_location_id = Number(d);
+    }
 
-    const btn = document.getElementById('recLiGuardar');
+    const inspTipo = val('recInspTipo') || 'Ninguna';
+    const p_lineas = activas.map(l => ({
+      spo_linea_id: Number(l.linea_id),
+      cantidad: l.resultado === 'Rechazada' ? Number(l.pendiente) : Number(l.cantidad),
+      afectada: l.resultado === 'Aceptada con incidencia' ? Number(l.afectada) : null,
+      resultado: l.resultado,
+      defecto_tipo: l.resultado === 'Aceptada con incidencia' ? l.defecto_tipo : null,
+      defecto_motivo: l.resultado === 'Aceptada con incidencia' ? l.defecto_motivo : null,
+      nota: (l.nota || '').trim() || null
+    }));
+
+    const btn = document.getElementById('recGuardar');
     btn.disabled = true;
-    avisoRec('warn', 'Recibiendo…');
+    recAviso('warn', 'Registrando recepción…');
     try {
-      const r = uno(await rpc('fn_op_spo_recibir_linea', {
-        p_spo_linea_id: Number(l.linea_id), p_location_id: Number(location_id),
-        p_fecha: fechaVal, p_cantidad: cantVal
+      const r = uno(await rpc('fn_op_recepcion_registrar', {
+        p_supplier_po_id: Number(s.supplier_po_id),
+        p_lineas,
+        p_fecha: val('recFecha') || null,
+        p_location_id,
+        p_inspeccion_tipo: inspTipo,
+        p_inspeccion_folio: (val('recInspFolio') || '').trim() || null,
+        p_inspeccion_fecha: (inspTipo !== 'Ninguna' && val('recInspFecha')) ? val('recInspFecha') : null,
+        p_descargada: !!(document.getElementById('recDescargada') || {}).checked,
+        p_nota: (val('recNota') || '').trim() || null
       }));
-      // estado_linea (O3b, D-194): Parcial → di cuánto falta; Recibido de más → márcalo claro;
-      // Completo → recepción normal. auto_asignado (D-192) → nota extra de asignación a la venta.
-      const lot = esc(r.lot_folio || '');
-      const est = String(r.estado_linea || '').toLowerCase();
-      let tipo = 'ok', msg;
-      if (est === 'parcial') {
-        tipo = 'warn';
-        const falta = (r.pedido != null && r.recibido_total != null) ? Number(r.pedido) - Number(r.recibido_total) : null;
-        msg = `Recibido parcial — lote <b>${lot}</b> (${esc(ERP.fmt0(r.recibido_ahora))} ahora · ${esc(ERP.fmt0(r.recibido_total))} de ${esc(ERP.fmt0(r.pedido))})`
-          + (falta != null ? `, faltan <b>${esc(ERP.fmt0(falta))}</b>.` : '.');
-      } else if (est.includes('mas') || est.includes('más')) {
-        tipo = 'warn';
-        const dif = r.diferencia != null ? `${Number(r.diferencia) > 0 ? '+' : ''}${ERP.fmt0(r.diferencia)}` : '';
-        msg = `Recibido de MÁS — lote <b>${lot}</b>: llegaron ${esc(ERP.fmt0(r.recibido_total))} vs ${esc(ERP.fmt0(r.pedido))} pedidos (<b>${esc(dif)}</b>). Revísalo contra la factura.`;
-      } else {
-        msg = `Recibido completo — lote <b>${lot}</b>.`;
-      }
-      if (r.auto_asignado) {
-        const pend = r.auto_asignado.pendiente_linea;
-        msg += pend != null ? ` Asignado a la venta (quedan ${esc(ERP.fmt0(pend))} pendientes).` : ' Asignado a la venta.';
-      }
-      ERP.toast(tipo, msg, 8000);
+
+      // Resumen a partir de lo que se ENVIÓ (no depende de la forma exacta del jsonb de respuesta):
+      const nAcep = p_lineas.filter(l => l.resultado === 'Aceptada').length;
+      const nInc = p_lineas.filter(l => l.resultado === 'Aceptada con incidencia').length;
+      const nRech = p_lineas.filter(l => l.resultado === 'Rechazada').length;
+      const partes = [];
+      if (nAcep) partes.push(`${nAcep} aceptada(s)`);
+      if (nInc) partes.push(`${nInc} con incidencia (lote retenido)`);
+      if (nRech) partes.push(`${nRech} rechazada(s)`);
+      // Folios de lote si el backend los devolvió (forma tolerante).
+      const lnsResp = (r && (r.lineas || r.resultado_lineas || r.lotes)) || [];
+      const folios = (Array.isArray(lnsResp) ? lnsResp : []).map(x => x && x.lot_folio).filter(Boolean);
+      let msg = `Recepción registrada — ${partes.join(', ')}.` + (folios.length ? ` Lotes: ${folios.map(f => `<b>${esc(f)}</b>`).join(', ')}.` : '');
+      ERP.toast('ok', msg, 8000);
+
       ERP.marcarDatosSucios();
       await recargar();
-      verSPO(s.supplier_po_id);
+      // Advertencia legal (rechazo con carga ya descargada): se muestra persistente en la ficha.
+      // Hay que ESPERAR a que verSPO reconstruya el panel; si no, fichaAviso pinta sobre el panel
+      // viejo y verSPO lo borra al rearmar (bug detectado en verificación).
+      const adv = r && r.advertencia;
+      await verSPO(s.supplier_po_id);
+      if (adv) fichaAviso('warn', `<b>Aviso:</b> ${esc(adv)}`);
     } catch (e) {
-      // El backend bloquea si se excede la tolerancia (mensaje legible) — se muestra tal cual.
       if (ERP.avisarSiPermiso && ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
-      avisoRec('err', `El ERP rechazó la recepción: ${esc(e.message)}`);
+      recAviso('err', `El ERP rechazó la recepción: ${esc(e.message)}`);
       btn.disabled = false;
     }
   }

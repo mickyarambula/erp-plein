@@ -149,6 +149,27 @@ window.ERP.opDocumentos = (function () {
     if (error) throw new Error(error.message);
   }
 
+  /* Purga DEFINITIVA de un documento ya anulado (D-201). El backend NO borra de Storage (Supabase
+     lo bloquea a propósito); devuelve `archivo_a_borrar` (storage_path) y el frontend cierra el
+     ciclo con borrarDeStorage(). "papelera primero, purga después": el backend rechaza purgar un
+     documento que aún no está anulado. */
+  async function purgar(documentoId) {
+    const { data, error } = await sb.rpc('fn_op_doc_purgar', { p_id: documentoId });
+    if (error) throw new Error(error.message);
+    return (Array.isArray(data) ? data[0] : data) || {};
+  }
+
+  /* Borra objetos del bucket privado 'documentos'. Recibe un storage_path o un array; devuelve
+     cuántos se borraron y cuáles fallaron (para avisar sin romper el flujo — un archivo que ya no
+     existía no debe abortar la operación de negocio que lo motivó). */
+  async function borrarDeStorage(paths) {
+    const lista = (Array.isArray(paths) ? paths : [paths]).filter(Boolean);
+    if (!lista.length) return { borrados: 0, fallidos: [] };
+    const { data, error } = await sb.storage.from(BUCKET).remove(lista);
+    if (error) return { borrados: 0, fallidos: lista, error: error.message };
+    return { borrados: (data || []).length, fallidos: [] };
+  }
+
   async function registrarEnvio(o) {
     const { data, error } = await sb.rpc('fn_op_envio_registrar', {
       p_entidad: o.entidad, p_entidad_id: String(o.entidadId), p_canal: o.canal,
@@ -483,7 +504,7 @@ window.ERP.opDocumentos = (function () {
   const bloqueEmpresaPleinPdf = () => [EMPRESA_PLEIN, ...DIRECCION_PLEIN];
 
   return {
-    montar, montarEnvios, subir, urlFirmada, verDocumento, anular, registrarEnvio,
+    montar, montarEnvios, subir, urlFirmada, verDocumento, anular, purgar, borrarDeStorage, registrarEnvio,
     listarDocumentos, listarEnvios, CATEGORIAS_DEFAULT, construirPdfOficial, bloqueEmpresaPleinPdf
   };
 })();

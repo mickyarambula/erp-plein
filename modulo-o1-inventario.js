@@ -93,7 +93,7 @@
 
     const puedeCap = ERP.puede('capturar');
     cont.innerHTML = `<div class="tabla-wrap"><table>
-      <thead><tr><th>Lote</th><th>SKU</th><th>Ubicación</th><th>UOM</th><th>Estado</th>
+      <thead><tr><th>Lote</th><th>SKU</th><th>Ubicación</th><th>UOM</th><th>Estado</th><th>Calidad</th>
         <th class="num">On hand</th><th class="num">Reservado</th><th class="num">Disponible</th>
         <th class="num">Costo unit.</th><th class="num">Valor lote</th><th class="num">Valor disp.</th>
         <th>Proveedor</th><th>Fecha</th><th></th></tr></thead>
@@ -103,6 +103,7 @@
         <td>${esc([l.location_codigo, l.location_nombre].filter(Boolean).join(' — ') || '—')}</td>
         <td class="mono">${esc(l.uom || '—')}</td>
         <td><span class="pill gris">${esc(l.estado || '—')}</span></td>
+        <td>${pillCalidad(l)}</td>
         <td class="num">${esc(ERP.fmt0(l.on_hand))}</td>
         <td class="num">${esc(ERP.fmt0(l.reservado))}</td>
         <td class="num" style="font-weight:600">${esc(ERP.fmt0(l.disponible))}</td>
@@ -111,7 +112,7 @@
         <td class="num">${dinero(l.valor_disponible, l.costo_moneda)}</td>
         <td>${esc(l.proveedor || '—')}</td>
         <td>${esc(fecha(l.fecha))}</td>
-        <td>${puedeCap ? `<button class="btn-mini gris" data-costear="${esc(l.lot_id)}">${l.costo_unitario != null ? 'Editar costo' : 'Costear'}</button> <button class="btn-mini gris" data-eliminar="${esc(l.lot_id)}">Eliminar</button>` : ''}</td>
+        <td>${puedeCap ? `<button class="btn-mini gris" data-costear="${esc(l.lot_id)}">${l.costo_unitario != null ? 'Editar costo' : 'Costear'}</button> <button class="btn-mini gris" data-calidad="${esc(l.lot_id)}">Calidad</button> <button class="btn-mini gris" data-eliminar="${esc(l.lot_id)}">Eliminar</button>` : ''}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
 
@@ -119,11 +120,15 @@
       const lot = lotes.find(x => String(x.lot_id) === b.dataset.costear);
       if (lot) abrirCostearLote(lot);
     }));
+    cont.querySelectorAll('[data-calidad]').forEach(b => b.addEventListener('click', () => {
+      const lot = lotes.find(x => String(x.lot_id) === b.dataset.calidad);
+      if (lot) abrirCalidadLote(lot);
+    }));
     cont.querySelectorAll('[data-eliminar]').forEach(b => b.addEventListener('click', () => {
       const lot = lotes.find(x => String(x.lot_id) === b.dataset.eliminar);
       if (lot) eliminarLote(lot);
     }));
-    ERP.marcarTabla(cont);   // patrón tabla→tarjeta en móvil (D-193/Fase 2) — 14 columnas, otro caso ancho
+    ERP.marcarTabla(cont);   // patrón tabla→tarjeta en móvil (D-193/Fase 2) — 15 columnas, otro caso ancho
   }
 
   async function render(cont) {
@@ -310,6 +315,63 @@
   // NULL = "sin costear" (dato faltante) — NUNCA se muestra como $0, que sería un costo real de
   // cero. Distinguir esto es intencional (Tarea 3).
   const dinero = (n, mon) => (n === null || n === undefined) ? '—' : `${ERP.usd(n)} ${esc(mon || 'USD')}`;
+
+  // Estado de calidad (D-201): un lote nace Sano (aceptado) o Retenido (aceptado con incidencia —
+  // NO asignable a una venta hasta liberarlo). Castigado/Destruido son manuales. El color hace que
+  // un retenido se distinga a simple vista de uno sano. Si la vista no trae estado_calidad (dato
+  // viejo), se asume Sano para no alarmar.
+  const CALIDAD_CLASE = { sano: 'verde', retenido: 'ambar', castigado: 'rojo', destruido: 'gris' };
+  const CALIDAD_ESTADOS = ['Sano', 'Retenido', 'Castigado', 'Destruido'];
+  function pillCalidad(l) {
+    const est = l.estado_calidad || 'Sano';
+    const clase = CALIDAD_CLASE[String(est).toLowerCase()] || 'gris';
+    const noAsig = l.asignable === false ? ' title="No se puede asignar a una venta en este estado"' : '';
+    return `<span class="pill ${clase}"${noAsig}>${esc(est)}</span>`;
+  }
+
+  // Cambiar el estado de calidad de un lote (fn_op_lot_set_calidad) — liberar un retenido a Sano,
+  // castigarlo o marcarlo destruido. El backend BLOQUEA pasar a Retenido/Destruido si el lote ya
+  // tiene reservas (mensaje legible) — se muestra tal cual.
+  async function abrirCalidadLote(lot) {
+    if (!ERP.puede('capturar')) return;
+    ERP.cerrarPanel();
+    const actual = lot.estado_calidad || 'Sano';
+    ERP.abrirPanel('Estado de calidad del lote', `${esc(lot.folio || '')} · ${esc(lot.sku || lot.producto || '')}`, `
+      <div class="form-erp">
+        <div class="campos">
+          <div class="campo"><label>Estado de calidad</label>
+            <select id="calEstado">${CALIDAD_ESTADOS.map(e => `<option value="${e}" ${actual === e ? 'selected' : ''}>${e}</option>`).join('')}</select>
+            <div class="alias-ayuda">Liberar = pasar a <b>Sano</b> (queda asignable a ventas). <b>Retenido</b> lo saca de la venta. Castigado/Destruido son bajas.</div></div>
+          <div class="campo ancho"><label>Nota</label><input id="calNota" type="text" placeholder="Motivo del cambio (opcional)"></div>
+        </div>
+        <div class="acciones">
+          <button class="btn-mini" id="calGuardar">Guardar</button>
+          <button class="btn-mini gris" id="calCancelar">Cancelar</button>
+        </div>
+        <div class="aviso" id="calAviso"></div>
+      </div>`);
+    const aviso = (t, html) => { const el = document.getElementById('calAviso'); if (el) { el.className = 'aviso visible ' + t; el.innerHTML = html; } };
+    document.getElementById('calCancelar').addEventListener('click', ERP.cerrarPanel);
+    document.getElementById('calGuardar').addEventListener('click', async () => {
+      const nuevo = document.getElementById('calEstado').value;
+      const nota = (document.getElementById('calNota').value || '').trim() || null;
+      const btn = document.getElementById('calGuardar');
+      btn.disabled = true;
+      aviso('warn', 'Guardando…');
+      try {
+        await rpc('fn_op_lot_set_calidad', { p_lot_id: Number(lot.lot_id), p_estado_calidad: nuevo, p_nota: nota });
+        ERP.toast('ok', `Lote <b>${esc(lot.folio || '')}</b> → calidad <b>${esc(nuevo)}</b>.`);
+        ERP.marcarDatosSucios();
+        await recargar();
+        ERP.cerrarPanel();
+        render(document.getElementById('modContenido'));
+      } catch (e) {
+        if (ERP.avisarSiPermiso && ERP.avisarSiPermiso(e)) { btn.disabled = false; return; }
+        aviso('err', `El ERP rechazó el cambio: ${esc(e.message)}`);
+        btn.disabled = false;
+      }
+    });
+  }
 
   async function guardarRecibir() {
     const sku_id = pickerSkuInv && pickerSkuInv.valorId();

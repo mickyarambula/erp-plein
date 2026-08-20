@@ -525,7 +525,12 @@
       ERP.abrirPanel('Asignar inventario', '', `<div class="errbox">No se pudo leer el inventario: ${esc(e.message)}</div>`);
       return;
     }
-    const lotesDisp = (inv || []).filter(l => num(l.disponible) > 0.009);
+    // Calidad (D-201): un lote Retenido (aceptado con incidencia) NO es asignable — el backend ya
+    // lo rechaza con mensaje claro, pero mejor no ofrecerlo. Se filtra por `asignable !== false`
+    // (tolerante a que la columna venga null en datos viejos = se asume asignable).
+    const conDisponible = (inv || []).filter(l => num(l.disponible) > 0.009);
+    const lotesDisp = conDisponible.filter(l => l.asignable !== false);
+    const retenidosOcultos = conDisponible.length - lotesDisp.length;
     const openLinea = num(t.open);
 
     ERP.abrirPanel('Asignar inventario', `${esc(so.folio || '')} · línea #${esc(t.linea_num ?? '')} · ${esc(t.sku || t.producto || '')}`, `
@@ -540,7 +545,8 @@
           <div class="campo ancho"><label>Lote <span class="req">*</span></label>
             <select id="alLote">${lotesDisp.map(l =>
               `<option value="${esc(l.lot_id)}" data-disp="${esc(num(l.disponible))}">${esc(l.folio || ('Lote ' + l.lot_id))} · ${esc([l.location_codigo, l.location_nombre].filter(Boolean).join(' — '))} · disponible ${esc(ERP.fmt0(l.disponible))}</option>`).join('')}
-            </select></div>
+            </select>
+            ${retenidosOcultos ? `<div class="alias-ayuda">${esc(retenidosOcultos)} lote(s) de este SKU están <b>retenidos</b> (aceptados con incidencia) y no se pueden asignar hasta liberarlos en Inventario.</div>` : ''}</div>
           <div class="campo"><label>Cantidad a asignar <span class="req">*</span></label>
             <input id="alCantidad" class="mono" type="number" step="0.01" min="0" placeholder="0">
             <div class="alias-ayuda" id="alMaxAyuda"></div></div>
@@ -549,7 +555,9 @@
           <button class="btn-mini" id="alGuardar">Asignar</button>
           <button class="btn-mini gris" id="alCancelar">Cancelar</button>
         </div>` : `
-        <div class="vacio">Sin inventario disponible para este SKU (<b>${esc(t.sku || t.producto || '—')}</b>) todavía.</div>
+        <div class="vacio">${retenidosOcultos
+          ? `Este SKU tiene ${esc(retenidosOcultos)} lote(s) <b>retenidos</b> (aceptados con incidencia) — libéralos en Inventario para poder asignarlos. No hay lotes sanos disponibles todavía.`
+          : `Sin inventario disponible para este SKU (<b>${esc(t.sku || t.producto || '—')}</b>) todavía.`}</div>
         <div class="acciones">
           <button class="btn-mini" id="alRecibir">Recibir inventario nuevo</button>
           <button class="btn-mini gris" id="alCancelar">Volver</button>
