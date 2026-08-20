@@ -3166,3 +3166,82 @@ el SKU de la línea. 0 errores de consola en todo el recorrido.
 `20260818n` (D-185). NO desplegado — `npx vercel --prod` lo corre Miguel.
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-19, continuación) — Recepción por calidad (PACA) + limpieza de Storage + huérfanos (D-201)
+_Backend (otro chat) entregó 3 bloques. Se verificó CADA pieza contra la base en vivo ANTES de
+programar, sin sesión autenticada (solo la llave publicable): probes anónimos al REST — 401
+`permission denied` = el objeto SÍ existe; 404 `PGRST205/202` = no existe. **Hallazgo de método:**
+PostgREST valida el nombre de columna ANTES del RLS, así que `?select=<col>` da 400 "column does
+not exist" para una columna falsa y 401 para una real — permite verificar columnas exactas de una
+vista sin poder leer sus filas. Frontend (Claude Code), backend intacto._
+
+- **Verificado vivo antes de tocar nada:** existen `fn_op_recepcion_registrar`,
+  `fn_op_lot_set_calidad`, `fn_op_recepcion_anular`, `fn_op_spo_eliminar` (**firma real: solo
+  `p_id`** — el overload con `p_actor` da 404), `fn_op_doc_purgar`; vistas `v_op_recepciones`,
+  `v_op_recepcion_lineas`, `v_op_documentos_huerfanos`; `v_op_inventario` con columnas nuevas
+  `estado_calidad` + `asignable`. **Corrección al mensaje del backend:** `destino_location_id`
+  vive en `v_op_spo_documento`, NO en `v_op_supplier_po` (probado: 400 en supplier_po, 401 en
+  spo_documento). Esto destapó un bug latente de D-199 (ver abajo).
+- **D-201a — Recepción por calidad (TAREA 1):** reemplaza el modal viejo "Recibir línea"
+  (cantidad + ubicación con búsqueda libre) por una pantalla por COMPRA que entiende calidad PACA
+  (`abrirRecepcion` en `modulo-o3-compras.js`, botón único "Recibir mercancía" en la ficha en vez
+  de un botón por línea). Una inspección (Ninguna/Propia/USDA/Federal-Estatal/Privada + folio +
+  fecha) + "¿ya se descargó?" (default sí) + destino heredado del propio destino de la compra
+  (`v_op_spo_documento.destino_location_id` → se manda `p_location_id=null` y el backend hereda;
+  solo si la compra no tiene destino se pide uno, del catálogo `v_op_destinos`). Por línea:
+  resultado (Aceptada / Aceptada con incidencia / Rechazada). **Rechazo = línea completa** (la
+  cantidad se fija al pendiente y se bloquea; nunca una fracción). "Aceptada con incidencia" exige
+  `afectada` + `defecto_tipo` (calidad/condición) + `defecto_motivo` (del catálogo
+  `cat.listas_valores` vía `v_catc_listas_valores`, filtrado por el tipo elegido). Se puede dejar
+  líneas en "no recibir ahora" (recepción parcial de un tráiler). Llama
+  `fn_op_recepcion_registrar`; el resumen del éxito se arma de lo ENVIADO (no depende de la forma
+  exacta del jsonb de respuesta, que no se pudo verificar sin sesión). La `advertencia` legal
+  (rechazo con carga descargada) se muestra PERSISTENTE en la ficha, no se esconde.
+- **D-201b — Inventario con calidad (TAREA 1b):** `v_op_inventario` ahora pinta columna **Calidad**
+  con pill de color (Sano=verde, Retenido=ámbar, Castigado=rojo, Destruido=gris) + botón "Calidad"
+  por lote que llama `fn_op_lot_set_calidad` (liberar un retenido a Sano, castigar, etc.). En el
+  "Asignar" de Sales Orders (`modulo-o1-so.js`) el picker ya NO ofrece lotes `asignable === false`
+  (retenidos), con aviso de cuántos quedaron ocultos y por qué — sigue el criterio de nunca
+  bloquear a ciegas: informa. El backend además rechaza asignar un retenido, esto es la primera
+  barrera.
+- **D-201c — limpieza de Storage (TAREA 2a/2b):** el backend NO borra de Storage (Supabase lo
+  bloquea); lo cierra el frontend. `eliminarSPO` toma `archivos_a_borrar[]` de `fn_op_spo_eliminar`
+  y los borra del bucket `documentos`; un archivo que ya no existía avisa pero NO aborta el borrado
+  de la compra (que ya ocurrió en la base). Helpers nuevos en `modulo-op-documentos.js`: `purgar`
+  (fn_op_doc_purgar) y `borrarDeStorage`.
+- **D-201d — documentos huérfanos (TAREA 2c):** escoba "Huérfanos (N)" en el encabezado de Compras,
+  **solo rol administrar y solo si N>0** (con 0 no aparece nada — sin ruido en la pantalla diaria,
+  condición de Miguel). Drawer con "Limpiar" por fila: purga (si el doc aún no está anulado,
+  `fn_op_doc_purgar` lo rechaza → se anula primero y reintenta) + borra el archivo del bucket con
+  lo que devuelve el backend (`archivo_a_borrar`). **Ubicación PROVISIONAL** (condición de Miguel):
+  hoy `v_op_documentos_huerfanos` solo cubre `supplier_po`; cuando cubra ventas/CPO/otras entidades
+  se replantea el lugar (quizá un módulo Mantenimiento admin propio).
+- **D-201e — TAREA 3 no aplica como bug aparte (confirmado con Miguel):** el "nada coincide" del
+  picker de ubicación viejo era porque salía de `v_op_inventario` (dedupe) — un destino nuevo sin
+  stock nunca aparecía. Ese modal desaparece con D-201a; la recepción nueva hereda el destino y, en
+  el caso sin destino, lee `v_op_destinos` (catálogo correcto). Bug resuelto por eliminación.
+- **Fix D-199 (autorizado por Miguel):** la pre-selección del select "Cambiar destino" en la ficha
+  de la compra leía `s.destino_location_id` de `v_op_supplier_po`, donde ESA columna no existe —
+  llevaba días devolviendo `undefined` en silencio (el mock de D-199 la tenía, por eso pasó). Ahora
+  lee `docSpo.destino_location_id` de `v_op_spo_documento`. Sin el fix, el select nunca mostraba el
+  destino ya asignado.
+- **Bug propio detectado y corregido en la verificación:** tras registrar la recepción,
+  `registrarRecepcion` llamaba `verSPO(...)` (async, sin await) y enseguida `fichaAviso(advertencia)`
+  — la advertencia se pintaba sobre el panel viejo y `verSPO` lo borraba al rearmar. Corregido con
+  `await verSPO(...)` antes de pintar el aviso.
+
+**Verificado en navegador** (Chrome DevTools con Supabase/fetch/**Storage**/RPC mockeados — sin
+sesión real, ver nota): recepción con Rechazada (cantidad bloqueada a la línea completa) + Aceptada
+con incidencia (afectada + tipo→motivo filtrado) → payload EXACTO a
+`fn_op_recepcion_registrar` con `p_location_id=null` (destino heredado) → advertencia legal
+persistente en la ficha; Inventario con columna Calidad (Sano verde / Retenido ámbar) + botón
+Calidad; escoba de huérfanos (aparece solo con N>0 y admin) → "Limpiar" purga + DELETE al bucket +
+fila desaparece; eliminar compra → `fn_op_spo_eliminar(p_id)` + DELETE de `archivos_a_borrar` al
+bucket. 0 errores de consola. **Pendiente de E2E real (sin credenciales en este chat):** el
+bloqueo de asignar un lote Retenido y los efectos reales de los lotes (Sano se auto-asigna,
+Retenido no) — Miguel lo corre contra la base real con el click-path entregado.
+
+`node --check` limpio en los 4 JS. `?v=` de `index.html` a `20260818o` (D-185). NO desplegado —
+`npx vercel --prod` lo corre Miguel.
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.

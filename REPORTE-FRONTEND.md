@@ -5281,3 +5281,41 @@ el recálculo en vivo al elegir SKU. 0 errores de consola.
 
 `node --check` limpio. `?v=` a `20260818n` (D-185). NO desplegado (Miguel corre `npx vercel
 --prod`).
+
+## E138 (2026-08-19) — Recepción por calidad (PACA) + limpieza de Storage + huérfanos (D-201)
+
+Backend entregó 3 bloques. Verificados en vivo antes de programar (probes anónimos al REST — 401 =
+existe, 404 = no; y `?select=<col>` da 400 para columna falsa → permite verificar columnas exactas
+sin leer filas). Correcciones al mensaje del backend halladas así: `fn_op_spo_eliminar` toma solo
+`p_id`; `destino_location_id` vive en `v_op_spo_documento`, no en `v_op_supplier_po`.
+
+**Recepción por calidad (reemplaza el modal viejo "Recibir línea").** `abrirRecepcion` en
+`modulo-o3-compras.js`: botón único "Recibir mercancía" por compra. Inspección
+(Ninguna/Propia/USDA/Federal-Estatal/Privada + folio + fecha) + "¿ya se descargó?" + destino
+heredado del destino de la compra (si no tiene, se pide de `v_op_destinos`). Por línea:
+Aceptada / Aceptada con incidencia / Rechazada. Rechazo = línea completa (cantidad bloqueada, nunca
+fracción). Incidencia exige afectada + tipo de defecto (calidad/condición) + motivo (de
+`v_catc_listas_valores`, filtrado por tipo). Llama `fn_op_recepcion_registrar`. La advertencia
+legal (rechazo con carga descargada) se muestra persistente en la ficha.
+
+**Inventario con calidad.** Columna Calidad con pill de color (Sano verde / Retenido ámbar /
+Castigado rojo / Destruido gris) + botón "Calidad" (`fn_op_lot_set_calidad`). El "Asignar" de Sales
+Orders ya no ofrece lotes retenidos (`asignable === false`), con aviso de cuántos quedaron ocultos.
+
+**Limpieza de Storage.** El backend no borra de Storage; lo cierra el frontend. `eliminarSPO` borra
+`archivos_a_borrar[]` del bucket. Escoba "Huérfanos (N)" en Compras (solo admin y solo si N>0):
+"Limpiar" purga (`fn_op_doc_purgar`; si no está anulado, se anula y reintenta) + borra el archivo.
+Ubicación provisional (hoy la vista solo cubre supplier_po). TAREA 3 (bug del picker de ubicación):
+resuelto por eliminación — ese modal desaparece.
+
+**Fixes:** D-199 (la pre-selección del destino en la ficha leía una columna inexistente de
+`v_op_supplier_po`; ahora lee `v_op_spo_documento`) y un bug propio hallado verificando (la
+advertencia se pintaba antes de que `verSPO` rearmara el panel → se corrigió con `await verSPO`).
+
+**Verificado en navegador** (Supabase/fetch/Storage/RPC mockeados, sin sesión real): payload exacto
+de la recepción con `p_location_id` null (destino heredado), advertencia persistente, inventario con
+calidad, escoba purga+borra+quita fila, eliminar compra borra del bucket. 0 errores de consola. El
+E2E real (bloqueo de asignar retenido + efectos de lotes) lo corre Miguel contra la base.
+
+`node --check` limpio en los 4 JS. `?v=` a `20260818o` (D-185). NO desplegado (Miguel corre `npx
+vercel --prod`).
