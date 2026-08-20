@@ -774,13 +774,17 @@
   async function verSPO(id) {
     ERP.cerrarPanel();
     ERP.abrirPanel('Compra', 'Cargando…', '<div class="skel">Cargando compra…</div>');
-    let s, lin, docSpo;
+    let s, lin, docSpo, recLin;
     try {
-      [s, lin, docSpo, destinosCat] = await Promise.all([
+      [s, lin, docSpo, destinosCat, recLin] = await Promise.all([
         q('v_op_supplier_po', `&supplier_po_id=eq.${Number(id)}`).then(r => r && r[0]),
         q('v_op_spo_lineas', `&supplier_po_id=eq.${Number(id)}&order=linea_num.asc`).catch(() => []),
         q('v_op_spo_documento', `&supplier_po_id=eq.${Number(id)}`).then(r => r && r[0]).catch(() => null),
-        q('v_op_destinos', '&activo=eq.true&order=nombre.asc').catch(() => [])
+        q('v_op_destinos', '&activo=eq.true&order=nombre.asc').catch(() => []),
+        // D-203: un lote sano + uno retenido por línea con incidencia (antes uno solo) — se lee
+        // aparte de v_op_spo_lineas (que solo trae un lot_id/lot_folio, ya no representa el caso
+        // partido) para poder mostrar los dos lotes hermanos en la tabla.
+        q('v_op_recepcion_lineas', `&supplier_po_id=eq.${Number(id)}`).catch(() => [])
       ]);
     } catch (e) {
       ERP.abrirPanel('Compra', '', `<div class="errbox">No se pudo cargar la compra: ${esc(e.message)}</div>`);
@@ -790,6 +794,25 @@
 
     const puedeCap = ERP.puede('capturar');
     const lineasF = lin || [];
+
+    // Agrupa las recepciones (D-203) por línea de compra — una línea puede recibirse en varias
+    // parcialidades, cada una con su propio par sano/retenido.
+    const recPorLinea = new Map();
+    (recLin || []).forEach(r => {
+      const k = String(r.spo_linea_id);
+      if (!recPorLinea.has(k)) recPorLinea.set(k, []);
+      recPorLinea.get(k).push(r);
+    });
+    function celdaRecepcion(l) {
+      const recs = recPorLinea.get(String(l.linea_id)) || [];
+      if (!recs.length) return l.lot_folio ? `<div class="i3" style="font-size:11px">${esc(l.lot_folio)}</div>` : '';
+      return recs.map(r => {
+        const chips = [];
+        if (r.lot_folio) chips.push(`<span class="i3" style="font-size:11px">Sano <b>${esc(r.lot_folio)}</b> (${esc(ERP.fmt0(r.cantidad_sana))})</span>`);
+        if (r.lot_retenido_folio) chips.push(`<span class="i3" style="font-size:11px;color:var(--ambar)">Retenido <b>${esc(r.lot_retenido_folio)}</b> (${esc(ERP.fmt0(r.cantidad_afectada))})</span>`);
+        return `<div>${chips.join(' · ') || '—'}</div>`;
+      }).join('');
+    }
 
     const filasLineas = lineasF.map(l => {
       const pedido = Number(l.cantidad) || 0;
@@ -807,7 +830,7 @@
         <td class="num">${esc(ERP.fmt0(recibido))}${difTxt}</td>
         <td class="num">${esc(ERP.fmt0(pendiente))}</td>
         <td class="num">${l.costo_unitario != null ? esc(ERP.usd(l.costo_unitario)) + ' ' + esc(l.costo_moneda || 'USD') : '<span class="i3">—</span>'}</td>
-        <td>${chipRecepcion(l.estado_recepcion)}${l.lot_folio ? `<div class="i3" style="font-size:11px">${esc(l.lot_folio)}</div>` : ''}</td>
+        <td>${chipRecepcion(l.estado_recepcion)}${celdaRecepcion(l)}</td>
       </tr>`;
     }).join('');
 
@@ -1411,19 +1434,27 @@
         p_nota: (val('recNota') || '').trim() || null
       }));
 
-      // Resumen a partir de lo que se ENVIÓ (no depende de la forma exacta del jsonb de respuesta):
+      // Conteos por resultado a partir de lo ENVIADO (siempre correctos, no dependen del jsonb).
       const nAcep = p_lineas.filter(l => l.resultado === 'Aceptada').length;
       const nInc = p_lineas.filter(l => l.resultado === 'Aceptada con incidencia').length;
       const nRech = p_lineas.filter(l => l.resultado === 'Rechazada').length;
       const partes = [];
       if (nAcep) partes.push(`${nAcep} aceptada(s)`);
-      if (nInc) partes.push(`${nInc} con incidencia (lote retenido)`);
+      if (nInc) partes.push(`${nInc} con incidencia`);
       if (nRech) partes.push(`${nRech} rechazada(s)`);
-      // Folios de lote si el backend los devolvió (forma tolerante).
+      // Detalle sano/retenido por línea con incidencia (D-203): ya NO nace un solo lote retenido
+      // con todo — nace un lote SANO (cantidad_sana) + uno RETENIDO (cantidad_retenida), salvo que
+      // todo venga afectado (entonces solo hay retenido). Se arma de lo que DEVUELVE la RPC.
       const lnsResp = (r && (r.lineas || r.resultado_lineas || r.lotes)) || [];
-      const folios = (Array.isArray(lnsResp) ? lnsResp : []).map(x => x && x.lot_folio).filter(Boolean);
-      let msg = `Recepción registrada — ${partes.join(', ')}.` + (folios.length ? ` Lotes: ${folios.map(f => `<b>${esc(f)}</b>`).join(', ')}.` : '');
-      ERP.toast('ok', msg, 8000);
+      const detalleInc = (Array.isArray(lnsResp) ? lnsResp : []).map(x => {
+        if (!x) return '';
+        const bloques = [];
+        if (x.lot_sano_folio) bloques.push(`${esc(ERP.fmt0(x.cantidad_sana))} sanas (<b>${esc(x.lot_sano_folio)}</b>)`);
+        if (x.lot_retenido_folio) bloques.push(`${esc(ERP.fmt0(x.cantidad_retenida))} retenidas (<b>${esc(x.lot_retenido_folio)}</b>)`);
+        return bloques.join(' · ');
+      }).filter(Boolean);
+      let msg = `Recepción registrada — ${partes.join(', ')}.` + (detalleInc.length ? ` ${detalleInc.join(' | ')}.` : '');
+      ERP.toast('ok', msg, 9000);
 
       ERP.marcarDatosSucios();
       await recargar();
