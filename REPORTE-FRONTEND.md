@@ -5319,3 +5319,33 @@ E2E real (bloqueo de asignar retenido + efectos de lotes) lo corre Miguel contra
 
 `node --check` limpio en los 4 JS. `?v=` a `20260818o` (D-185). NO desplegado (Miguel corre `npx
 vercel --prod`).
+
+## E139 (2026-08-19) — recepción con incidencia parte el lote en dos: sano + retenido (D-203)
+
+Miguel probó D-201 y encontró un problema real: "Aceptada con incidencia" creaba UN lote Retenido
+con TODO lo recibido — al liberarlo se liberaba también la parte mala. Backend corrigió: ahora
+nacen DOS lotes hermanos (sano + retenido), o solo retenido si todo viene afectado. Verificado en
+vivo antes de programar (mismo método `?select=<col>` anónimo de D-200/D-201).
+
+**Hallazgo clave:** los nombres de campo del retorno de la RPC (`lot_sano_folio`,
+`cantidad_sana`, `lot_retenido_folio`, `cantidad_retenida`) son DISTINTOS de los de la vista
+`v_op_recepcion_lineas` (`lot_folio`, `cantidad_sana`, `lot_retenido_folio`, `cantidad_afectada`)
+— cuidado si se reusa el patrón en otro lado.
+
+**Ficha de la compra.** `verSPO()` ahora también consulta `v_op_recepcion_lineas` por
+`supplier_po_id`, agrupada por línea (una línea puede recibirse en varias parcialidades). Cada
+recepción se pinta "Sano LOT-26-030 (550) · Retenido LOT-26-031 (550)".
+
+**Toast de resumen.** Antes decía "N con incidencia (lote retenido)" con un solo folio. Ahora arma
+el detalle real de lo que devuelve la RPC: "200 sanas (LOT-26-040) · 100 retenidas (LOT-26-041)".
+
+**2 PDFs huérfanos sin fila en `documentos`** (Miguel borró sus datos de prueba desde el backend,
+se fue la fila también) — la escoba de D-201 no los ve por diseño. Instrucciones manuales.
+
+**Verificado en navegador** (mockeado, sin sesión real): ficha con recepción previa 50/50 pintando
+ambos lotes; nueva recepción con incidencia → toast exacto con los folios y cantidades correctas.
+0 errores de consola. No se pudo verificar la forma exacta del jsonb de retorno de la RPC contra
+la base real (anon no ejecuta RPCs) — Miguel lo confirma en el E2E.
+
+`node --check` limpio. `?v=` a `20260818p` (D-185). NO desplegado (Miguel corre `npx vercel
+--prod`).

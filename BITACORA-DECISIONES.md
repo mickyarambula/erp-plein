@@ -3245,3 +3245,48 @@ Retenido no) — Miguel lo corre contra la base real con el click-path entregado
 `npx vercel --prod` lo corre Miguel.
 
 **ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
+
+## Sesión (2026-08-19, continuación) — recepción con incidencia parte el lote en dos: sano + retenido (D-203)
+_Miguel probó D-201 y encontró un problema real de negocio: "Aceptada con incidencia" creaba UN
+lote Retenido con TODO lo recibido (ej. 1,100 con 550 afectadas → 1,100 retenidas); al liberarlo a
+Sano se liberaban también las 550 malas — el sistema dejaba vender producto defectuoso. Backend
+corrigió: ahora nacen DOS lotes hermanos por línea con incidencia (sano + retenido), o solo uno
+retenido si TODO viene afectado. Verificado en vivo antes de programar (mismo método de D-201/D-200:
+`?select=<col>` anónimo — 401 = existe, 400 = no). Frontend (Claude Code), backend intacto._
+
+- **Confirmado en vivo:** `v_op_recepcion_lineas` trae `lot_id`, `lot_folio`, `estado_calidad`
+  (ahora = el lote SANO), `lot_id_retenido`, `lot_retenido_folio`, `estado_calidad_retenido`,
+  `cantidad_sana`, `cantidad_afectada`, `pct_afectado`, y expone `supplier_po_id` directo (no hace
+  falta pasar por `v_op_recepciones` para filtrar por compra). `v_op_spo_lineas` (la vista de
+  líneas de la compra) **sigue teniendo solo un `lot_id`/`lot_folio`** — ya no representa el caso
+  partido, así que la ficha necesitaba una fuente aparte. `fn_op_recepcion_registrar` sigue con la
+  misma firma de parámetros — solo cambió el jsonb de retorno.
+- **D-203a — ficha de la compra, columna Recepción:** `verSPO()` ahora también consulta
+  `v_op_recepcion_lineas` por `supplier_po_id`, agrupada por `spo_linea_id` (una línea puede
+  recibirse en varias parcialidades, cada una con su propio par sano/retenido). Cada recepción se
+  pinta como "Sano LOT-26-030 (550) · Retenido LOT-26-031 (550)" — o solo el retenido si no hubo
+  parte sana.
+- **D-203b — resumen (toast) tras registrar:** antes contaba "N con incidencia (lote retenido)" y
+  mostraba un solo folio, con el nombre de campo viejo. Ahora arma el detalle de lo que
+  **devuelve** la RPC por línea con los nombres de campo reales (`lot_sano_folio`,
+  `cantidad_sana`, `lot_retenido_folio`, `cantidad_retenida` — **distintos** de los de la vista,
+  ver arriba, cuidado si se reusa el patrón): p.ej. "200 sanas (LOT-26-040) · 100 retenidas
+  (LOT-26-041)".
+- **D-203c — 2 PDFs huérfanos sin fila en `documentos`:** `oc/SPO-26-004.pdf` y
+  `oc/SPO-26-005.pdf` no aparecen en `v_op_documentos_huerfanos` porque Miguel borró sus datos de
+  prueba desde el backend (se fue también la fila de `documentos`, no solo la compra) — la escoba
+  de D-201 no los ve por diseño (lee esa vista). Sin credenciales de Storage reales en este chat
+  (ver D-200) — instrucciones manuales para Miguel abajo.
+
+**Verificado en navegador** (Supabase/fetch/RPC mockeados, sin sesión real): ficha con una
+recepción previa 50/50 (550 sanas / 550 retenidas) pintando ambos lotes correctamente; nueva
+recepción con incidencia (300 recibidas, 100 afectadas) → toast exacto "200 sanas (LOT-26-040) ·
+100 retenidas (LOT-26-041)". 0 errores de consola. Nota de honestidad: no se pudo verificar la
+FORMA exacta del jsonb de retorno de la RPC contra la base real (anon no puede ejecutarla) — se
+programó con los nombres de campo tal cual los dio el mensaje; si el nombre real difiere, el toast
+degradaría a solo los conteos (sin folios), no a un error — Miguel lo confirma en el E2E.
+
+`node --check` limpio. `?v=` de `index.html` a `20260818p` (D-185). NO desplegado — `npx vercel
+--prod` lo corre Miguel.
+
+**ANCLAS:** sin cambio — frontend, no toca `op.*`/`cat.*`/Cuadre/CxC/CxP/JPM.
