@@ -19,7 +19,8 @@
        recibe VARIAS veces (parcial y luego el resto). estado_recepcion = 'Pendiente'|'Parcial'|
        'Completo'|'Recibido de mas'. diferencia = recibido − pedido (≠0 = vigilar vs. la factura).
        so_linea_id/so_folio/auto_asigna (D-192): si la línea nació de una Sales Order, auto_asigna=
-       true y recibirla asigna sola el lote a esa línea de venta (ver fn_op_spo_recibir_linea abajo).
+       true y recibirla (Aceptada, vía fn_op_recepcion_registrar — ver abajo) asigna sola el lote
+       a esa línea de venta.
    Catálogos (vistas ya vivas, reusadas del resto de O1/O2):
      v_catc_contrapartes (id, nombre, alias, es_proveedor, ...) — picker de proveedor.
      v_op_sales_orders — dropdown opcional para ligar la compra a una venta (trazabilidad).
@@ -42,15 +43,13 @@
      fn_op_spo_set_estado(p_id, p_estado) — p_estado ∈ 'Abierto'|'Enviada'|'Confirmada'|'Cancelado'
        (O3b, D-194). Los estados de recepción NO se fijan por aquí (los calcula el sistema). Si la
        compra ya tiene mercancía recibida, el backend bloquea con mensaje legible (se muestra tal cual).
-     fn_op_spo_recibir_linea(p_spo_linea_id, p_location_id, p_fecha, p_cantidad) -> { ok, lot_id,
-       lot_folio, recibido_ahora, recibido_total, pedido, diferencia, estado_linea, auto_asignado }
-       — nace/agrega el lote de Inventario (O2) DESDE esta línea. p_cantidad (O3b, D-194) = cuánto
-       llegó REALMENTE; NULL = recibe todo lo pendiente (comportamiento previo). estado_linea =
-       'Parcial'|'Completo'|'Recibido de mas' (caso real: pediste 226 y llegaron 200). El toast lo
-       usa: si Parcial dice cuánto falta; si "Recibido de mas" lo marca claro. `auto_asignado`
-       (D-192) = {allocation_id, pendiente_linea, disponible_lote_restante} si la línea venía ligada
-       a una venta (auto_asigna=true) — el backend ya asignó el lote solo; null si no. El backend
-       bloquea si se excede la tolerancia (mensaje legible, se muestra tal cual).
+     fn_op_spo_recibir_linea — RETIRADA (D-204). Existía UN SOLO camino más al inventario desde
+       una compra, sin calidad (nacía el lote directo). Miguel recibió 2 compras sin ver la opción
+       de rechazo porque una pestaña vieja seguía usando este RPC. El backend ahora la deja viva
+       solo como guarda: SIEMPRE lanza una excepción explicando que se reemplazó por "Recibir
+       mercancía" (D-201/D-203, ver fn_op_recepcion_registrar abajo). El frontend NO debe volver a
+       llamarla — ni un modal "Recibir línea" suelto por línea. Recibir mercancía es SIEMPRE a
+       nivel compra completa (inspección + resultado por línea), nunca una línea aislada.
      fn_op_spo_eliminar(p_id) -> ok (el backend bloquea si ya hay líneas recibidas — mensaje
        legible, se muestra tal cual).
    O3c (D-196, "documentos y envíos reales" — reusa ERP.opDocumentos, ver modulo-op-documentos.js):

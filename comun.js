@@ -51,8 +51,90 @@ window.ERP = (function () {
     return 'eq.' + encodeURIComponent(v);
   };
 
+  /* ============ Vigencia de versión (D-204) ============
+     Causa real del incidente: una pestaña abierta desde ANTES de un deploy sigue corriendo el JS
+     viejo indefinidamente — ningún `?v=` la salva, porque nunca vuelve a pedir nada por sí sola
+     (el cache-busting solo actúa en una petición NUEVA: recarga o primera carga). Esa pestaña
+     usó un RPC ya retirado (fn_op_spo_recibir_linea) y creó 2 lotes sin recepción por calidad.
+     Se detecta comparando el `?v=` ya cargado contra el que trae un `index.html` pedido fresco
+     (sin caché). LEER con código viejo no ensucia nada — se deja igual, sin fricción. ESCRIBIR sí
+     ensució: se bloquea por completo vía exigirVersionActual(), el único punto de paso de toda
+     escritura (rpc() de aquí + los pocos sb.rpc() directos que quedan en documentos.js/
+     modulo-op-documentos.js). El aviso (franja) es permanente — no se puede cerrar sin recargar. */
+  let versionVieja = false;
+  let ultimoChequeoVersion = 0;
+
+  function miVersionCargada() {
+    const el = document.querySelector('script[src*="app.js?v="]');
+    const m = el && el.src.match(/[?&]v=([^&]+)/);
+    return m ? m[1] : null;
+  }
+
+  function mostrarBannerVersion() {
+    if (document.getElementById('bannerVersion')) return;
+    const b = document.createElement('div');
+    b.id = 'bannerVersion';
+    b.innerHTML = `<i class="ti ti-refresh"></i><span>Hay una versión nueva del ERP — tu pestaña quedó desactualizada. Puedes seguir viendo información, pero no podrás guardar nada hasta recargar.</span><button type="button" id="bannerVersionBtn">Recargar ahora</button>`;
+    document.body.prepend(b);
+    document.body.classList.add('version-vieja');
+    document.getElementById('bannerVersionBtn').addEventListener('click', () => location.reload());
+  }
+
+  async function chequearVersion() {
+    const ahora = Date.now();
+    if (ahora - ultimoChequeoVersion < 55000) return;   // visibilitychange + intervalo casi juntos no deben duplicar
+    ultimoChequeoVersion = ahora;
+    try {
+      const r = await fetch('/?_v=' + ahora, { cache: 'no-store' });
+      if (!r.ok) return;   // sin red o el servidor falla: no molestar por esto, no es un caso de versión
+      const html = await r.text();
+      const m = html.match(/app\.js\?v=([^"]+)/);
+      const enServidor = m ? m[1] : null;
+      const mia = miVersionCargada();
+      if (enServidor && mia && enServidor !== mia && !versionVieja) {
+        versionVieja = true;
+        mostrarBannerVersion();
+      }
+    } catch (_) { /* sin red: no bloquear el ERP por un problema de conexión */ }
+  }
+
+  /** Arranca la vigilancia: un chequeo al entrar + cada 10 min + cada vez que la pestaña vuelve a
+      primer plano (visibilitychange) — ese es el momento típico: se deja el ERP abierto, se hace
+      otra cosa, se regresa. Se llama una sola vez, desde sesionActiva() en app.js. */
+  function iniciarVigilanciaVersion() {
+    chequearVersion();
+    setInterval(chequearVersion, 10 * 60 * 1000);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') chequearVersion(); });
+  }
+
+  /** Bloquea una escritura si la pestaña quedó vieja: muestra un modal SIN forma de cerrarlo salvo
+      recargar (nada de click-fuera ni X) y lanza, para que el flujo de quien llamó se detenga
+      igual que ante cualquier otro error — no se pierde silenciosamente. */
+  function mostrarModalBloqueoVersion() {
+    if (document.getElementById('modalVersionOv')) return;
+    const ov = document.createElement('div');
+    ov.className = 'modal-ov';
+    ov.id = 'modalVersionOv';
+    ov.innerHTML = `<div class="modal-box" style="text-align:center">
+      <h3>Hay una versión más nueva del ERP</h3>
+      <p style="color:var(--i2,var(--gris));font-size:13.5px;margin:8px 0 16px">
+        Tu pestaña quedó desactualizada — esto NO se guardó, para no crear datos con código viejo.
+        Si estabas llenando un formulario, cópialo antes de recargar: se perderá.</p>
+      <button type="button" class="btn-mini" id="modalVersionBtn" style="width:100%">Recargar ahora</button>
+    </div>`;
+    document.body.appendChild(ov);
+    document.getElementById('modalVersionBtn').addEventListener('click', () => location.reload());
+  }
+
+  function exigirVersionActual() {
+    if (!versionVieja) return;
+    mostrarModalBloqueoVersion();
+    throw new Error('Tu pestaña tiene una versión vieja del ERP — recarga la página (arriba a la derecha) antes de intentarlo de nuevo.');
+  }
+
   /** Llama una función RPC de Supabase (authenticated). */
   async function rpc(nombre, args) {
+    exigirVersionActual();
     const { data, error } = await sb.rpc(nombre, args);
     if (error) throw new Error(error.message);
     return data;
@@ -878,6 +960,7 @@ window.ERP = (function () {
     abrirPanel, panelCuerpo, cerrarPanel, panelAbierto, toast, enviarPorCorreoDoc,
     registrar, moduloExiste, ir, irModulo, rutaActual, despachar,
     alternarMenu, cerrarMenu, marcarTabla, cargarPerfil, puede, esPermisoDenegado, avisarSiPermiso, marcarDatosSucios,
+    iniciarVigilanciaVersion, exigirVersionActual,
     get perfil() { return perfil; },
     get moduloActivo() { return moduloActivo; },
     setToken(t) { TOKEN = t; },

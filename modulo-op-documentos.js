@@ -100,6 +100,7 @@ window.ERP.opDocumentos = (function () {
       `storagePath`: ruta FIJA propia (ej. oc/{folio}.pdf, para que regenerar reemplace el mismo
       archivo — upsert:true); si se omite, se genera una ruta única (adjuntos del proveedor). */
   async function subir({ entidad, entidadId, archivo, nombreArchivo, mime, categoria, nota, referenciaExterna, storagePath }) {
+    ERP.exigirVersionActual();   // D-204 — antes de tocar Storage, no solo antes del RPC
     const nombre = nombreArchivo || (archivo && archivo.name) || 'archivo';
     const contentType = mime || mimeDe(archivo);
     const path = storagePath || rutaAuto(entidad, entidadId, nombre);
@@ -145,6 +146,7 @@ window.ERP.opDocumentos = (function () {
   }
 
   async function anular(documentoId) {
+    ERP.exigirVersionActual();   // D-204
     const { error } = await sb.rpc('fn_op_doc_anular', { p_id: documentoId });
     if (error) throw new Error(error.message);
   }
@@ -154,6 +156,7 @@ window.ERP.opDocumentos = (function () {
      ciclo con borrarDeStorage(). "papelera primero, purga después": el backend rechaza purgar un
      documento que aún no está anulado. */
   async function purgar(documentoId) {
+    ERP.exigirVersionActual();   // D-204
     const { data, error } = await sb.rpc('fn_op_doc_purgar', { p_id: documentoId });
     if (error) throw new Error(error.message);
     return (Array.isArray(data) ? data[0] : data) || {};
@@ -171,6 +174,7 @@ window.ERP.opDocumentos = (function () {
   }
 
   async function registrarEnvio(o) {
+    ERP.exigirVersionActual();   // D-204
     const { data, error } = await sb.rpc('fn_op_envio_registrar', {
       p_entidad: o.entidad, p_entidad_id: String(o.entidadId), p_canal: o.canal,
       p_destinatario: o.destinatario || null, p_asunto: o.asunto || null, p_mensaje: o.mensaje || null,

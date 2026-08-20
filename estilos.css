@@ -40,6 +40,19 @@ a{color:inherit}
 #shell{display:none}
 #shell.visible{display:grid;grid-template-columns:66px 1fr;height:100vh;min-height:560px}
 
+/* Aviso de versión vieja (D-204): franja fija arriba, permanente (sin botón de cerrar — solo se
+   va al recargar). #shell se encoge lo que mide la franja para no perder los 100vh de abajo. */
+body.version-vieja #shell.visible{height:calc(100vh - 40px);margin-top:40px}
+#bannerVersion{position:fixed;top:0;left:0;right:0;height:40px;z-index:150;background:var(--ambar);
+  color:#1a1400;display:flex;align-items:center;justify-content:center;gap:10px;font-size:13px;
+  font-weight:600;padding:0 14px;text-align:center}
+#bannerVersion button{background:#1a1400;color:#fff;border:none;border-radius:6px;padding:6px 14px;
+  font-family:'Archivo',sans-serif;font-weight:700;font-size:12px;cursor:pointer;flex:none}
+@media(max-width:640px){
+  #bannerVersion{font-size:11.5px;height:52px;gap:6px}
+  body.version-vieja #shell.visible{height:calc(100vh - 52px);margin-top:52px}
+}
+
 /* Riel de íconos angosto: logo arriba, un ícono por GRUPO, toggle de tema abajo */
 .icrail{background:var(--pan);border-right:1px solid var(--bd);display:flex;flex-direction:column;
   align-items:center;padding:12px 0;gap:3px;overflow-y:auto}

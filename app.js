@@ -43,6 +43,9 @@
     refrescarBadgeLiquidaciones();
     // Presencia en línea: latido + indicador de socios conectados en el header (módulo aparte).
     if (ERP.iniciarPresencia) ERP.iniciarPresencia();
+    // Vigencia de versión (D-204): detecta una pestaña que quedó corriendo código de antes de un
+    // deploy y bloquea sus escrituras — ver comun.js.
+    ERP.iniciarVigilanciaVersion();
   }
 
   /* ================= MARCO (E97): riel de grupos + barra de módulo + menú agrupado =========

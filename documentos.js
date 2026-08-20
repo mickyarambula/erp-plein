@@ -95,6 +95,7 @@ window.ERP.documentos = (function () {
 
   /** Sube y registra. Si el registro falla, borra el objeto huérfano del bucket. */
   async function subir({ entidad, entidadId, archivo, categoria, nota, referenciaExterna }) {
+    ERP.exigirVersionActual();   // D-204 — antes de tocar Storage, no solo antes del RPC
     const path = rutaDe(entidad, entidadId, archivo.name);
     const contentType = mimeDe(archivo);   // derivado de la extensión, no de archivo.type
 
@@ -156,6 +157,7 @@ window.ERP.documentos = (function () {
   }
 
   async function anular(id) {
+    ERP.exigirVersionActual();   // D-204
     const { data, error } = await sb.rpc('fn_anular_documento', { p_id: id });
     if (error) throw new Error(error.message);
     return data;
